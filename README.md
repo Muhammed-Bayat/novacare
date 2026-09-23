@@ -1,6 +1,12 @@
 # NovaCare
 
-NovaCare is a production-ready platform foundation: a React 18 SPA authenticated by Auth0, an Express 5 API, and a Neon PostgreSQL database.
+NovaCare is a production platform foundation: a React 18 SPA authenticated by Auth0, an Express 5 API, and a Neon PostgreSQL database.
+
+## Live services
+
+- Frontend: https://novacare-seven.vercel.app
+- API health: https://novacare-api-lgyh.onrender.com/health
+- Source: https://github.com/Muhammed-Bayat/novacare
 
 ## Repository layout
 
@@ -63,3 +69,12 @@ Import the GitHub repository with root directory `frontend`. Vercel uses `fronte
 ### Auth0 and Neon
 
 Auth0 must have an SPA application using Authorization Code Flow with PKCE and an API whose identifier is `AUTH0_AUDIENCE`. The API validates Auth0 access tokens with the issuer JWKS. Neon provides the pooled, SSL-enabled `DATABASE_URL`; it is only configured on the backend.
+
+## Launch checklist
+
+- Confirm GitHub Actions is green on `main` before each deployment.
+- Keep `DATABASE_URL` only in Neon-connected server environments; never expose it to Vercel or commit it.
+- Keep Auth0 callback URLs, logout URLs, web origins, and `CORS_ORIGINS` synchronized when adding a domain.
+- Upgrade the Render Free instance before serving production users; Free instances spin down and have no production SLA.
+- NovaCare currently uses the shared Athlora Auth0 development tenant. Before a fully isolated production launch, move to a dedicated production tenant or approved custom domain.
+- Review Neon backup, spending, access, and retention settings before storing real user data.
