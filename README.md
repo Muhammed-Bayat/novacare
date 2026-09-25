@@ -68,7 +68,7 @@ Import the GitHub repository with root directory `frontend`. Vercel uses `fronte
 
 ### Auth0 and Neon
 
-Auth0 must have an SPA application using Authorization Code Flow with PKCE and an API whose identifier is `AUTH0_AUDIENCE`. The API validates Auth0 access tokens with the issuer JWKS. Neon provides the pooled, SSL-enabled `DATABASE_URL`; it is only configured on the backend.
+Auth0 must have an SPA application using Authorization Code Flow with PKCE and an API whose identifier is `AUTH0_AUDIENCE`. The API validates Auth0 access tokens with the issuer JWKS. Neon provides the pooled, SSL-enabled `DATABASE_URL`; it is only configured on the backend. Each account's `users.user_type` (`patient`, `staff`, or `admin`) decides which portal the SPA opens after sign-in; new accounts default to `patient` and are promoted with SQL in Neon.
 
 ## Launch checklist
 

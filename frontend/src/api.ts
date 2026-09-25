@@ -1,10 +1,13 @@
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
+export type UserType = 'patient' | 'staff' | 'admin';
+
 export interface CurrentUser {
   id: string;
   auth0Subject: string;
   email: string | null;
   displayName: string | null;
+  userType: UserType;
 }
 
 export async function authenticatedRequest<T>(

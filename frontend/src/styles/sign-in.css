@@ -1,0 +1,5 @@
+.nv-signin{min-height:100vh;display:grid;place-items:center;padding:24px}
+.nv-signin .signin-card{max-width:560px;padding:48px 44px;text-align:center}
+.nv-signin .signin-card h1{margin:0 0 12px;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em}
+.nv-signin .signin-card .muted{margin:0;line-height:1.6}
+.nv-signin .signin-card button{margin-top:26px}

@@ -34,6 +34,7 @@ export function createApp() {
         auth0_subject: string;
         email: string | null;
         display_name: string | null;
+        user_type: string;
       }>(
         `INSERT INTO users (auth0_subject, email, display_name)
          VALUES ($1, $2, $3)
@@ -41,11 +42,19 @@ export function createApp() {
          SET email = COALESCE(EXCLUDED.email, users.email),
              display_name = COALESCE(EXCLUDED.display_name, users.display_name),
              updated_at = now()
-         RETURNING id, auth0_subject, email, display_name`,
+         RETURNING id, auth0_subject, email, display_name, user_type`,
         [auth.subject, auth.email, auth.displayName],
       );
       const user = result.rows[0]!;
-      res.json({ data: { id: user.id, auth0Subject: user.auth0_subject, email: user.email, displayName: user.display_name } });
+      res.json({
+        data: {
+          id: user.id,
+          auth0Subject: user.auth0_subject,
+          email: user.email,
+          displayName: user.display_name,
+          userType: user.user_type,
+        },
+      });
     } catch (error) {
       next(error);
     }

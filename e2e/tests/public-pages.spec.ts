@@ -1,0 +1,18 @@
+import { expect, test } from '@playwright/test';
+
+test.skip(!process.env.VITE_AUTH0_DOMAIN, 'Requires configured Auth0 and Neon test environment');
+
+test('shows the public landing page', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Simple, Trusted Healthcare for Everyone' })).toBeVisible();
+});
+
+test('offers the Auth0 sign-in entry point on /signin', async ({ page }) => {
+  await page.goto('/signin');
+  await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
+});
+
+test('redirects the removed dashboard route to the landing page', async ({ page }) => {
+  await page.goto('/dashboard');
+  await expect(page.getByRole('heading', { name: 'Simple, Trusted Healthcare for Everyone' })).toBeVisible();
+});
