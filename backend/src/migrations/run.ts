@@ -2,8 +2,9 @@ import '../config.js';
 import { createHash } from 'node:crypto';
 import { getPool, closePool } from '../db.js';
 import { migration as initialMigration } from './001_initial.js';
+import { migration as userTypeMigration } from './002_user_type.js';
 
-const migrations = [initialMigration];
+const migrations = [initialMigration, userTypeMigration];
 
 export async function runMigrations(): Promise<void> {
   const pool = getPool();

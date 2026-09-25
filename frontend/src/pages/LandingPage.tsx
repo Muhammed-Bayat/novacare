@@ -1,3 +1,4 @@
+import { useAuth0 } from '@auth0/auth0-react';
 import { Brand, SearchButton, TopBar, TopNav } from '../components/TopBar.tsx';
 import logo from '../assets/nova-care-logo.png';
 import '../styles/landing-page.css';
@@ -64,6 +65,8 @@ function HeroIllustration() {
 }
 
 export function LandingPage() {
+  const { loginWithRedirect } = useAuth0();
+
   return (
     <div className="app nv-landing">
       <TopBar>
@@ -71,7 +74,7 @@ export function LandingPage() {
         <TopNav items={navItems} />
         <div className="actions">
           <SearchButton />
-          <button type="button" className="outline-btn">Sign In</button>
+          <button type="button" className="outline-btn" onClick={() => void loginWithRedirect()}>Sign In</button>
         </div>
       </TopBar>
 

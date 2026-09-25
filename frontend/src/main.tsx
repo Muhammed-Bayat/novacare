@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { Auth0Provider } from '@auth0/auth0-react';
 import { BrowserRouter } from 'react-router-dom';
 import './styles/mockup-base.css';
-import './styles.css';
 import App from './App.tsx';
 
 const rootElement = document.getElementById('root');
