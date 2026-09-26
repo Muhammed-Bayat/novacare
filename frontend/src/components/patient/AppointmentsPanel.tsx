@@ -19,6 +19,15 @@ function joinedTime(value: string): string {
     : new Intl.DateTimeFormat('en-ZA', { hour: '2-digit', minute: '2-digit' }).format(parsed);
 }
 
+function urgencyLabel(value: NonNullable<Appointment['triageSummary']>['urgency']): string {
+  switch (value) {
+    case 'emergency': return 'Emergency';
+    case 'urgent': return 'Urgent';
+    case 'priority': return 'Priority';
+    default: return 'Routine';
+  }
+}
+
 export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onLeaveQueue, onEdit }: AppointmentsPanelProps) {
   const care = t.care;
   const [busyKey, setBusyKey] = useState<string>();
@@ -53,6 +62,16 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
                     <h3>{appointment.hospitalName}</h3>
                     <p className="muted small">{appointment.serviceName} · {formatDate(appointment.date)} · {appointment.time}</p>
                     <p className="muted small">{appointment.address}</p>
+                    {appointment.triageSummary ? (
+                      <div className="nv-appt-triage">
+                        <span className={`badge urgency-${appointment.triageSummary.urgency}`}>{urgencyLabel(appointment.triageSummary.urgency)}</span>
+                        <div>
+                          <strong>{appointment.triageSummary.pathwayName} assessment</strong>
+                          <p>{appointment.triageSummary.summary}</p>
+                          {appointment.triageSummary.redFlags.length > 0 ? <small>{appointment.triageSummary.redFlags.join(', ')}</small> : null}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="nv-appt-actions">
                     <button type="button" className="secondary-btn" onClick={() => onEdit(appointment)}>{t.reschedule}</button>

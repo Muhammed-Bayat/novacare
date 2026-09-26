@@ -34,6 +34,7 @@ export interface Appointment {
   hospitalName: string;
   serviceName: string;
   address: string;
+  triageSummary: AppointmentTriageSummary | null;
 }
 
 export interface QueueEntry {
@@ -45,6 +46,43 @@ export interface QueueEntry {
   joinedAt: string;
   position: number;
   estimatedWaitMinutes: number;
+}
+
+export type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
+export type QuestionnaireQuestionType = 'single' | 'yes-no' | 'scale';
+
+export interface QuestionnaireOption {
+  id: string;
+  label: string;
+  value: string | number | boolean;
+}
+
+export interface QuestionnaireQuestion {
+  id: string;
+  text: string;
+  helper?: string;
+  type: QuestionnaireQuestionType;
+  options?: QuestionnaireOption[];
+  min?: number;
+  max?: number;
+}
+
+export interface QuestionnaireIntake {
+  pathwayId: string;
+  pathwayName: string;
+  summary: string;
+  department: string;
+  urgency: QuestionnaireUrgency;
+  questions: QuestionnaireQuestion[];
+  source: 'gemini' | 'local';
+}
+
+export interface AppointmentTriageSummary {
+  urgency: QuestionnaireUrgency;
+  pathwayName: string;
+  department: string;
+  summary: string;
+  redFlags: string[];
 }
 
 export interface PatientProfile {

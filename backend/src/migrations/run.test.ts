@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { migration as initialMigration } from './001_initial.js';
 import { migration as userTypeMigration } from './002_user_type.js';
 import { migration as secureStaffInvitationsMigration } from './012_secure_staff_invitations.js';
+import { migration as appointmentTriageSummaryMigration } from './013_appointment_triage_summary.js';
 
 describe('initial migration', () => {
   it('creates the local users table', () => {
@@ -27,5 +28,14 @@ describe('secure staff invitations migration', () => {
     expect(secureStaffInvitationsMigration.sql).toContain('token_hash');
     expect(secureStaffInvitationsMigration.sql).toContain('expires_at');
     expect(secureStaffInvitationsMigration.sql).toContain('staff_invitations_token_hash_key');
+  });
+});
+
+describe('appointment triage summary migration', () => {
+  it('adds questionnaire summary fields to appointments', () => {
+    expect(appointmentTriageSummaryMigration.name).toBe('013_appointment_triage_summary');
+    expect(appointmentTriageSummaryMigration.sql).toContain('triage_urgency');
+    expect(appointmentTriageSummaryMigration.sql).toContain('triage_summary');
+    expect(appointmentTriageSummaryMigration.sql).toContain('triage_red_flags');
   });
 });

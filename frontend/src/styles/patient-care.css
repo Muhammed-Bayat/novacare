@@ -38,6 +38,14 @@
 .nv-queue-pos { background: #e4faf0; color: #177a4e; }
 .nv-appt-body h3 { margin: 0 0 4px; font-size: 17px; }
 .nv-appt-body p { margin: 0; }
+.nv-appt-triage { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 12px; border: 1px solid #e3eefb; border-radius: 16px; background: #f7fbff; }
+.nv-appt-triage strong { display: block; margin-bottom: 3px; color: var(--text); font-size: 13px; }
+.nv-appt-triage p { color: var(--muted); font-size: 13px; line-height: 1.35; }
+.nv-appt-triage small { display: block; margin-top: 5px; color: #b93633; font-weight: 700; }
+.badge.urgency-emergency { background: #fff1f1; color: #b93633; }
+.badge.urgency-urgent { background: #fff7e8; color: #9c6c00; }
+.badge.urgency-priority { background: #e8f4ff; color: #0f76da; }
+.badge.urgency-routine { background: #ddf7e9; color: #178653; }
 .nv-appt-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .nv-danger { color: #d74b49; }
 .nv-danger:hover { background: #ffe9e8; }
@@ -91,10 +99,47 @@
 .nv-tag.active { background: var(--blue); border-color: var(--blue); color: #fff; }
 
 .nv-book-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid #edf2f7; padding-top: 14px; }
-.nv-book-form .nv-error, .nv-book-form .nv-notice, .nv-book-actions { grid-column: 1 / -1; }
+.nv-book-form .nv-error, .nv-book-form .nv-notice, .nv-book-actions, .nv-book-summary-note { grid-column: 1 / -1; }
+.nv-book-summary-note { display: grid; gap: 3px; padding: 12px 14px; border: 1px solid #dbeafa; border-radius: 14px; background: #f7fbff; }
+.nv-book-summary-note strong { color: var(--text); text-transform: capitalize; }
+.nv-book-summary-note span { color: var(--muted); font-size: 13px; line-height: 1.35; }
 .nv-book-actions { display: flex; gap: 10px; }
 .nv-book-actions .primary-btn, .nv-book-actions .secondary-btn { flex: 1; justify-content: center; padding: 13px 16px; }
 .nv-book-actions .primary-btn:disabled, .nv-book-actions .secondary-btn:disabled { opacity: .6; cursor: wait; }
+
+.nv-questionnaire-card { overflow: hidden; padding: 0; }
+.nv-questionnaire-progress { height: 7px; background: #e7f1fc; }
+.nv-questionnaire-progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--teal)); transition: width .2s ease; }
+.nv-questionnaire-intro, .nv-questionnaire-step, .nv-questionnaire-result { display: grid; gap: 18px; padding: clamp(22px, 3vw, 32px); }
+.nv-questionnaire-intro h2, .nv-questionnaire-step h2, .nv-questionnaire-result h2 { margin: 0; color: var(--text); font-size: clamp(26px, 3vw, 38px); letter-spacing: -.04em; }
+.nv-questionnaire-intro p, .nv-questionnaire-step p, .nv-questionnaire-result p { margin: 0; }
+.nv-field textarea { min-height: 132px; resize: vertical; padding: 14px; border: 1px solid #d0e1f2; border-radius: 16px; background: #f6fbff; color: var(--text); font: inherit; font-weight: 600; outline: none; }
+.nv-field textarea:focus { border-color: var(--blue); background: #fff; }
+.nv-questionnaire-examples, .nv-questionnaire-actions, .nv-questionnaire-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.nv-questionnaire-examples button { border: 1px solid #d0e1f2; border-radius: 999px; background: #f7fbff; color: var(--text); padding: 9px 13px; font-weight: 750; }
+.nv-questionnaire-meta { justify-content: space-between; align-items: flex-start; }
+.nv-questionnaire-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.nv-questionnaire-option { border: 1.5px solid #d9e8f7; border-radius: 18px; background: #f7fbff; color: var(--text); padding: 16px; font: inherit; font-weight: 800; text-align: left; }
+.nv-questionnaire-option.selected { border-color: var(--blue); background: var(--blue-soft); box-shadow: 0 8px 18px rgba(26, 140, 239, .12); }
+.nv-questionnaire-scale { display: grid; gap: 10px; padding: 18px; border: 1px solid #dbeafa; border-radius: 20px; background: #f7fbff; }
+.nv-questionnaire-scale input { width: 100%; accent-color: var(--blue); }
+.nv-scale-value { color: var(--text); font-size: 42px; font-weight: 900; letter-spacing: -.06em; }
+.nv-scale-value span { color: var(--muted); font-size: 18px; letter-spacing: 0; }
+.nv-scale-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; font-weight: 800; }
+.nv-urgency-card { display: grid; gap: 4px; padding: 16px 18px; border-radius: 18px; border: 1px solid #dbeafa; background: #f7fbff; }
+.nv-urgency-card strong { color: var(--text); font-size: 18px; }
+.nv-urgency-card span { color: var(--muted); }
+.nv-urgency-card.urgency-emergency { background: #fff1f1; border-color: #ffd5d3; }
+.nv-urgency-card.urgency-urgent { background: #fff7e8; border-color: #ffdf9f; }
+.nv-urgency-card.urgency-priority { background: #eaf5ff; border-color: #cfe5fb; }
+.nv-urgency-card.urgency-routine { background: #eafaf1; border-color: #cbeedb; }
+.nv-red-flags, .nv-questionnaire-summary, .nv-recommended-care { display: grid; gap: 10px; padding: 16px; border-radius: 18px; border: 1px solid #edf2f7; background: #fff; }
+.nv-red-flags span { color: #b93633; font-weight: 700; }
+.nv-questionnaire-summary span { color: var(--muted); font-weight: 700; }
+.nv-recommended-list { display: grid; gap: 10px; }
+.nv-recommended-hospital { display: grid; gap: 10px; padding: 14px; border: 1px solid #e3eefb; border-radius: 16px; background: #f7fbff; }
+.nv-recommended-hospital strong, .nv-recommended-hospital span { display: block; }
+.nv-recommended-hospital > div:first-child span { margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
 
 @media (max-width: 1240px) {
   .nv-finder-grid { grid-template-columns: 1fr; }
@@ -107,4 +152,6 @@
   .nv-appt-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .nv-book-form { grid-template-columns: 1fr; }
   .nv-map { height: 280px; }
+  .nv-questionnaire-options { grid-template-columns: 1fr; }
+  .nv-questionnaire-actions .primary-btn, .nv-questionnaire-actions .secondary-btn { width: 100%; justify-content: center; }
 }

@@ -1,9 +1,10 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Appointment } from '../api.ts';
+import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type QuestionnaireIntake } from '../api.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
 import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
+import { PatientQuestionnaire } from '../components/patient/PatientQuestionnaire.tsx';
 import { dateParts } from '../components/patient/careMath.ts';
 import { usePatientCare } from '../components/patient/usePatientCare.ts';
 import {
@@ -45,7 +46,7 @@ function SouthAfricanFlag() {
 export function PatientPortalPage() {
   const [language, setLanguage] = useState<PatientLanguage>(readStoredLanguage);
   const t = patientTranslations[language];
-  const { isAuthenticated, loginWithRedirect, logout, user } = useAuth0();
+  const { isAuthenticated, loginWithRedirect, logout, user, getAccessTokenSilently } = useAuth0();
   const careData = usePatientCare();
   const authDisplayName = user?.given_name ?? user?.nickname ?? user?.name ?? 'Thandi';
   const [view, setView] = useState<'dashboard' | 'appointments'>('dashboard');
@@ -53,6 +54,7 @@ export function PatientPortalPage() {
   const [displayName, setDisplayName] = useState(() => readStoredDisplayName() ?? authDisplayName);
   const [draftDisplayName, setDraftDisplayName] = useState(displayName);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [bookingSuggestion, setBookingSuggestion] = useState<{ hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary } | null>(null);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -72,6 +74,23 @@ export function PatientPortalPage() {
     setDisplayName(nextDisplayName);
     window.localStorage.setItem(displayNameStorageKey, nextDisplayName);
     setProfileMenuOpen(false);
+  }
+
+  async function createQuestionnaireIntake(complaint: string): Promise<QuestionnaireIntake> {
+    const token = await getAccessTokenSilently();
+    const response = await authenticatedRequest<{ data: QuestionnaireIntake }>('/api/v1/questionnaire/intake', token, { method: 'POST', body: { complaint } });
+    return response.data;
+  }
+
+  function bookFromQuestionnaire(input: { hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary }) {
+    setBookingSuggestion(input);
+    setEditingAppointment(null);
+    setView('appointments');
+  }
+
+  async function createAppointment(input: { hospitalId: string; serviceId: string; date: string; time: string; triageSummary?: AppointmentTriageSummary | null }) {
+    await careData.createAppointment({ ...input, triageSummary: input.triageSummary ?? bookingSuggestion?.triageSummary ?? null });
+    setBookingSuggestion(null);
   }
 
   const nextAppointment = careData.appointments.find((appointment) => appointment.status === 'booked');
@@ -161,8 +180,9 @@ export function PatientPortalPage() {
                 hospitals={careData.hospitals}
                 loading={careData.loading}
                 editingAppointment={editingAppointment}
+                bookingSuggestion={bookingSuggestion}
                 onFinishEdit={() => setEditingAppointment(null)}
-                onCreate={careData.createAppointment}
+                onCreate={createAppointment}
                 onUpdate={careData.updateAppointment}
                 onRebook={careData.rebookAppointment}
                 onJoinQueue={careData.joinQueue}
@@ -195,6 +215,14 @@ export function PatientPortalPage() {
           </section>
 
           <section className="widgets nv-dashboard-widgets">
+            <PatientQuestionnaire
+              isAuthenticated={isAuthenticated}
+              hospitals={careData.hospitals}
+              onSignIn={() => void loginWithRedirect()}
+              onCreateIntake={createQuestionnaireIntake}
+              onBookAppointment={bookFromQuestionnaire}
+            />
+
             <article className="card widget nv-upcoming-widget">
               <h3>
                 <span>{t.upcoming}</span>{' '}
