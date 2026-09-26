@@ -60,7 +60,7 @@ npm --workspace @novacare/e2e test
 
 ### Render API
 
-Use `render.yaml` or create a Node web service with root directory `backend`, build command `npm install --include=dev && npm run build`, and start command `npm run start`. The start command safely runs compiled migrations before starting Express. Configure `DATABASE_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, and `CORS_ORIGINS` in Render, never in the repository.
+Use `render.yaml` or create a Node web service with root directory `backend`, build command `npm install --include=dev && npm run build`, and start command `npm run start`. The start command safely runs compiled migrations before starting Express. Configure `DATABASE_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `CORS_ORIGINS`, `BREVO_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, and `PLATFORM_OVERSEER_EMAIL` in Render, never in the repository.
 
 ### Vercel SPA
 

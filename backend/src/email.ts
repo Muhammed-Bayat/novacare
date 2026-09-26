@@ -16,6 +16,7 @@ export async function sendInvitationEmail(invitation: InvitationEmail): Promise<
   const sender = process.env.EMAIL_FROM;
   if (!apiKey || !sender) throw new Error('Brevo email is not configured');
 
+  const roleLabel = invitation.role === 'nurse' ? 'staff member' : invitation.role;
   const claimUrl = invitationUrl(invitation.token);
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
@@ -23,8 +24,8 @@ export async function sendInvitationEmail(invitation: InvitationEmail): Promise<
     body: JSON.stringify({
       sender: { name: 'NovaCare', email: sender.match(/<([^>]+)>/)?.[1] ?? sender },
       to: [{ email: invitation.recipient }],
-      subject: `NovaCare invitation: ${invitation.role} at ${invitation.hospitalName}`,
-      textContent: `You have been invited to join ${invitation.hospitalName} as a NovaCare ${invitation.role}. Claim your invitation within 72 hours: ${claimUrl}`,
+      subject: `NovaCare invitation: ${roleLabel} at ${invitation.hospitalName}`,
+      textContent: `You have been invited to join ${invitation.hospitalName} as a NovaCare ${roleLabel}. Claim your invitation within 72 hours: ${claimUrl}`,
     }),
   });
 

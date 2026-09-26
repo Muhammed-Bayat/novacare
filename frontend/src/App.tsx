@@ -102,7 +102,9 @@ function Dashboard() {
     return () => { cancelled = true; };
   }, [getAccessTokenSilently]);
   if (access?.isPlatformOperator) return <Navigate to="/overseer" replace />;
-  if (access?.staffRole === 'administrator') return <Navigate to="/care/admin" replace />;
+  if (access?.staffRole === 'administrator') return <Navigate to="/admin" replace />;
+  if (access?.staffRole === 'nurse') return <Navigate to="/staff" replace />;
+  if (access?.staffRole === 'doctor') return <Navigate to="/doctor" replace />;
 
   async function cancelAppointment(appointment: Appointment) {
     if (!window.confirm(`Cancel your ${appointment.serviceName} booking at ${appointment.hospitalName}?`)) return;
@@ -163,13 +165,6 @@ function OverseerPage() {
   useEffect(() => { let cancelled = false; async function load() { try { const token = await getAccessTokenSilently(); const me = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token); if (!me.data.isPlatformOperator) { navigate('/', { replace: true }); return; } const result = await authenticatedRequest<{ data: Hospital[] }>('/api/v1/hospitals', token); if (!cancelled) { setHospitals(result.data); setHospitalId(result.data[0]?.id ?? ''); } } catch (loadError) { if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Could not load overseer tools.'); } } void load(); return () => { cancelled = true; }; }, [getAccessTokenSilently, navigate]);
   async function assign(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setError(undefined); try { const token = await getAccessTokenSilently(); const result = await authenticatedRequest<{ data: { message: string } }>('/api/v1/overseer/administrators', token, { method: 'POST', body: { hospitalId, email } }); setMessage(result.data.message); setEmail(''); } catch (inviteError) { setError(inviteError instanceof Error ? inviteError.message : 'Could not assign administrator.'); } }
   return <main className="profile-page"><header className="booking-header"><button className="back-button" type="button" onClick={() => navigate('/')}>Patient view</button><div><p className="eyebrow">Platform overseer</p><h1>Hospital access.</h1></div></header><div className="profile-layout"><form className="profile-form" onSubmit={(event) => void assign(event)}><section><p className="eyebrow">Assign hospital administrator</p><p>Administrators can manage one hospital and invite their own nurses and doctors.</p><label>Hospital<select value={hospitalId} onChange={(event) => setHospitalId(event.target.value)}>{hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} · {hospital.province}</option>)}</select></label><label>Administrator email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label></section>{error ? <p className="error-message">{error}</p> : null}{message ? <p>{message}</p> : null}<button type="submit">Assign administrator</button></form><aside className="diagnosis-panel"><p className="eyebrow">Workflow</p><h2>How access works</h2><p>You assign an administrator to a hospital. They sign in with that email to claim access, then invite nurses and doctors.</p></aside></div></main>;
-}
-
-function AdminPage() {
-  const { getAccessTokenSilently } = useAuth0(); const navigate = useNavigate(); const [access, setAccess] = useState<CurrentUser>(); const [email, setEmail] = useState(''); const [role, setRole] = useState<'nurse' | 'doctor'>('nurse'); const [message, setMessage] = useState<string>(); const [error, setError] = useState<string>();
-  useEffect(() => { let cancelled = false; async function load() { const token = await getAccessTokenSilently(); const result = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token); if (!cancelled) { if (result.data.staffRole !== 'administrator') navigate('/', { replace: true }); else setAccess(result.data); } } void load().catch((loadError: unknown) => { if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Could not load administrator access.'); }); return () => { cancelled = true; }; }, [getAccessTokenSilently, navigate]);
-  async function invite(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); try { const token = await getAccessTokenSilently(); const result = await authenticatedRequest<{ data: { message: string } }>('/api/v1/admin/staff', token, { method: 'POST', body: { email, role } }); setMessage(result.data.message); setEmail(''); } catch (inviteError) { setError(inviteError instanceof Error ? inviteError.message : 'Could not create invitation.'); } }
-  return <main className="profile-page"><header className="booking-header"><button className="back-button" type="button" onClick={() => navigate('/')}>Patient view</button><div><p className="eyebrow">Hospital administrator</p><h1>Manage your care team.</h1></div></header><div className="profile-layout"><form className="profile-form" onSubmit={(event) => void invite(event)}><section><p className="eyebrow">Invite staff</p><p>Invite nurses and doctors to your assigned hospital. Access is claimed when they sign in with the invited email.</p><label>Staff email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Role<select value={role} onChange={(event) => setRole(event.target.value as 'nurse' | 'doctor')}><option value="nurse">Nurse</option><option value="doctor">Doctor</option></select></label></section>{error ? <p className="error-message">{error}</p> : null}{message ? <p>{message}</p> : null}<button type="submit" disabled={!access}>Invite {role}</button></form><aside className="diagnosis-panel"><p className="eyebrow">Next tools</p><h2>Operations</h2><p>Service and schedule management, queue operations, and clinician diagnosis records will be connected to this hospital administrator role next.</p></aside></div></main>;
 }
 
 function QueuePage() {
@@ -405,7 +400,8 @@ function App() {
     <Route path="/" element={<HomeRoute />} />
     <Route path="/signin" element={<SignInPage />} />
     <Route path="/patient" element={<PatientPortalPage />} />
-    <Route path="/staff" element={<StaffPortalPage />} />
+    <Route path="/staff" element={<StaffPortalPage role="nurse" />} />
+    <Route path="/doctor" element={<StaffPortalPage role="doctor" />} />
     <Route path="/admin" element={<AdminPortalPage />} />
     <Route path="/invitations/claim" element={<InvitationClaimPage />} />
     <Route path="/care" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
@@ -416,9 +412,9 @@ function App() {
     <Route path="/queue" element={<ProtectedPage><QueuePage /></ProtectedPage>} />
     <Route path="/profile" element={<ProtectedPage><ProfilePage /></ProtectedPage>} />
     <Route path="/overseer" element={<ProtectedPage><OverseerPage /></ProtectedPage>} />
-    <Route path="/care/admin" element={<ProtectedPage><AdminPage /></ProtectedPage>} />
+    <Route path="/care/admin" element={<Navigate to="/admin" replace />} />
     <Route path="/landing" element={<LandingPage />} />
-    <Route path="/admin-portal" element={<AdminPortalPage />} />
+    <Route path="/admin-portal" element={<Navigate to="/admin" replace />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;
 }

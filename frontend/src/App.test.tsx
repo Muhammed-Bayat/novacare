@@ -20,8 +20,24 @@ vi.mock('@auth0/auth0-react', () => ({
   }),
 }));
 
-function stubUserType(userType: string) {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: { userType } }) })));
+function stubCurrentUser(user: { userType?: string; isPlatformOperator?: boolean; staffRole?: 'administrator' | 'nurse' | 'doctor' | null; hospitalName?: string | null }) {
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    json: async () => ({
+      data: {
+        id: 'user-1',
+        auth0Subject: 'auth0|user-1',
+        email: 'user@example.com',
+        displayName: 'Amina Dlamini',
+        userType: 'patient',
+        isPlatformOperator: false,
+        staffRole: null,
+        hospitalId: null,
+        hospitalName: null,
+        ...user,
+      },
+    }),
+  })));
 }
 
 function stubPatientData(appointments: unknown[], queueEntries: unknown[] = [], hospitals: unknown[] = [], questionnaire?: unknown) {
@@ -164,14 +180,52 @@ describe('App', () => {
     expect(auth.logout).toHaveBeenCalledWith({ logoutParams: { returnTo: window.location.origin } });
   });
 
-  it('renders the staff portal at /staff', () => {
+  it('shows a staff sign-in prompt when opening the staff portal anonymously', () => {
     renderAt('/staff');
-    expect(screen.getByRole('heading', { name: 'Good morning, Dr. Mitchell' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Staff sign-in required' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Today’s Appointments' })).toBeInTheDocument();
   });
 
-  it('renders the admin portal at /admin', () => {
+  it('renders the staff portal with the signed-in user and hospital', async () => {
+    auth.state.isAuthenticated = true;
+    stubCurrentUser({ userType: 'staff', staffRole: 'nurse', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital' });
+    renderAt('/staff');
+    expect(await screen.findByRole('heading', { name: /Amina Dlamini/ })).toBeInTheDocument();
+    expect(screen.getAllByText(/Charlotte Maxeke Johannesburg Academic Hospital/)).not.toHaveLength(0);
+  });
+
+  it('renders the doctor portal separately from the staff portal', async () => {
+    auth.state.isAuthenticated = true;
+    stubCurrentUser({ userType: 'staff', staffRole: 'doctor', hospitalName: 'Helen Joseph Hospital' });
+    renderAt('/doctor');
+    expect(await screen.findByRole('heading', { name: /Amina Dlamini/ })).toBeInTheDocument();
+    expect(screen.getAllByText(/Helen Joseph Hospital/)).not.toHaveLength(0);
+  });
+
+  it('redirects team members who open the wrong portal', async () => {
+    auth.state.isAuthenticated = true;
+    stubCurrentUser({ userType: 'admin', staffRole: 'administrator' });
+    renderAt('/staff');
+    expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
+  });
+
+  it('renders the admin portal for an assigned administrator with the invite form', async () => {
+    auth.state.isAuthenticated = true;
+    stubCurrentUser({ userType: 'admin', staffRole: 'administrator', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital' });
     renderAt('/admin');
-    expect(screen.getByRole('heading', { name: 'Welcome back, Admin' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Invite a staff member or doctor by email')).toBeInTheDocument();
+  });
+
+  it('invites a staff member from the admin portal', async () => {
+    auth.state.isAuthenticated = true;
+    stubCurrentUser({ userType: 'admin', staffRole: 'administrator' });
+    renderAt('/admin');
+    await userEvent.type(await screen.findByPlaceholderText('Invite a staff member or doctor by email'), 'kelly@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
+    const invitePost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/admin/staff') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(invitePost).toBeDefined();
+    expect(JSON.parse(String((invitePost?.[1] as RequestInit).body))).toMatchObject({ email: 'kelly@example.com', role: 'nurse' });
   });
 
   it('starts the Auth0 sign-in flow from the landing page', async () => {
@@ -180,18 +234,18 @@ describe('App', () => {
     expect(auth.loginWithRedirect).toHaveBeenCalledTimes(1);
   });
 
-  it('sends signed-in users to the portal matching their user type', async () => {
+  it('sends signed-in staff to their assigned dashboard', async () => {
     auth.state.isAuthenticated = true;
-    stubUserType('staff');
+    stubCurrentUser({ userType: 'staff', staffRole: 'nurse' });
     renderAt('/signin');
-    expect(await screen.findByRole('heading', { name: 'Good morning, Dr. Mitchell' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Amina Dlamini/ })).toBeInTheDocument();
   });
 
-  it('routes signed-in visitors on / to their portal', async () => {
+  it('routes signed-in administrators on / to their dashboard', async () => {
     auth.state.isAuthenticated = true;
-    stubUserType('admin');
+    stubCurrentUser({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/');
-    expect(await screen.findByRole('heading', { name: 'Welcome back, Admin' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
   });
 
   it('redirects the removed dashboard route to the landing page', () => {

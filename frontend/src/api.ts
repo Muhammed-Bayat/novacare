@@ -11,6 +11,7 @@ export interface CurrentUser {
   isPlatformOperator: boolean;
   staffRole: 'administrator' | 'nurse' | 'doctor' | null;
   hospitalId: string | null;
+  hospitalName: string | null;
 }
 
 export interface Hospital {

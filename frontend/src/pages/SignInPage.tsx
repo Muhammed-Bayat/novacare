@@ -1,14 +1,16 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { authenticatedRequest, type CurrentUser, type UserType } from '../api.ts';
+import { authenticatedRequest, type CurrentUser } from '../api.ts';
 import '../styles/sign-in.css';
 
-const portalPaths: Record<UserType, string> = {
-  patient: '/patient',
-  staff: '/staff',
-  admin: '/admin',
-};
+function getPortalPath(user: CurrentUser): string {
+  if (user.isPlatformOperator) return '/overseer';
+  if (user.staffRole === 'administrator') return '/admin';
+  if (user.staffRole === 'nurse') return '/staff';
+  if (user.staffRole === 'doctor') return '/doctor';
+  return '/patient';
+}
 
 export function SignInPage() {
   const { isAuthenticated, isLoading, error, loginWithRedirect, getAccessTokenSilently } = useAuth0();
@@ -23,7 +25,7 @@ export function SignInPage() {
       try {
         const token = await getAccessTokenSilently();
         const me = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token);
-        if (!cancelled) setPortalPath(portalPaths[me.data.userType]);
+        if (!cancelled) setPortalPath(getPortalPath(me.data));
       } catch (lookupError) {
         if (!cancelled) {
           setRequestError(lookupError instanceof Error ? lookupError.message : 'Could not load your NovaCare profile');
@@ -63,7 +65,7 @@ export function SignInPage() {
         ) : (
           <>
             <h1>Sign in to NovaCare</h1>
-            <p className="muted">Use your NovaCare account to reach your patient, staff, or admin portal.</p>
+            <p className="muted">Use your NovaCare account to reach your assigned portal.</p>
             <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>
               Sign In
             </button>

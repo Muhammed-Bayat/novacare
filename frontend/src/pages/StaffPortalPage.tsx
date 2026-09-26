@@ -1,6 +1,17 @@
+import { useAuth0 } from '@auth0/auth0-react';
+import { useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
+import { authenticatedRequest, type CurrentUser } from '../api.ts';
 import { Brand, SearchButton, TopBar, TopNav } from '../components/TopBar.tsx';
 import logo from '../assets/nova-care-logo.png';
 import '../styles/staff-portal.css';
+
+type StaffRole = 'nurse' | 'doctor';
+
+const roleCopy: Record<StaffRole, { portal: string; mockName: string; mockChip: string }> = {
+  nurse: { portal: 'Staff', mockName: 'Sarah Mitchell', mockChip: 'Sarah Mitchell · Staff' },
+  doctor: { portal: 'Doctor', mockName: 'Dr. Mitchell', mockChip: 'Dr. Sarah Mitchell' },
+};
 
 const navItems = [
   { label: 'Overview', active: true },
@@ -47,7 +58,39 @@ const recentMessages = [
   { subject: 'Referral update', sender: 'From: Dr. James Park', received: 'Yesterday' },
 ];
 
-export function StaffPortalPage() {
+function greetingFor(hour: number) {
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+export function StaffPortalPage({ role }: { role: StaffRole }) {
+  const { isAuthenticated, loginWithRedirect, logout, getAccessTokenSilently } = useAuth0();
+  const [access, setAccess] = useState<CurrentUser>();
+  const [error, setError] = useState<string>();
+  const copy = roleCopy[role];
+
+  useEffect(() => {
+    if (!isAuthenticated) { setAccess(undefined); setError(undefined); return; }
+    let cancelled = false;
+    async function load() {
+      try {
+        const token = await getAccessTokenSilently();
+        const result = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token);
+        if (!cancelled) setAccess(result.data);
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Could not load your hospital access.');
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [isAuthenticated, getAccessTokenSilently]);
+
+  if (isAuthenticated && access && access.staffRole !== role) return <Navigate to="/" replace />;
+
+  const displayName = access?.displayName ?? copy.mockName;
+  const greeting = `${greetingFor(new Date().getHours())}, ${displayName}`;
+
   return (
     <div className="app nv-staff">
       <TopBar>
@@ -55,14 +98,19 @@ export function StaffPortalPage() {
         <TopNav items={navItems} />
         <div className="actions">
           <SearchButton />
-          <button type="button" className="user-chip">Dr. Sarah Mitchell</button>
+          <button type="button" className="user-chip">{access?.displayName ?? copy.mockChip}</button>
+          {isAuthenticated ? (
+            <button type="button" className="ghost-btn" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Sign out</button>
+          ) : (
+            <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
+          )}
         </div>
       </TopBar>
 
       <section className="head">
         <div className="welcome">
-          <h1>Good morning, Dr. Mitchell</h1>
-          <p className="muted" style={{ fontSize: 18 }}>Compassionate care makes a healthier tomorrow.</p>
+          <h1>{greeting}</h1>
+          <p className="muted" style={{ fontSize: 18 }}>{access?.hospitalName ? `${access.hospitalName} · ` : ''}Compassionate care makes a healthier tomorrow.</p>
         </div>
         <div className="hero-card side-banner">
           <div className="script">
@@ -78,6 +126,17 @@ export function StaffPortalPage() {
           </div>
         </div>
       </section>
+
+      {!isAuthenticated ? (
+        <section className="card card-pad" style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h3 style={{ margin: 0, color: 'var(--text)' }}>{copy.portal} sign-in required</h3>
+            <div className="muted small" style={{ marginTop: 4 }}>Sign in with your invited hospital email to open your {copy.portal.toLowerCase()} workspace.</div>
+          </div>
+          <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
+        </section>
+      ) : null}
+      {error ? <p className="small" style={{ color: '#de4a48', margin: '12px 0 0' }}>{error}</p> : null}
 
       <section className="grid-4" style={{ marginTop: 18 }}>
         {metrics.map((metric) => (

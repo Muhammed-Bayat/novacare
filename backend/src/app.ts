@@ -118,6 +118,10 @@ function tokenHash(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function platformOverseerEmail(): string {
+  return (process.env.PLATFORM_OVERSEER_EMAIL ?? '2811604@students.wits.ac.za').trim().toLowerCase();
+}
+
 function fallbackQuestionnaire(complaint: string, source: 'gemini' | 'local' = 'local'): QuestionnaireIntake {
   const text = complaint.toLowerCase();
   let selected = questionnairePathways.find((pathway) => pathway.id === 'general')!;
@@ -266,7 +270,11 @@ async function synchronizeUser(subject: string, email: string | null, displayNam
      RETURNING id, auth0_subject, email, display_name`,
     [subject, email, displayName],
   );
-  return result.rows[0]!;
+  const user = result.rows[0]!;
+  if (email?.trim().toLowerCase() === platformOverseerEmail()) {
+    await getPool().query('INSERT INTO platform_operators (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [user.id]);
+  }
+  return user;
 }
 
 function allowedOrigins(): string[] {
@@ -295,15 +303,16 @@ export function createApp() {
     try {
       const auth = req.auth!;
       const user = await synchronizeUser(auth.subject, auth.email, auth.displayName);
-      const roles = await getPool().query<{ operator: boolean; role: string | null; hospital_id: string | null }>(
+      const roles = await getPool().query<{ operator: boolean; role: string | null; hospital_id: string | null; hospital_name: string | null }>(
         `SELECT EXISTS(SELECT 1 FROM platform_operators WHERE user_id = $1) AS operator,
                 (SELECT role FROM hospital_memberships WHERE user_id = $1 AND active) AS role,
-                (SELECT hospital_id FROM hospital_memberships WHERE user_id = $1 AND active) AS hospital_id`, [user.id],
+                (SELECT hospital_id FROM hospital_memberships WHERE user_id = $1 AND active) AS hospital_id,
+                (SELECT h.name FROM hospital_memberships hm JOIN hospitals h ON h.id = hm.hospital_id WHERE hm.user_id = $1 AND hm.active) AS hospital_name`, [user.id],
       );
       const access = roles.rows[0]!;
       const userType = await getPool().query<{ user_type: string }>('SELECT user_type FROM users WHERE id = $1', [user.id]);
       const derivedUserType = access.role === 'administrator' ? 'admin' : access.role ? 'staff' : userType.rows[0]?.user_type ?? 'patient';
-      res.json({ data: { id: user.id, auth0Subject: user.auth0_subject, email: user.email, displayName: user.display_name, userType: derivedUserType, isPlatformOperator: access.operator, staffRole: access.role, hospitalId: access.hospital_id } });
+      res.json({ data: { id: user.id, auth0Subject: user.auth0_subject, email: user.email, displayName: user.display_name, userType: derivedUserType, isPlatformOperator: access.operator, staffRole: access.role, hospitalId: access.hospital_id, hospitalName: access.hospital_name } });
     } catch (error) {
       next(error);
     }
@@ -363,11 +372,11 @@ export function createApp() {
 
   app.post('/api/v1/overseer/administrators', requireAuth, async (req, res, next) => {
     try {
-      const operator = await getPool().query('SELECT 1 FROM platform_operators p JOIN users u ON u.id = p.user_id WHERE u.auth0_subject = $1', [req.auth!.subject]);
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      const operator = await getPool().query('SELECT 1 FROM platform_operators WHERE user_id = $1', [user.id]);
       if (!operator.rowCount) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Platform overseer access is required.' } }); return; }
       const { hospitalId, email } = req.body as { hospitalId?: unknown; email?: unknown };
       if (typeof hospitalId !== 'string' || typeof email !== 'string' || !email.includes('@')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a hospital and valid administrator email.' } }); return; }
-      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
       const hospital = await getPool().query<{ name: string }>('SELECT name FROM hospitals WHERE id = $1 AND active', [hospitalId]);
       if (!hospital.rowCount) { res.status(404).json({ error: { code: 'HOSPITAL_NOT_FOUND', message: 'That hospital is not available.' } }); return; }
       await createAndSendInvitation({ hospitalId, hospitalName: hospital.rows[0]!.name, email, role: 'administrator', invitedBy: user.id });
@@ -380,10 +389,10 @@ export function createApp() {
       const membership = await getPool().query<{ hospital_id: string; hospital_name: string }>(`SELECT hm.hospital_id, h.name AS hospital_name FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id JOIN hospitals h ON h.id = hm.hospital_id WHERE u.auth0_subject = $1 AND hm.role = 'administrator' AND hm.active`, [req.auth!.subject]);
       const hospitalId = membership.rows[0]?.hospital_id;
       const { email, role } = req.body as { email?: unknown; role?: unknown };
-      if (!hospitalId || typeof email !== 'string' || !email.includes('@') || (role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid nurse or doctor email.' } }); return; }
+      if (!hospitalId || typeof email !== 'string' || !email.includes('@') || (role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid staff or doctor email.' } }); return; }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
       await createAndSendInvitation({ hospitalId, hospitalName: membership.rows[0]!.hospital_name, email, role, invitedBy: user.id });
-      res.status(201).json({ data: { message: `${role === 'nurse' ? 'Nurse' : 'Doctor'} invitation email sent. It expires in 72 hours.` } });
+      res.status(201).json({ data: { message: `${role === 'nurse' ? 'Staff' : 'Doctor'} invitation email sent. It expires in 72 hours.` } });
     } catch (error) { next(error); }
   });
 
