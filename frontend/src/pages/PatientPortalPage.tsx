@@ -1,11 +1,18 @@
+import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useState } from 'react';
+import type { Appointment } from '../api.ts';
 import { Brand, SearchButton, TopBar, TopNav } from '../components/TopBar.tsx';
+import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
+import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
+import { dateParts } from '../components/patient/careMath.ts';
+import { usePatientCare } from '../components/patient/usePatientCare.ts';
 import {
   patientLanguages,
   patientTranslations,
   type PatientLanguage,
 } from '../i18n/patientTranslations.ts';
 import '../styles/patient-portal.css';
+import '../styles/patient-care.css';
 
 const languageStorageKey = 'novaCareLanguage';
 
@@ -66,15 +73,24 @@ function PortraitIllustration() {
 export function PatientPortalPage() {
   const [language, setLanguage] = useState<PatientLanguage>(readStoredLanguage);
   const t = patientTranslations[language];
+  const { isAuthenticated, loginWithRedirect, user } = useAuth0();
+  const careData = usePatientCare();
+  const [view, setView] = useState<'dashboard' | 'appointments'>('dashboard');
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     document.documentElement.lang = language;
     window.localStorage.setItem(languageStorageKey, language);
   }, [language]);
 
+  const nextAppointment = careData.appointments.find((appointment) => appointment.status === 'booked');
+  const nextDate = nextAppointment ? dateParts(nextAppointment.date) : undefined;
+  const firstName = user?.given_name ?? user?.nickname ?? 'Thandi';
+  const showRealUpcoming = isAuthenticated && nextAppointment && nextDate;
+
   const navItems = [
-    { label: t.dashboard, active: true },
-    { label: t.appointments },
+    { label: t.dashboard, active: view === 'dashboard', onClick: () => setView('dashboard') },
+    { label: t.appointments, active: view === 'appointments', onClick: () => setView('appointments') },
     { label: t.prescriptions },
     { label: t.results },
     { label: t.messages },
@@ -89,11 +105,55 @@ export function PatientPortalPage() {
         <div className="actions">
           <SearchButton />
           <button type="button" className="user-chip">
-            <span style={{ fontWeight: 800 }}>TM</span> <span>Hi, Thandi</span> <span style={{ fontSize: 12 }}>▼</span>
+            <span style={{ fontWeight: 800 }}>{firstName.slice(0, 1).toUpperCase()}</span> <span>Hi, {firstName}</span> <span style={{ fontSize: 12 }}>▼</span>
           </button>
         </div>
       </TopBar>
 
+      {view === 'appointments' ? (
+        <section className="nv-care-view">
+          <header className="nv-care-view-head">
+            <h1 className="section-title">{t.care.appointmentsTitle}</h1>
+            <p className="muted">{t.care.appointmentsSub}</p>
+          </header>
+          {!isAuthenticated ? (
+            <div className="card nv-care-signin">
+              <h3>{t.care.signInTitle}</h3>
+              <p className="muted">{t.care.signInSub}</p>
+              <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>{t.care.signInButton}</button>
+            </div>
+          ) : careData.error && careData.hospitals.length === 0 ? (
+            <div className="card nv-empty">
+              <p className="nv-error" role="alert">{careData.error}</p>
+            </div>
+          ) : (
+            <>
+              <AppointmentsPanel
+                t={t}
+                appointments={careData.appointments}
+                queueEntries={careData.queueEntries}
+                onCancel={careData.cancelAppointment}
+                onLeaveQueue={careData.leaveQueue}
+                onEdit={setEditingAppointment}
+              />
+              <CareBookingCard
+                t={t}
+                hospitals={careData.hospitals}
+                loading={careData.loading}
+                editingAppointment={editingAppointment}
+                onFinishEdit={() => setEditingAppointment(null)}
+                onCreate={careData.createAppointment}
+                onUpdate={careData.updateAppointment}
+                onRebook={careData.rebookAppointment}
+                onJoinQueue={careData.joinQueue}
+              />
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {view === 'dashboard' ? (
+      <>
       <section className="hero-card hero">
         <div className="hero-left">
           <h1>{t.welcome}</h1>
@@ -141,7 +201,9 @@ export function PatientPortalPage() {
         <article className="card quick-card">
           <div className="icon-circle">🗓️</div>
           <div>
-            <h3>{t.book}</h3>
+            <button type="button" className="nv-quick-action" onClick={() => setView('appointments')}>
+              <h3>{t.book}</h3>
+            </button>
             <p>{t.bookSub}</p>
           </div>
         </article>
@@ -171,27 +233,64 @@ export function PatientPortalPage() {
       <section className="widgets">
         <article className="card widget">
           <h3>
-            🗓️ <span>{t.upcoming}</span> <span className="muted small" style={{ float: 'right' }}>{t.viewAll}</span>
+            🗓️ <span>{t.upcoming}</span>{' '}
+            <button type="button" className="muted small nv-viewall" onClick={() => setView('appointments')}>{t.viewAll}</button>
           </h3>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <div className="bigdate">
-              FRI<br />
-              <span style={{ fontSize: 34 }}>16</span>
-              <br />MAY
-            </div>
-            <div>
-              <strong>{t.general}</strong>
-              <div className="muted small">Dr. A. Mokoena</div>
-              <div className="row">🕙 10:00 AM</div>
-              <div className="small muted">
-                ⌖ Nova Care Medical Centre<br />Sandton, Johannesburg
+          {showRealUpcoming && nextAppointment && nextDate ? (
+            <>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div className="bigdate">
+                  {nextDate.weekday.toUpperCase()}<br />
+                  <span style={{ fontSize: 34 }}>{nextDate.day}</span>
+                  <br />{nextDate.month.toUpperCase()}
+                </div>
+                <div>
+                  <strong>{nextAppointment.serviceName}</strong>
+                  <div className="muted small">{nextAppointment.hospitalName}</div>
+                  <div className="row">🕙 {nextAppointment.time}</div>
+                  <div className="small muted">⌖ {nextAppointment.address}</div>
+                </div>
               </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button type="button" className="primary-btn">{t.details}</button>
-            <button type="button" className="secondary-btn">{t.reschedule}</button>
-          </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <button type="button" className="primary-btn" onClick={() => setView('appointments')}>{t.details}</button>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => { setEditingAppointment(nextAppointment); setView('appointments'); }}
+                >
+                  {t.reschedule}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div className="bigdate">
+                  FRI<br />
+                  <span style={{ fontSize: 34 }}>16</span>
+                  <br />MAY
+                </div>
+                <div>
+                  <strong>{t.general}</strong>
+                  <div className="muted small">Dr. A. Mokoena</div>
+                  <div className="row">🕙 10:00 AM</div>
+                  <div className="small muted">
+                    ⌖ Nova Care Medical Centre<br />Sandton, Johannesburg
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <button type="button" className="primary-btn" onClick={() => setView('appointments')}>{t.details}</button>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => { setEditingAppointment(null); setView('appointments'); }}
+                >
+                  {t.reschedule}
+                </button>
+              </div>
+            </>
+          )}
         </article>
 
         <article className="card widget">
@@ -257,6 +356,8 @@ export function PatientPortalPage() {
         </div>
         <div style={{ fontSize: 48, color: '#bdd2e4' }}>⌁⌁⌁</div>
       </section>
+      </>
+      ) : null}
     </div>
   );
 }

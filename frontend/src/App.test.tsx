@@ -22,6 +22,16 @@ function stubUserType(userType: string) {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: { userType } }) })));
 }
 
+function stubPatientData(appointments: unknown[], queueEntries: unknown[] = []) {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/v1/appointments')) return { ok: true, json: async () => ({ data: appointments }) };
+    if (url.includes('/api/v1/queue')) return { ok: true, json: async () => ({ data: queueEntries }) };
+    if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: [] }) };
+    return { ok: true, json: async () => ({ data: { userType: 'patient' } }) };
+  }));
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -45,6 +55,28 @@ describe('App', () => {
   it('renders the patient portal at /patient', () => {
     renderAt('/patient');
     expect(screen.getByRole('heading', { name: 'Welcome back, Thandi 👋' })).toBeInTheDocument();
+  });
+
+  it('shows a sign-in prompt when opening appointments anonymously', async () => {
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Appointments' }));
+    expect(screen.getByRole('heading', { name: 'Sign in to manage your appointments' })).toBeInTheDocument();
+  });
+
+  it('opens the appointments view from the booking shortcut', async () => {
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Book an Appointment' }));
+    expect(screen.getByRole('heading', { name: 'Sign in to manage your appointments' })).toBeInTheDocument();
+  });
+
+  it('shows the next real appointment on the signed-in patient dashboard', async () => {
+    auth.state.isAuthenticated = true;
+    stubPatientData([
+      { id: 'a1', hospitalId: 'h1', serviceId: 's1', date: '2026-10-02', time: '09:30', status: 'booked', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital', serviceName: 'General Consultation', address: 'Johannesburg' },
+    ]);
+    renderAt('/patient');
+    expect(await screen.findByText('Charlotte Maxeke Johannesburg Academic Hospital')).toBeInTheDocument();
+    expect(screen.getByText(/09:30/)).toBeInTheDocument();
   });
 
   it('renders the staff portal at /staff', () => {

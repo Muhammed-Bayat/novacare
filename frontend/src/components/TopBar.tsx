@@ -5,6 +5,7 @@ export interface TopNavItem {
   label: string;
   href?: string;
   active?: boolean;
+  onClick?: () => void;
 }
 
 export function Brand() {
@@ -18,7 +19,11 @@ export function Brand() {
 export function TopNav({ items }: { items: readonly TopNavItem[] }) {
   return (
     <nav className="nav">
-      {items.map((item) => (
+      {items.map((item) => item.onClick ? (
+        <button key={item.label} type="button" className={item.active ? 'active' : undefined} onClick={item.onClick}>
+          {item.label}
+        </button>
+      ) : (
         <a key={item.label} className={item.active ? 'active' : undefined} href={item.href ?? '#'}>
           {item.label}
         </a>

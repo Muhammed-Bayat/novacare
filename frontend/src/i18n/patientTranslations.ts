@@ -41,6 +41,52 @@ export interface PatientStrings {
   tabletDaily: string;
   tabletTwice: string;
   capsuleDaily: string;
+  care: CareStrings;
+}
+
+export interface CareStrings {
+  appointmentsTitle: string;
+  appointmentsSub: string;
+  signInTitle: string;
+  signInSub: string;
+  signInButton: string;
+  upcomingList: string;
+  noUpcoming: string;
+  cancelledList: string;
+  rebook: string;
+  cancel: string;
+  queueToday: string;
+  queuePosition: string;
+  estWait: string;
+  leaveQueue: string;
+  findHospital: string;
+  findSub: string;
+  searchName: string;
+  searchArea: string;
+  searchService: string;
+  anyService: string;
+  nearMe: string;
+  locating: string;
+  locateFailed: string;
+  radius: string;
+  hospitalsFound: string;
+  noResults: string;
+  distanceAway: string;
+  bookHere: string;
+  joinQueue: string;
+  dateLabel: string;
+  timeLabel: string;
+  serviceLabel: string;
+  confirmBooking: string;
+  queueJoined: string;
+  selectPrompt: string;
+  addressLabel: string;
+  statusWaiting: string;
+  statusCalled: string;
+  actionFailed: string;
+  bookedOk: string;
+  updatedOk: string;
+  rebookedOk: string;
 }
 
 export interface PatientLanguageOption {
@@ -61,6 +107,51 @@ export const patientLanguages: readonly PatientLanguageOption[] = [
   { code: 'ts', label: "Xitsonga" },
   { code: 'nr', label: "isiNdebele" },
 ];
+
+const englishCare: CareStrings = {
+  appointmentsTitle: "Appointments",
+  appointmentsSub: "Book visits, manage your schedule and follow today’s queue.",
+  signInTitle: "Sign in to manage your appointments",
+  signInSub: "Use your Nova Care account to book visits, find nearby hospitals and join queues.",
+  signInButton: "Sign In",
+  upcomingList: "Upcoming appointments",
+  noUpcoming: "No upcoming appointments. Find a hospital below to book your next visit.",
+  cancelledList: "Cancelled appointments",
+  rebook: "Rebook",
+  cancel: "Cancel",
+  queueToday: "Today’s queue",
+  queuePosition: "Your position",
+  estWait: "Est. wait",
+  leaveQueue: "Leave queue",
+  findHospital: "Find a hospital",
+  findSub: "Search by name, area or service. Allow location to sort by distance and see the closest hospitals on the map.",
+  searchName: "Hospital name",
+  searchArea: "Area or city",
+  searchService: "Service",
+  anyService: "Any service",
+  nearMe: "Near me",
+  locating: "Locating…",
+  locateFailed: "Could not get your location. Distance sorting is off.",
+  radius: "Within",
+  hospitalsFound: "hospitals found",
+  noResults: "No hospitals match your search.",
+  distanceAway: "km away",
+  bookHere: "Book appointment",
+  joinQueue: "Join today’s queue",
+  dateLabel: "Date",
+  timeLabel: "Time (07:00–19:00)",
+  serviceLabel: "Service",
+  confirmBooking: "Confirm booking",
+  queueJoined: "You joined the queue.",
+  selectPrompt: "Select a hospital from the map or list to view details and book.",
+  addressLabel: "Address",
+  statusWaiting: "In queue",
+  statusCalled: "Please proceed",
+  actionFailed: "Something went wrong. Please try again.",
+  bookedOk: "Appointment booked.",
+  updatedOk: "Appointment updated.",
+  rebookedOk: "Appointment rebooked.",
+};
 
 export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
   en: {
@@ -104,6 +195,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "1 tablet daily",
     tabletTwice: "1 tablet twice daily",
     capsuleDaily: "1 capsule daily",
+    care: englishCare,
   },
   zu: {
     welcome: "Siyakwamukela futhi, Thandi 👋",
@@ -146,6 +238,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "ithebhulethi eli-1 ngosuku",
     tabletTwice: "ithebhulethi eli-1 kabili ngosuku",
     capsuleDaily: "i-capsule eli-1 ngosuku",
+    care: englishCare,
   },
   xh: {
     welcome: "Wamkelekile kwakhona, Thandi 👋",
@@ -188,6 +281,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "ithebhulethi e-1 ngosuku",
     tabletTwice: "ithebhulethi e-1 kabini ngosuku",
     capsuleDaily: "i-capsule e-1 ngosuku",
+    care: englishCare,
   },
   af: {
     welcome: "Welkom terug, Thandi 👋",
@@ -230,6 +324,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "1 tablet daagliks",
     tabletTwice: "1 tablet twee keer per dag",
     capsuleDaily: "1 kapsule daagliks",
+    care: englishCare,
   },
   nso: {
     welcome: "Re a go amogela gape, Thandi 👋",
@@ -272,6 +367,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "pilisi e 1 ka letšatši",
     tabletTwice: "pilisi e 1 gabedi ka letšatši",
     capsuleDaily: "capsule e 1 ka letšatši",
+    care: englishCare,
   },
   st: {
     welcome: "Rea u amohela hape, Thandi 👋",
@@ -314,6 +410,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "pilisi e 1 ka letsatsi",
     tabletTwice: "pilisi e 1 habeli ka letsatsi",
     capsuleDaily: "capsule e 1 ka letsatsi",
+    care: englishCare,
   },
   tn: {
     welcome: "Re go amogela gape, Thandi 👋",
@@ -356,6 +453,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "pilisi e 1 ka letsatsi",
     tabletTwice: "pilisi e 1 gabedi ka letsatsi",
     capsuleDaily: "capsule e 1 ka letsatsi",
+    care: englishCare,
   },
   ss: {
     welcome: "Siyakwamukela futsi, Thandi 👋",
@@ -398,6 +496,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "iphilisi eli-1 ngelilanga",
     tabletTwice: "iphilisi eli-1 kabili ngelilanga",
     capsuleDaily: "i-capsule eli-1 ngelilanga",
+    care: englishCare,
   },
   ve: {
     welcome: "Ri a ni ṱanganedza hafhu, Thandi 👋",
@@ -440,6 +539,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "pilisi 1 nga ḓuvha",
     tabletTwice: "pilisi 1 luvhili nga ḓuvha",
     capsuleDaily: "capsule 1 nga ḓuvha",
+    care: englishCare,
   },
   ts: {
     welcome: "Ha mi amukela nakambe, Thandi 👋",
@@ -482,6 +582,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "philisi 1 hi siku",
     tabletTwice: "philisi 1 kambirhi hi siku",
     capsuleDaily: "capsule 1 hi siku",
+    care: englishCare,
   },
   nr: {
     welcome: "Siyakwamukela godu, Thandi 👋",
@@ -524,5 +625,6 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     tabletDaily: "ipilisi eli-1 ngelanga",
     tabletTwice: "ipilisi eli-1 kabili ngelanga",
     capsuleDaily: "i-capsule eli-1 ngelanga",
+    care: englishCare,
   },
 };
