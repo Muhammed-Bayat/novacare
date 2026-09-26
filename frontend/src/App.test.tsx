@@ -172,6 +172,62 @@ describe('App', () => {
     expect(body).toMatchObject({ hospitalId: 'h1', serviceId: 's2', triageSummary: { urgency: 'emergency', pathwayName: 'Injury & musculoskeletal' } });
   });
 
+  it('ranks recommended hospitals by distance when location is available', async () => {
+    auth.state.isAuthenticated = true;
+    stubPatientData([], [], [
+      {
+        id: 'far',
+        name: 'Far Hospital',
+        province: 'KwaZulu-Natal',
+        address: 'Sydney Road, Durban',
+        latitude: -29.9027,
+        longitude: 30.9991,
+        facilityType: 'Academic hospital',
+        services: [{ id: 's1', name: 'General Consultation' }],
+      },
+      {
+        id: 'near',
+        name: 'Near Hospital',
+        province: 'Gauteng',
+        address: 'Jubilee Road, Parktown',
+        latitude: -26.1815,
+        longitude: 28.0283,
+        facilityType: 'Academic hospital',
+        services: [{ id: 's2', name: 'General Consultation' }],
+      },
+    ], {
+      pathwayId: 'headache',
+      pathwayName: 'Headache & neurological',
+      summary: 'Persistent headache.',
+      department: 'General Medicine',
+      urgency: 'priority',
+      source: 'gemini',
+      questions: [{ id: 'pain', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 }],
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) => success({ coords: { latitude: -26.18, longitude: 28.03 } } as GeolocationPosition),
+      },
+    });
+    try {
+      renderAt('/patient');
+      await userEvent.click(screen.getByRole('button', { name: 'I have a bad headache' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Start questionnaire' }));
+      expect(await screen.findByRole('heading', { name: 'How severe is the pain?' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'See recommendation' }));
+
+      expect(await screen.findByText('Ranked by distance from your location.')).toBeInTheDocument();
+      const nearCard = (await screen.findByText('Near Hospital')).closest('article');
+      const farCard = screen.getByText('Far Hospital').closest('article');
+      if (!nearCard || !farCard) throw new Error('expected both recommendation cards');
+      expect(nearCard.compareDocumentPosition(farCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(screen.getAllByText(/km away/).length).toBe(2);
+    } finally {
+      Reflect.deleteProperty(window.navigator, 'geolocation');
+    }
+  });
+
   it('lets patients change their display name from the user menu', async () => {
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: /Hi, Thandi/ }));
