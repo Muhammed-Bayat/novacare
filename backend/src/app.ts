@@ -1,8 +1,10 @@
 import cors from 'cors';
+import { createHash, randomBytes } from 'node:crypto';
 import express from 'express';
 import helmet from 'helmet';
 import { requireAuth } from './auth.js';
 import { getPool } from './db.js';
+import { sendInvitationEmail } from './email.js';
 
 type UserRow = { id: string; auth0_subject: string; email: string | null; display_name: string | null };
 
@@ -14,6 +16,34 @@ function isBookingTime(date: string, time: string): boolean {
 function textList(value: unknown): string[] | undefined {
   if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return undefined;
   return value.map((item) => item.trim()).filter(Boolean).slice(0, 50);
+}
+
+function invitationToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+function tokenHash(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string }): Promise<void> {
+  const token = invitationToken();
+  const invitation = await getPool().query(
+    `INSERT INTO staff_invitations (hospital_id, email, role, invited_by, token_hash, expires_at, claimed_by, claimed_at, sent_at)
+     VALUES ($1, lower($2), $3, $4, $5, now() + interval '72 hours', NULL, NULL, NULL)
+     ON CONFLICT (hospital_id, email, role) DO UPDATE
+     SET invited_by = EXCLUDED.invited_by, token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at,
+         claimed_by = NULL, claimed_at = NULL, sent_at = NULL
+     WHERE staff_invitations.claimed_at IS NULL`,
+    [input.hospitalId, input.email, input.role, input.invitedBy, tokenHash(token)],
+  );
+  if (!invitation.rowCount) throw new Error('This recipient has already claimed this hospital role.');
+  await sendInvitationEmail({ recipient: input.email, role: input.role, hospitalName: input.hospitalName, token });
+  await getPool().query(
+    `UPDATE staff_invitations SET sent_at = now()
+     WHERE hospital_id = $1 AND lower(email) = lower($2) AND role = $3 AND token_hash = $4`,
+    [input.hospitalId, input.email, input.role, tokenHash(token)],
+  );
 }
 
 async function synchronizeUser(subject: string, email: string | null, displayName: string | null): Promise<UserRow> {
@@ -56,15 +86,6 @@ export function createApp() {
     try {
       const auth = req.auth!;
       const user = await synchronizeUser(auth.subject, auth.email, auth.displayName);
-      await getPool().query(
-        `UPDATE staff_invitations SET claimed_by = $1, claimed_at = now()
-         WHERE lower(email) = lower($2::text) AND claimed_by IS NULL`, [user.id, user.email],
-      );
-      await getPool().query(
-        `INSERT INTO hospital_memberships (user_id, hospital_id, role)
-         SELECT $1, hospital_id, role FROM staff_invitations WHERE claimed_by = $1
-         ON CONFLICT (user_id) DO NOTHING`, [user.id],
-      );
       const roles = await getPool().query<{ operator: boolean; role: string | null; hospital_id: string | null }>(
         `SELECT EXISTS(SELECT 1 FROM platform_operators WHERE user_id = $1) AS operator,
                 (SELECT role FROM hospital_memberships WHERE user_id = $1 AND active) AS role,
@@ -72,7 +93,8 @@ export function createApp() {
       );
       const access = roles.rows[0]!;
       const userType = await getPool().query<{ user_type: string }>('SELECT user_type FROM users WHERE id = $1', [user.id]);
-      res.json({ data: { id: user.id, auth0Subject: user.auth0_subject, email: user.email, displayName: user.display_name, userType: userType.rows[0]?.user_type ?? 'patient', isPlatformOperator: access.operator, staffRole: access.role, hospitalId: access.hospital_id } });
+      const derivedUserType = access.role === 'administrator' ? 'admin' : access.role ? 'staff' : userType.rows[0]?.user_type ?? 'patient';
+      res.json({ data: { id: user.id, auth0Subject: user.auth0_subject, email: user.email, displayName: user.display_name, userType: derivedUserType, isPlatformOperator: access.operator, staffRole: access.role, hospitalId: access.hospital_id } });
     } catch (error) {
       next(error);
     }
@@ -119,20 +141,45 @@ export function createApp() {
       const { hospitalId, email } = req.body as { hospitalId?: unknown; email?: unknown };
       if (typeof hospitalId !== 'string' || typeof email !== 'string' || !email.includes('@')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a hospital and valid administrator email.' } }); return; }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
-      await getPool().query(`INSERT INTO staff_invitations (hospital_id, email, role, invited_by) VALUES ($1, lower($2), 'administrator', $3) ON CONFLICT (hospital_id, email, role) DO UPDATE SET invited_by = EXCLUDED.invited_by`, [hospitalId, email, user.id]);
-      res.status(201).json({ data: { message: 'Administrator invitation created. It is claimed when that user signs in.' } });
+      const hospital = await getPool().query<{ name: string }>('SELECT name FROM hospitals WHERE id = $1 AND active', [hospitalId]);
+      if (!hospital.rowCount) { res.status(404).json({ error: { code: 'HOSPITAL_NOT_FOUND', message: 'That hospital is not available.' } }); return; }
+      await createAndSendInvitation({ hospitalId, hospitalName: hospital.rows[0]!.name, email, role: 'administrator', invitedBy: user.id });
+      res.status(201).json({ data: { message: 'Administrator invitation email sent. It expires in 72 hours.' } });
     } catch (error) { next(error); }
   });
 
   app.post('/api/v1/admin/staff', requireAuth, async (req, res, next) => {
     try {
-      const membership = await getPool().query<{ hospital_id: string }>(`SELECT hm.hospital_id FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id WHERE u.auth0_subject = $1 AND hm.role = 'administrator' AND hm.active`, [req.auth!.subject]);
+      const membership = await getPool().query<{ hospital_id: string; hospital_name: string }>(`SELECT hm.hospital_id, h.name AS hospital_name FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id JOIN hospitals h ON h.id = hm.hospital_id WHERE u.auth0_subject = $1 AND hm.role = 'administrator' AND hm.active`, [req.auth!.subject]);
       const hospitalId = membership.rows[0]?.hospital_id;
       const { email, role } = req.body as { email?: unknown; role?: unknown };
       if (!hospitalId || typeof email !== 'string' || !email.includes('@') || (role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid nurse or doctor email.' } }); return; }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
-      await getPool().query(`INSERT INTO staff_invitations (hospital_id, email, role, invited_by) VALUES ($1, lower($2), $3, $4) ON CONFLICT (hospital_id, email, role) DO UPDATE SET invited_by = EXCLUDED.invited_by`, [hospitalId, email, role, user.id]);
-      res.status(201).json({ data: { message: `${role === 'nurse' ? 'Nurse' : 'Doctor'} invitation created.` } });
+      await createAndSendInvitation({ hospitalId, hospitalName: membership.rows[0]!.hospital_name, email, role, invitedBy: user.id });
+      res.status(201).json({ data: { message: `${role === 'nurse' ? 'Nurse' : 'Doctor'} invitation email sent. It expires in 72 hours.` } });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/invitations/claim', requireAuth, async (req, res, next) => {
+    try {
+      const { token } = req.body as { token?: unknown };
+      if (typeof token !== 'string' || token.length < 20) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'This invitation link is invalid.' } }); return; }
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      if (!user.email) { res.status(400).json({ error: { code: 'EMAIL_REQUIRED', message: 'Your sign-in account must have an email address.' } }); return; }
+      const claim = await getPool().query<{ hospital_id: string; role: 'administrator' | 'nurse' | 'doctor' }>(
+        `UPDATE staff_invitations SET claimed_by = $1, claimed_at = now()
+         WHERE token_hash = $2 AND lower(email) = lower($3) AND claimed_at IS NULL AND expires_at > now()
+         RETURNING hospital_id, role`,
+        [user.id, tokenHash(token), user.email],
+      );
+      const invitation = claim.rows[0];
+      if (!invitation) { res.status(400).json({ error: { code: 'INVITATION_UNAVAILABLE', message: 'This invitation is expired, already claimed, or belongs to another email address.' } }); return; }
+      await getPool().query(
+        `INSERT INTO hospital_memberships (user_id, hospital_id, role) VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, hospital_id) DO UPDATE SET role = EXCLUDED.role, active = true`,
+        [user.id, invitation.hospital_id, invitation.role],
+      );
+      res.json({ data: { role: invitation.role, hospitalId: invitation.hospital_id } });
     } catch (error) { next(error); }
   });
 

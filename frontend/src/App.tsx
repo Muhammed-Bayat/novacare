@@ -17,6 +17,36 @@ function HomeRoute() {
   return isAuthenticated || handlingAuthRedirect ? <SignInPage /> : <LandingPage />;
 }
 
+function InvitationClaimPage() {
+  const { isAuthenticated, isLoading, error, getAccessTokenSilently, loginWithRedirect } = useAuth0();
+  const [message, setMessage] = useState('Preparing your invitation...');
+  const token = new URLSearchParams(window.location.search).get('token');
+
+  useEffect(() => {
+    if (!token || isLoading) return;
+    if (!isAuthenticated) {
+      void loginWithRedirect({ appState: { returnTo: `${window.location.pathname}${window.location.search}` } });
+      return;
+    }
+    let cancelled = false;
+    async function claim() {
+      try {
+        const accessToken = await getAccessTokenSilently();
+        const result = await authenticatedRequest<{ data: { role: string } }>('/api/v1/invitations/claim', accessToken, { method: 'POST', body: { token } });
+        if (!cancelled) setMessage(`Your ${result.data.role} access has been activated. You can now continue to NovaCare.`);
+      } catch (claimError) {
+        if (!cancelled) setMessage(claimError instanceof Error ? claimError.message : 'We could not claim this invitation.');
+      }
+    }
+    void claim();
+    return () => { cancelled = true; };
+  }, [getAccessTokenSilently, isAuthenticated, isLoading, loginWithRedirect, token]);
+
+  if (!token) return <main className="status">This invitation link is invalid.</main>;
+  if (error) return <main className="status">Sign-in failed: {error.message}</main>;
+  return <main className="status">{message}</main>;
+}
+
 function formatDate(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsed.valueOf()) ? date : new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium' }).format(parsed);
@@ -377,6 +407,7 @@ function App() {
     <Route path="/patient" element={<PatientPortalPage />} />
     <Route path="/staff" element={<StaffPortalPage />} />
     <Route path="/admin" element={<AdminPortalPage />} />
+    <Route path="/invitations/claim" element={<InvitationClaimPage />} />
     <Route path="/care" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
     <Route path="/care/book" element={<ProtectedPage><BookingPage /></ProtectedPage>} />
     <Route path="/care/queue" element={<ProtectedPage><QueuePage /></ProtectedPage>} />

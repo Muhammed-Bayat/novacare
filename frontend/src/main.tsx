@@ -25,6 +25,9 @@ createRoot(rootElement).render(
         redirect_uri: window.location.origin,
         scope: 'openid profile email read:me',
       }}
+      onRedirectCallback={(appState) => {
+        window.history.replaceState({}, document.title, appState?.returnTo ?? window.location.pathname);
+      }}
     >
       <BrowserRouter>
         <App />

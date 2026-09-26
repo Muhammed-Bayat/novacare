@@ -13,8 +13,9 @@ import { migration as applyDohServicePackagesMigration } from './008_apply_doh_s
 import { migration as patientQueuesMigration } from './009_patient_queues.js';
 import { migration as patientHealthRecordsMigration } from './010_patient_health_records.js';
 import { migration as staffRolesMigration } from './011_staff_roles.js';
+import { migration as secureStaffInvitationsMigration } from './012_secure_staff_invitations.js';
 
-const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration];
+const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration, secureStaffInvitationsMigration];
 
 export async function runMigrations(): Promise<void> {
   const pool = getPool();
