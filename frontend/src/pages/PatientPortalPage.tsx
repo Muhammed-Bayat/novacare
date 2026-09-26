@@ -1,5 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { Appointment } from '../api.ts';
 import { Brand, SearchButton, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
@@ -15,11 +15,17 @@ import '../styles/patient-portal.css';
 import '../styles/patient-care.css';
 
 const languageStorageKey = 'novaCareLanguage';
+const displayNameStorageKey = 'novaCareDisplayName';
 
 function readStoredLanguage(): PatientLanguage {
   const stored = window.localStorage.getItem(languageStorageKey);
   const match = patientLanguages.find((option) => option.code === stored);
   return match ? match.code : 'en';
+}
+
+function readStoredDisplayName(): string | undefined {
+  const stored = window.localStorage.getItem(displayNameStorageKey)?.trim();
+  return stored || undefined;
 }
 
 function SouthAfricanFlag() {
@@ -73,19 +79,39 @@ function PortraitIllustration() {
 export function PatientPortalPage() {
   const [language, setLanguage] = useState<PatientLanguage>(readStoredLanguage);
   const t = patientTranslations[language];
-  const { isAuthenticated, loginWithRedirect, user } = useAuth0();
+  const { isAuthenticated, loginWithRedirect, logout, user } = useAuth0();
   const careData = usePatientCare();
+  const authDisplayName = user?.given_name ?? user?.nickname ?? user?.name ?? 'Thandi';
   const [view, setView] = useState<'dashboard' | 'appointments'>('dashboard');
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
+  const [displayName, setDisplayName] = useState(() => readStoredDisplayName() ?? authDisplayName);
+  const [draftDisplayName, setDraftDisplayName] = useState(displayName);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.lang = language;
     window.localStorage.setItem(languageStorageKey, language);
   }, [language]);
 
+  useEffect(() => {
+    if (!readStoredDisplayName()) {
+      setDisplayName(authDisplayName);
+      setDraftDisplayName(authDisplayName);
+    }
+  }, [authDisplayName]);
+
+  function saveDisplayName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextDisplayName = draftDisplayName.trim() || authDisplayName;
+    setDisplayName(nextDisplayName);
+    window.localStorage.setItem(displayNameStorageKey, nextDisplayName);
+    setProfileMenuOpen(false);
+  }
+
   const nextAppointment = careData.appointments.find((appointment) => appointment.status === 'booked');
   const nextDate = nextAppointment ? dateParts(nextAppointment.date) : undefined;
-  const firstName = user?.given_name ?? user?.nickname ?? 'Thandi';
+  const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'T';
+  const welcomeText = t.welcome.replace('Thandi', displayName);
   const showRealUpcoming = isAuthenticated && nextAppointment && nextDate;
 
   const navItems = [
@@ -104,9 +130,34 @@ export function PatientPortalPage() {
         <TopNav items={navItems} />
         <div className="actions">
           <SearchButton />
-          <button type="button" className="user-chip">
-            <span style={{ fontWeight: 800 }}>{firstName.slice(0, 1).toUpperCase()}</span> <span>Hi, {firstName}</span> <span style={{ fontSize: 12 }}>▼</span>
-          </button>
+          <div className="nv-user-menu">
+            <button
+              type="button"
+              className="user-chip"
+              aria-expanded={profileMenuOpen}
+              aria-haspopup="dialog"
+              onClick={() => {
+                setDraftDisplayName(displayName);
+                setProfileMenuOpen((open) => !open);
+              }}
+            >
+              <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>Hi, {displayName}</span> <span style={{ fontSize: 12 }}>Menu</span>
+            </button>
+            {profileMenuOpen ? (
+              <form className="card nv-profile-menu" onSubmit={saveDisplayName} aria-label="Update display name">
+                <h3>Profile</h3>
+                <label className="nv-field">
+                  Display name
+                  <input value={draftDisplayName} onChange={(event) => setDraftDisplayName(event.target.value)} autoFocus />
+                </label>
+                <div className="nv-profile-actions">
+                  <button type="button" className="ghost-btn nv-danger" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Logout</button>
+                  <button type="button" className="secondary-btn" onClick={() => setProfileMenuOpen(false)}>Cancel</button>
+                  <button type="submit" className="primary-btn">Save</button>
+                </div>
+              </form>
+            ) : null}
+          </div>
         </div>
       </TopBar>
 
@@ -156,7 +207,7 @@ export function PatientPortalPage() {
       <>
       <section className="hero-card hero">
         <div className="hero-left">
-          <h1>{t.welcome}</h1>
+          <h1>{welcomeText}</h1>
           <p className="muted">{t.welcomeSub}</p>
           <div className="lang-card">
             <div className="flag-large">
@@ -166,7 +217,7 @@ export function PatientPortalPage() {
               <SouthAfricanFlag />
             </div>
             <div className="lang-top">
-              <div className="icon-circle" style={{ width: 58, height: 58, fontSize: 24 }}>🌍</div>
+              <div className="icon-circle" style={{ width: 58, height: 58, fontSize: 13 }}>ZA</div>
               <div>
                 <h2>{t.choose}</h2>
                 <div className="muted">{t.chooseSub}</div>
@@ -192,14 +243,14 @@ export function PatientPortalPage() {
             <PortraitIllustration />
           </div>
           <div className="hero-script">
-            Healthier<br />South Africa,<br />Brighter<br />Tomorrows. ♡
+            Healthier<br />South Africa,<br />Brighter<br />Tomorrows.
           </div>
         </div>
       </section>
 
       <section className="quick-row">
         <article className="card quick-card">
-          <div className="icon-circle">🗓️</div>
+          <div className="icon-circle">Book</div>
           <div>
             <button type="button" className="nv-quick-action" onClick={() => setView('appointments')}>
               <h3>{t.book}</h3>
@@ -208,21 +259,21 @@ export function PatientPortalPage() {
           </div>
         </article>
         <article className="card quick-card">
-          <div className="icon-circle" style={{ background: '#e4faf0' }}>💊</div>
+          <div className="icon-circle" style={{ background: '#e4faf0' }}>Rx</div>
           <div>
             <h3>{t.viewRx}</h3>
             <p>{t.viewRxSub}</p>
           </div>
         </article>
         <article className="card quick-card">
-          <div className="icon-circle" style={{ background: '#f1ecff' }}>📄</div>
+          <div className="icon-circle" style={{ background: '#f1ecff' }}>Lab</div>
           <div>
             <h3>{t.checkResults}</h3>
             <p>{t.checkResultsSub}</p>
           </div>
         </article>
         <article className="card quick-card">
-          <div className="icon-circle">💬</div>
+          <div className="icon-circle">Msg</div>
           <div>
             <h3>{t.msgDoctor}</h3>
             <p>{t.msgDoctorSub}</p>
@@ -233,7 +284,7 @@ export function PatientPortalPage() {
       <section className="widgets">
         <article className="card widget">
           <h3>
-            🗓️ <span>{t.upcoming}</span>{' '}
+            <span>{t.upcoming}</span>{' '}
             <button type="button" className="muted small nv-viewall" onClick={() => setView('appointments')}>{t.viewAll}</button>
           </h3>
           {showRealUpcoming && nextAppointment && nextDate ? (
@@ -247,8 +298,8 @@ export function PatientPortalPage() {
                 <div>
                   <strong>{nextAppointment.serviceName}</strong>
                   <div className="muted small">{nextAppointment.hospitalName}</div>
-                  <div className="row">🕙 {nextAppointment.time}</div>
-                  <div className="small muted">⌖ {nextAppointment.address}</div>
+                  <div className="row">Time: {nextAppointment.time}</div>
+                  <div className="small muted">{nextAppointment.address}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -273,9 +324,9 @@ export function PatientPortalPage() {
                 <div>
                   <strong>{t.general}</strong>
                   <div className="muted small">Dr. A. Mokoena</div>
-                  <div className="row">🕙 10:00 AM</div>
+                  <div className="row">Time: 10:00 AM</div>
                   <div className="small muted">
-                    ⌖ Nova Care Medical Centre<br />Sandton, Johannesburg
+                    Nova Care Medical Centre<br />Sandton, Johannesburg
                   </div>
                 </div>
               </div>
@@ -295,7 +346,7 @@ export function PatientPortalPage() {
 
         <article className="card widget">
           <h3>
-            💊 <span>{t.medRem}</span> <span className="muted small" style={{ float: 'right' }}>{t.viewAll}</span>
+            <span>{t.medRem}</span> <span className="muted small" style={{ float: 'right' }}>{t.viewAll}</span>
           </h3>
           <div className="row">
             <strong>Amlodipine 5mg</strong>
@@ -319,7 +370,7 @@ export function PatientPortalPage() {
 
         <article className="card widget">
           <h3>
-            📄 <span>{t.recentResults}</span> <span className="muted small" style={{ float: 'right' }}>{t.viewAll}</span>
+            <span>{t.recentResults}</span> <span className="muted small" style={{ float: 'right' }}>{t.viewAll}</span>
           </h3>
           <div className="row">
             <strong>Blood Pressure</strong>
@@ -340,7 +391,7 @@ export function PatientPortalPage() {
 
         <article className="card widget">
           <h3>
-            🎧 <span>{t.contact}</span>
+            <span>{t.contact}</span>
           </h3>
           <p className="muted">{t.contactSub}</p>
           <button type="button" className="primary-btn" style={{ width: '100%', margin: '12px 0' }}>{t.send}</button>
@@ -354,7 +405,7 @@ export function PatientPortalPage() {
           <strong>{t.better}</strong>
           <div className="muted small">{t.betterSub}</div>
         </div>
-        <div style={{ fontSize: 48, color: '#bdd2e4' }}>⌁⌁⌁</div>
+        <div style={{ fontSize: 14, color: '#6b7f9e', fontWeight: 800, letterSpacing: 2 }}>NOVA CARE</div>
       </section>
       </>
       ) : null}

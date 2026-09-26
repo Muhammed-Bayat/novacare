@@ -7,6 +7,7 @@ import App from './App.tsx';
 const auth = vi.hoisted(() => ({
   state: { isAuthenticated: false, isLoading: false, error: undefined as Error | undefined },
   loginWithRedirect: vi.fn(),
+  logout: vi.fn(),
   getAccessTokenSilently: vi.fn(async () => 'test-token'),
 }));
 
@@ -14,6 +15,7 @@ vi.mock('@auth0/auth0-react', () => ({
   useAuth0: () => ({
     ...auth.state,
     loginWithRedirect: auth.loginWithRedirect,
+    logout: auth.logout,
     getAccessTokenSilently: auth.getAccessTokenSilently,
   }),
 }));
@@ -43,6 +45,8 @@ function renderAt(path: string) {
 beforeEach(() => {
   auth.state = { isAuthenticated: false, isLoading: false, error: undefined };
   auth.loginWithRedirect.mockReset();
+  auth.logout.mockReset();
+  window.localStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -54,7 +58,7 @@ describe('App', () => {
 
   it('renders the patient portal at /patient', () => {
     renderAt('/patient');
-    expect(screen.getByRole('heading', { name: 'Welcome back, Thandi 👋' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Welcome back, Thandi' })).toBeInTheDocument();
   });
 
   it('shows a sign-in prompt when opening appointments anonymously', async () => {
@@ -77,6 +81,36 @@ describe('App', () => {
     renderAt('/patient');
     expect(await screen.findByText('Charlotte Maxeke Johannesburg Academic Hospital')).toBeInTheDocument();
     expect(screen.getByText(/09:30/)).toBeInTheDocument();
+  });
+
+  it('formats ISO appointment dates in the appointments list', async () => {
+    auth.state.isAuthenticated = true;
+    stubPatientData([
+      { id: 'a1', hospitalId: 'h1', serviceId: 's1', date: '2026-09-26T00:00:00.000Z', time: '07:00', status: 'booked', hospitalName: 'Helen Joseph Hospital', serviceName: 'Anaesthetics', address: 'Gauteng, South Africa' },
+    ]);
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Appointments' }));
+    expect(await screen.findByText('Helen Joseph Hospital')).toBeInTheDocument();
+    expect(screen.getByText(/Anaesthetics · .*2026 · 07:00/)).toBeInTheDocument();
+    expect(screen.queryByText(/T00:00:00\.000Z/)).not.toBeInTheDocument();
+  });
+
+  it('lets patients change their display name from the user menu', async () => {
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: /Hi, Thandi/ }));
+    const displayNameInput = screen.getByLabelText('Display name');
+    await userEvent.clear(displayNameInput);
+    await userEvent.type(displayNameInput, 'Naledi');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('button', { name: /Hi, Naledi/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Welcome back, Naledi' })).toBeInTheDocument();
+  });
+
+  it('logs patients out from the user menu', async () => {
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: /Hi, Thandi/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Logout' }));
+    expect(auth.logout).toHaveBeenCalledWith({ logoutParams: { returnTo: window.location.origin } });
   });
 
   it('renders the staff portal at /staff', () => {

@@ -83,19 +83,19 @@ export function LandingPage() {
           <h1>Simple, Trusted Healthcare for Everyone</h1>
           <p className="muted">Compassionate care. Modern tools. A healthier tomorrow — at every stage of life.</p>
           <div className="hero-actions">
-            <button type="button" className="primary-btn">🗓️&nbsp; Book Appointment &rarr;</button>
-            <button type="button" className="secondary-btn">👤&nbsp; Find a Doctor &rarr;</button>
+            <button type="button" className="primary-btn">Book Appointment &rarr;</button>
+            <button type="button" className="secondary-btn">Find a Doctor &rarr;</button>
           </div>
           <div className="trust">
-            <span>♥ People first</span>
-            <span>🛡 Trusted care</span>
-            <span>👥 Healthier communities</span>
+            <span>People first</span>
+            <span>Trusted care</span>
+            <span>Healthier communities</span>
           </div>
         </div>
         <div className="hero-right">
           <HeroIllustration />
           <div className="hero-note">
-            Better<br />Health<br />Brighter<br />Days ♡
+            Better<br />Health<br />Brighter<br />Days
           </div>
           <div className="hero-callout">
             <strong>
@@ -111,28 +111,28 @@ export function LandingPage() {
         <p className="muted" style={{ fontSize: 18, margin: '8px 0 18px' }}>Everything you need for better health, all in one place.</p>
         <div className="grid-4">
           <article className="card service-card">
-            <div className="icon-circle">🗓️</div>
+            <div className="icon-circle">Book</div>
             <div>
               <h3>Appointments</h3>
               <p>Book and manage your appointments easily.</p>
             </div>
           </article>
           <article className="card service-card">
-            <div className="icon-circle" style={{ background: '#e4faf0' }}>💊</div>
+            <div className="icon-circle" style={{ background: '#e4faf0' }}>Rx</div>
             <div>
               <h3>Medication</h3>
               <p>View your prescriptions and refill requests.</p>
             </div>
           </article>
           <article className="card service-card">
-            <div className="icon-circle" style={{ background: '#f1ecff' }}>📄</div>
+            <div className="icon-circle" style={{ background: '#f1ecff' }}>Lab</div>
             <div>
               <h3>Test Results</h3>
               <p>Access your test results securely and quickly.</p>
             </div>
           </article>
           <article className="card service-card">
-            <div className="icon-circle">🎧</div>
+            <div className="icon-circle">Help</div>
             <div>
               <h3>Support</h3>
               <p>Get help when you need it, from real people.</p>

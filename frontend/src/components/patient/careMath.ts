@@ -6,13 +6,18 @@ export interface Coordinates {
   longitude: number;
 }
 
+function appointmentDate(value: string): Date {
+  const dateOnly = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? value;
+  return new Date(`${dateOnly}T12:00:00`);
+}
+
 export function formatDate(value: string): string {
-  const parsed = new Date(`${value}T12:00:00`);
+  const parsed = appointmentDate(value);
   return Number.isNaN(parsed.valueOf()) ? value : new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium' }).format(parsed);
 }
 
 export function dateParts(value: string): { weekday: string; day: string; month: string } {
-  const parsed = new Date(`${value}T12:00:00`);
+  const parsed = appointmentDate(value);
   if (Number.isNaN(parsed.valueOf())) return { weekday: '', day: value, month: '' };
   const formatter = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-ZA', options).format(parsed);
   return { weekday: formatter({ weekday: 'short' }), day: formatter({ day: 'numeric' }), month: formatter({ month: 'short' }) };
