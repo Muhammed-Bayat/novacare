@@ -1,6 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useEffect, useState } from 'react';
-import { authenticatedRequest, type Appointment, type Hospital, type QueueEntry } from '../../api.ts';
+import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type Hospital, type QueueEntry } from '../../api.ts';
 
 export interface PatientCareData {
   hospitals: Hospital[];
@@ -10,7 +10,7 @@ export interface PatientCareData {
   error: string | undefined;
   refresh: () => Promise<void>;
   cancelAppointment: (id: string) => Promise<void>;
-  createAppointment: (input: { hospitalId: string; serviceId: string; date: string; time: string }) => Promise<void>;
+  createAppointment: (input: { hospitalId: string; serviceId: string; date: string; time: string; triageSummary?: AppointmentTriageSummary | null }) => Promise<void>;
   updateAppointment: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
   rebookAppointment: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
   joinQueue: (input: { hospitalId: string; serviceId: string }) => Promise<void>;
@@ -56,7 +56,7 @@ export function usePatientCare(): PatientCareData {
     await refresh();
   }, [getAccessTokenSilently, refresh]);
 
-  const createAppointment = useCallback(async (input: { hospitalId: string; serviceId: string; date: string; time: string }) => {
+  const createAppointment = useCallback(async (input: { hospitalId: string; serviceId: string; date: string; time: string; triageSummary?: AppointmentTriageSummary | null }) => {
     const token = await getAccessTokenSilently();
     await authenticatedRequest('/api/v1/appointments', token, { method: 'POST', body: input });
     await refresh();

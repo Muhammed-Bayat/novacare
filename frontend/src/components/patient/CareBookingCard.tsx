@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useState } from 'react';
-import type { Appointment, Hospital } from '../../api.ts';
+import type { Appointment, AppointmentTriageSummary, Hospital } from '../../api.ts';
 import type { PatientStrings } from '../../i18n/patientTranslations.ts';
 import { HospitalMap } from './HospitalMap.tsx';
 import { BOOKING_END, BOOKING_START, distanceInKm, formatDate, type Coordinates } from './careMath.ts';
@@ -9,14 +9,15 @@ interface CareBookingCardProps {
   hospitals: Hospital[];
   loading: boolean;
   editingAppointment: Appointment | null;
+  bookingSuggestion: { hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary } | null;
   onFinishEdit: () => void;
-  onCreate: (input: { hospitalId: string; serviceId: string; date: string; time: string }) => Promise<void>;
+  onCreate: (input: { hospitalId: string; serviceId: string; date: string; time: string; triageSummary?: AppointmentTriageSummary | null }) => Promise<void>;
   onUpdate: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
   onRebook: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
   onJoinQueue: (input: { hospitalId: string; serviceId: string }) => Promise<void>;
 }
 
-export function CareBookingCard({ t, hospitals, loading, editingAppointment, onFinishEdit, onCreate, onUpdate, onRebook, onJoinQueue }: CareBookingCardProps) {
+export function CareBookingCard({ t, hospitals, loading, editingAppointment, bookingSuggestion, onFinishEdit, onCreate, onUpdate, onRebook, onJoinQueue }: CareBookingCardProps) {
   const care = t.care;
   const [hospitalName, setHospitalName] = useState('');
   const [area, setArea] = useState('');
@@ -47,6 +48,18 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, onF
     setDate(editingAppointment.date);
     setTime(editingAppointment.time);
   }, [editingAppointment, hospitals]);
+
+  useEffect(() => {
+    if (!bookingSuggestion || editingAppointment) return;
+    const hospital = bookingSuggestion.hospitalId ? hospitals.find((item) => item.id === bookingSuggestion.hospitalId) : undefined;
+    if (!hospital) return;
+    setSelectedHospital(hospital);
+    setServiceId(bookingSuggestion.serviceId && hospital.services.some((item) => item.id === bookingSuggestion.serviceId) ? bookingSuggestion.serviceId : hospital.services[0]?.id ?? '');
+    setHospitalName(hospital.name);
+    setService(hospital.services.find((item) => item.id === bookingSuggestion.serviceId)?.name ?? '');
+    setError(undefined);
+    setNotice(undefined);
+  }, [bookingSuggestion, editingAppointment, hospitals]);
 
   function selectHospital(hospital: Hospital) {
     setSelectedHospital(hospital);
@@ -93,7 +106,7 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, onF
         }
         onFinishEdit();
       } else {
-        await onCreate({ hospitalId: selectedHospital.id, serviceId, date, time });
+        await onCreate({ hospitalId: selectedHospital.id, serviceId, date, time, triageSummary: bookingSuggestion?.triageSummary ?? null });
         setNotice(care.bookedOk);
       }
     } catch (bookingError) {
@@ -222,6 +235,12 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, onF
                 ))}
               </div>
               <form className="nv-book-form" onSubmit={(event) => void submitBooking(event)}>
+                {!editingAppointment && bookingSuggestion ? (
+                  <div className="nv-book-summary-note">
+                    <strong>{bookingSuggestion.triageSummary.urgency} assessment</strong>
+                    <span>{bookingSuggestion.triageSummary.summary}</span>
+                  </div>
+                ) : null}
                 <label className="nv-field">{care.dateLabel}
                   <input type="date" value={date} min={today} onChange={(event) => setDate(event.target.value)} required />
                 </label>

@@ -7,6 +7,84 @@ import { getPool } from './db.js';
 import { sendInvitationEmail } from './email.js';
 
 type UserRow = { id: string; auth0_subject: string; email: string | null; display_name: string | null };
+type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
+type QuestionnaireQuestionType = 'single' | 'yes-no' | 'scale';
+type QuestionnaireOption = { id: string; label: string; value: string | number | boolean };
+type QuestionnaireQuestion = { id: string; text: string; helper?: string; type: QuestionnaireQuestionType; options?: QuestionnaireOption[]; min?: number; max?: number };
+type QuestionnairePathway = { id: string; name: string; description: string; keywords: string[]; department: string; urgency: QuestionnaireUrgency; questions: QuestionnaireQuestion[] };
+type QuestionnaireIntake = { pathwayId: string; pathwayName: string; summary: string; department: string; urgency: QuestionnaireUrgency; questions: QuestionnaireQuestion[]; source: 'gemini' | 'local' };
+type AppointmentTriageSummary = { urgency: QuestionnaireUrgency; pathwayName: string; department: string; summary: string; redFlags: string[] };
+
+const questionnairePathways: QuestionnairePathway[] = [
+  {
+    id: 'chest-breathing',
+    name: 'Chest & breathing',
+    description: 'Chest discomfort, breathing difficulty, palpitations or related symptoms.',
+    keywords: ['chest', 'breath', 'breathing', 'shortness of breath', 'heart', 'palpitation'],
+    department: 'Emergency Department',
+    urgency: 'priority',
+    questions: [
+      { id: 'chest_now', text: 'Are you having chest pain or pressure right now?', helper: 'Choose the option that best reflects how you feel at this moment.', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      { id: 'breath_now', text: 'Are you struggling to breathe or unable to speak comfortably in full sentences?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      { id: 'pain_level', text: 'How severe is the discomfort?', helper: '0 means no pain and 10 means the worst pain you can imagine.', type: 'scale', min: 0, max: 10 },
+      { id: 'radiating', text: 'Does the discomfort spread to your arm, jaw, shoulder or back?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+    ],
+  },
+  {
+    id: 'injury',
+    name: 'Injury & musculoskeletal',
+    description: 'Recent falls, sports injuries, joint pain, swelling or difficulty moving.',
+    keywords: ['knee', 'ankle', 'leg', 'arm', 'shoulder', 'injury', 'fell', 'fall', 'sports', 'swelling', 'fracture', 'sprain'],
+    department: 'Orthopaedics',
+    urgency: 'priority',
+    questions: [
+      { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
+      { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
+      { id: 'deformity', text: 'Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
+    ],
+  },
+  {
+    id: 'abdominal',
+    name: 'Abdominal symptoms',
+    description: 'Stomach or abdominal pain, nausea, vomiting or digestive complaints.',
+    keywords: ['stomach', 'abdomen', 'abdominal', 'belly', 'vomit', 'nausea', 'appendix', 'cramp'],
+    department: 'General Medicine',
+    urgency: 'priority',
+    questions: [
+      { id: 'pain_location', text: 'Where is the pain strongest?', type: 'single', options: [{ id: 'upper', label: 'Upper abdomen', value: 'upper' }, { id: 'lower_right', label: 'Lower right side', value: 'lower-right' }, { id: 'lower_left', label: 'Lower left side', value: 'lower-left' }, { id: 'general', label: 'All over / not sure', value: 'general' }] },
+      { id: 'vomiting', text: 'Have you been vomiting repeatedly or been unable to keep fluids down?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
+      { id: 'fainting', text: 'Have you fainted, felt close to fainting, or noticed significant blood?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+    ],
+  },
+  {
+    id: 'headache',
+    name: 'Headache & neurological',
+    description: 'Headache, dizziness, weakness, numbness or neurological symptoms.',
+    keywords: ['headache', 'head', 'migraine', 'dizzy', 'dizziness', 'weakness', 'numb', 'vision'],
+    department: 'General Medicine',
+    urgency: 'priority',
+    questions: [
+      { id: 'sudden_onset', text: 'Did the headache reach severe intensity very suddenly?', helper: 'For example, becoming very severe within seconds or a few minutes.', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      { id: 'neuro_signs', text: 'Do you have new weakness, facial drooping, difficulty speaking, confusion or loss of balance?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      { id: 'pain_level', text: 'How severe is the headache?', type: 'scale', min: 0, max: 10 },
+    ],
+  },
+  {
+    id: 'general',
+    name: 'General symptoms',
+    description: 'Symptoms that do not clearly match one of the focused demo pathways.',
+    keywords: [],
+    department: 'General Medicine',
+    urgency: 'routine',
+    questions: [
+      { id: 'severity', text: 'How unwell do you feel overall?', type: 'scale', min: 0, max: 10 },
+      { id: 'worsening', text: 'Are your symptoms getting rapidly worse?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      { id: 'danger_signs', text: 'Are you having severe breathing difficulty, fainting, uncontrolled bleeding, seizures or severe confusion?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+    ],
+  },
+];
 
 function isBookingTime(date: string, time: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time)
@@ -18,12 +96,143 @@ function textList(value: unknown): string[] | undefined {
   return value.map((item) => item.trim()).filter(Boolean).slice(0, 50);
 }
 
+function triageSummary(value: unknown): AppointmentTriageSummary | null | undefined {
+  if (value === undefined || value === null) return null;
+  const object = asObject(value);
+  if (!object) return undefined;
+  const urgency = object.urgency;
+  const redFlags = textList(object.redFlags);
+  if ((urgency !== 'emergency' && urgency !== 'urgent' && urgency !== 'priority' && urgency !== 'routine') || !redFlags) return undefined;
+  const pathwayName = boundedText(object.pathwayName, '', 120);
+  const department = boundedText(object.department, '', 120);
+  const summary = boundedText(object.summary, '', 320);
+  if (!pathwayName || !department || !summary) return undefined;
+  return { urgency, pathwayName, department, summary, redFlags: redFlags.slice(0, 8) };
+}
+
 function invitationToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
 function tokenHash(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+function fallbackQuestionnaire(complaint: string, source: 'gemini' | 'local' = 'local'): QuestionnaireIntake {
+  const text = complaint.toLowerCase();
+  let selected = questionnairePathways.find((pathway) => pathway.id === 'general')!;
+  let bestScore = 0;
+  for (const pathway of questionnairePathways.filter((item) => item.id !== 'general')) {
+    const score = pathway.keywords.reduce((total, keyword) => total + (text.includes(keyword) ? Math.max(1, keyword.split(' ').length) : 0), 0);
+    if (score > bestScore) {
+      selected = pathway;
+      bestScore = score;
+    }
+  }
+  return {
+    pathwayId: selected.id,
+    pathwayName: selected.name,
+    summary: selected.description,
+    department: selected.department,
+    urgency: selected.urgency,
+    questions: selected.questions,
+    source,
+  };
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function boundedText(value: unknown, fallback: string, limit = 220): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, limit) : fallback;
+}
+
+function parseGeminiJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  const jsonText = fenced ?? text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  return JSON.parse(jsonText);
+}
+
+function normalizeQuestions(value: unknown, fallback: QuestionnaireQuestion[]): QuestionnaireQuestion[] {
+  if (!Array.isArray(value)) return fallback;
+  const questions = value.flatMap((item): QuestionnaireQuestion[] => {
+    const question = asObject(item);
+    if (!question) return [];
+    const type = question.type;
+    if (type !== 'single' && type !== 'yes-no' && type !== 'scale') return [];
+    const id = boundedText(question.id, '', 60).replace(/[^a-z0-9_-]/gi, '_');
+    const text = boundedText(question.text, '', 180);
+    if (!id || !text) return [];
+    if (type === 'scale') {
+      const min = typeof question.min === 'number' ? question.min : 0;
+      const max = typeof question.max === 'number' ? question.max : 10;
+      return [{ id, text, helper: boundedText(question.helper, '', 160) || undefined, type, min, max }];
+    }
+    const options = Array.isArray(question.options) ? question.options.flatMap((option): QuestionnaireOption[] => {
+      const optionObject = asObject(option);
+      if (!optionObject) return [];
+      const optionId = boundedText(optionObject.id, '', 40).replace(/[^a-z0-9_-]/gi, '_');
+      const label = boundedText(optionObject.label, '', 80);
+      const optionValue = optionObject.value;
+      if (!optionId || !label || (typeof optionValue !== 'string' && typeof optionValue !== 'number' && typeof optionValue !== 'boolean')) return [];
+      return [{ id: optionId, label, value: optionValue }];
+    }) : [];
+    return options.length >= 2 ? [{ id, text, helper: boundedText(question.helper, '', 160) || undefined, type, options }] : [];
+  });
+  return questions.length >= 2 ? questions.slice(0, 5) : fallback;
+}
+
+function normalizeQuestionnaire(value: unknown, complaint: string): QuestionnaireIntake {
+  const fallback = fallbackQuestionnaire(complaint, 'gemini');
+  const object = asObject(value);
+  if (!object) return fallback;
+  const urgency = object.urgency === 'emergency' || object.urgency === 'urgent' || object.urgency === 'priority' || object.urgency === 'routine' ? object.urgency : fallback.urgency;
+  return {
+    pathwayId: boundedText(object.pathwayId, fallback.pathwayId, 80),
+    pathwayName: boundedText(object.pathwayName, fallback.pathwayName, 120),
+    summary: boundedText(object.summary, fallback.summary, 260),
+    department: boundedText(object.department, fallback.department, 120),
+    urgency,
+    questions: normalizeQuestions(object.questions, fallback.questions),
+    source: 'gemini',
+  };
+}
+
+function geminiText(payload: unknown): string | undefined {
+  const response = asObject(payload);
+  const candidates = response?.candidates;
+  if (!Array.isArray(candidates)) return undefined;
+  const firstCandidate = asObject(candidates[0]);
+  const content = asObject(firstCandidate?.content);
+  const parts = content?.parts;
+  if (!Array.isArray(parts)) return undefined;
+  return parts.map((part) => asObject(part)?.text).filter((text): text is string => typeof text === 'string').join('\n').trim() || undefined;
+}
+
+async function buildQuestionnaireWithGemini(complaint: string): Promise<QuestionnaireIntake> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) return fallbackQuestionnaire(complaint);
+  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-1.5-flash';
+  const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`);
+  url.searchParams.set('key', apiKey);
+  const prompt = `You are helping a South African patient portal prepare an intake questionnaire. Return only JSON with keys: pathwayId, pathwayName, summary, department, urgency, questions. urgency must be one of emergency, urgent, priority, routine. questions must be 2 to 5 short non-diagnostic questions with id, text, type, and options for single or yes-no questions, or min/max for scale questions. Do not give diagnosis or treatment. Complaint: ${complaint}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }),
+  });
+  const payload: unknown = await response.json();
+  if (!response.ok) throw new Error('Gemini questionnaire request failed');
+  const text = geminiText(payload);
+  if (!text) throw new Error('Gemini questionnaire response was empty');
+  try {
+    return normalizeQuestionnaire(parseGeminiJson(text), complaint);
+  } catch {
+    throw new Error('Gemini questionnaire response was invalid');
+  }
 }
 
 async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string }): Promise<void> {
@@ -134,6 +343,24 @@ export function createApp() {
     }
   });
 
+  app.post('/api/v1/questionnaire/intake', requireAuth, async (req, res, next) => {
+    try {
+      const { complaint } = req.body as { complaint?: unknown };
+      if (typeof complaint !== 'string' || complaint.trim().length < 4 || complaint.trim().length > 300) {
+        res.status(400).json({ error: { code: 'INVALID_QUESTIONNAIRE', message: 'Describe your main symptom in 4 to 300 characters.' } });
+        return;
+      }
+      const questionnaire = await buildQuestionnaireWithGemini(complaint.trim());
+      res.json({ data: questionnaire });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Gemini questionnaire')) {
+        res.status(502).json({ error: { code: 'QUESTIONNAIRE_AI_UNAVAILABLE', message: 'The AI questionnaire service is unavailable. Please try again shortly.' } });
+        return;
+      }
+      next(error);
+    }
+  });
+
   app.post('/api/v1/overseer/administrators', requireAuth, async (req, res, next) => {
     try {
       const operator = await getPool().query('SELECT 1 FROM platform_operators p JOIN users u ON u.id = p.user_id WHERE u.auth0_subject = $1', [req.auth!.subject]);
@@ -186,9 +413,10 @@ export function createApp() {
   app.get('/api/v1/appointments', requireAuth, async (req, res, next) => {
     try {
       const result = await getPool().query<{
-        id: string; appointment_date: string; appointment_time: string; status: string; hospital_id: string; service_id: string; hospital_name: string; service_name: string; address: string;
+        id: string; appointment_date: string; appointment_time: string; status: string; hospital_id: string; service_id: string; hospital_name: string; service_name: string; address: string; triage_urgency: QuestionnaireUrgency | null; triage_pathway: string | null; triage_department: string | null; triage_summary: string | null; triage_red_flags: string[];
       }>(
-        `SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.hospital_id, a.hospital_service_id AS service_id, h.name AS hospital_name, hs.name AS service_name, h.address
+        `SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.hospital_id, a.hospital_service_id AS service_id, h.name AS hospital_name, hs.name AS service_name, h.address,
+                a.triage_urgency, a.triage_pathway, a.triage_department, a.triage_summary, a.triage_red_flags
          FROM appointments a
          JOIN users u ON u.id = a.user_id
          JOIN hospitals h ON h.id = a.hospital_id
@@ -197,7 +425,7 @@ export function createApp() {
          ORDER BY a.status, a.appointment_date, a.appointment_time`,
         [req.auth!.subject],
       );
-      res.json({ data: result.rows.map((row) => ({ id: row.id, hospitalId: row.hospital_id, serviceId: row.service_id, date: row.appointment_date, time: row.appointment_time.slice(0, 5), status: row.status, hospitalName: row.hospital_name, serviceName: row.service_name, address: row.address })) });
+      res.json({ data: result.rows.map((row) => ({ id: row.id, hospitalId: row.hospital_id, serviceId: row.service_id, date: row.appointment_date, time: row.appointment_time.slice(0, 5), status: row.status, hospitalName: row.hospital_name, serviceName: row.service_name, address: row.address, triageSummary: row.triage_urgency && row.triage_pathway && row.triage_department && row.triage_summary ? { urgency: row.triage_urgency, pathwayName: row.triage_pathway, department: row.triage_department, summary: row.triage_summary, redFlags: row.triage_red_flags } : null })) });
     } catch (error) {
       next(error);
     }
@@ -205,8 +433,9 @@ export function createApp() {
 
   app.post('/api/v1/appointments', requireAuth, async (req, res, next) => {
     try {
-      const { hospitalId, serviceId, date, time } = req.body as { hospitalId?: unknown; serviceId?: unknown; date?: unknown; time?: unknown };
-      if (typeof hospitalId !== 'string' || typeof serviceId !== 'string' || typeof date !== 'string' || typeof time !== 'string') {
+      const { hospitalId, serviceId, date, time, triageSummary: rawTriageSummary } = req.body as { hospitalId?: unknown; serviceId?: unknown; date?: unknown; time?: unknown; triageSummary?: unknown };
+      const summary = triageSummary(rawTriageSummary);
+      if (typeof hospitalId !== 'string' || typeof serviceId !== 'string' || typeof date !== 'string' || typeof time !== 'string' || summary === undefined) {
         res.status(400).json({ error: { code: 'INVALID_BOOKING', message: 'Choose a hospital, service, date, and time.' } });
         return;
       }
@@ -221,9 +450,9 @@ export function createApp() {
       }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
       const result = await getPool().query<{ id: string }>(
-        `INSERT INTO appointments (user_id, hospital_id, hospital_service_id, appointment_date, appointment_time)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [user.id, hospitalId, serviceId, date, time],
+        `INSERT INTO appointments (user_id, hospital_id, hospital_service_id, appointment_date, appointment_time, triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [user.id, hospitalId, serviceId, date, time, summary?.urgency ?? null, summary?.pathwayName ?? null, summary?.department ?? null, summary?.summary ?? null, summary?.redFlags ?? []],
       );
       res.status(201).json({ data: { id: result.rows[0]!.id } });
     } catch (error) {
