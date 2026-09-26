@@ -11,6 +11,12 @@ import { StaffPortalPage } from './pages/StaffPortalPage.tsx';
 const BOOKING_START = '07:00';
 const BOOKING_END = '19:00';
 
+function HomeRoute() {
+  const { isAuthenticated } = useAuth0();
+  const handlingAuthRedirect = new URLSearchParams(window.location.search).has('code');
+  return isAuthenticated || handlingAuthRedirect ? <SignInPage /> : <LandingPage />;
+}
+
 function formatDate(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsed.valueOf()) ? date : new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium' }).format(parsed);
@@ -66,7 +72,7 @@ function Dashboard() {
     return () => { cancelled = true; };
   }, [getAccessTokenSilently]);
   if (access?.isPlatformOperator) return <Navigate to="/overseer" replace />;
-  if (access?.staffRole === 'administrator') return <Navigate to="/admin" replace />;
+  if (access?.staffRole === 'administrator') return <Navigate to="/care/admin" replace />;
 
   async function cancelAppointment(appointment: Appointment) {
     if (!window.confirm(`Cancel your ${appointment.serviceName} booking at ${appointment.hospitalName}?`)) return;
@@ -366,16 +372,21 @@ function BookingPage() {
 
 function App() {
   return <Routes>
-    <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
+    <Route path="/" element={<HomeRoute />} />
+    <Route path="/signin" element={<SignInPage />} />
+    <Route path="/patient" element={<PatientPortalPage />} />
+    <Route path="/staff" element={<StaffPortalPage />} />
+    <Route path="/admin" element={<AdminPortalPage />} />
+    <Route path="/care" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
+    <Route path="/care/book" element={<ProtectedPage><BookingPage /></ProtectedPage>} />
+    <Route path="/care/queue" element={<ProtectedPage><QueuePage /></ProtectedPage>} />
+    <Route path="/care/profile" element={<ProtectedPage><ProfilePage /></ProtectedPage>} />
     <Route path="/book" element={<ProtectedPage><BookingPage /></ProtectedPage>} />
     <Route path="/queue" element={<ProtectedPage><QueuePage /></ProtectedPage>} />
     <Route path="/profile" element={<ProtectedPage><ProfilePage /></ProtectedPage>} />
     <Route path="/overseer" element={<ProtectedPage><OverseerPage /></ProtectedPage>} />
-    <Route path="/admin" element={<ProtectedPage><AdminPage /></ProtectedPage>} />
+    <Route path="/care/admin" element={<ProtectedPage><AdminPage /></ProtectedPage>} />
     <Route path="/landing" element={<LandingPage />} />
-    <Route path="/signin" element={<SignInPage />} />
-    <Route path="/patient" element={<PatientPortalPage />} />
-    <Route path="/staff" element={<StaffPortalPage />} />
     <Route path="/admin-portal" element={<AdminPortalPage />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;
