@@ -205,7 +205,7 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, onF
               {editingAppointment ? (
                 <div className="nv-edit-note">
                   <span className="muted small">{editingLabel}</span>
-                  <button type="button" className="ghost-btn" aria-label="Stop editing" onClick={onFinishEdit}>✕</button>
+                  <button type="button" className="ghost-btn" aria-label="Stop editing" onClick={onFinishEdit}>Close</button>
                 </div>
               ) : null}
               <div className="nv-detail-head">

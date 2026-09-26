@@ -155,7 +155,7 @@ const englishCare: CareStrings = {
 
 export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
   en: {
-    welcome: "Welcome back, Thandi 👋",
+    welcome: "Welcome back, Thandi",
     welcomeSub: "Your health matters. We’re here for a healthier, brighter tomorrow.",
     choose: "Choose your language",
     chooseSub: "Select your preferred language to use Nova Care.",
@@ -198,7 +198,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   zu: {
-    welcome: "Siyakwamukela futhi, Thandi 👋",
+    welcome: "Siyakwamukela futhi, Thandi",
     welcomeSub: "Impilo yakho ibalulekile. Silapha ukuze sakhe ikusasa elinempilo nelikhanyayo.",
     choose: "Khetha ulimi lwakho",
     chooseSub: "Khetha ulimi oluthandayo lokusebenzisa i-Nova Care.",
@@ -241,7 +241,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   xh: {
-    welcome: "Wamkelekile kwakhona, Thandi 👋",
+    welcome: "Wamkelekile kwakhona, Thandi",
     welcomeSub: "Impilo yakho ibalulekile. Silapha ngenxa yekamva elisempilweni nelikhanyayo.",
     choose: "Khetha ulwimi lwakho",
     chooseSub: "Khetha ulwimi olukhethayo ukuze usebenzise i-Nova Care.",
@@ -284,7 +284,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   af: {
-    welcome: "Welkom terug, Thandi 👋",
+    welcome: "Welkom terug, Thandi",
     welcomeSub: "Jou gesondheid maak saak. Ons is hier vir ’n gesonder, helderder môre.",
     choose: "Kies jou taal",
     chooseSub: "Kies jou voorkeurtaal om Nova Care te gebruik.",
@@ -327,7 +327,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   nso: {
-    welcome: "Re a go amogela gape, Thandi 👋",
+    welcome: "Re a go amogela gape, Thandi",
     welcomeSub: "Maphelo a gago a bohlokwa. Re mo bakeng sa bokamoso bjo bo phetšego gabotse le bjo bo phadimago.",
     choose: "Kgetha leleme la gago",
     chooseSub: "Kgetha leleme leo o le ratago go šomiša Nova Care.",
@@ -370,7 +370,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   st: {
-    welcome: "Rea u amohela hape, Thandi 👋",
+    welcome: "Rea u amohela hape, Thandi",
     welcomeSub: "Bophelo ba hao bo bohlokoa. Re mona bakeng sa hosane e phetseng hantle le e khanyang.",
     choose: "Khetha puo ea hao",
     chooseSub: "Khetha puo eo u e ratang ho sebelisa Nova Care.",
@@ -413,7 +413,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   tn: {
-    welcome: "Re go amogela gape, Thandi 👋",
+    welcome: "Re go amogela gape, Thandi",
     welcomeSub: "Boitekanelo jwa gago bo botlhokwa. Re fano bakeng sa bokamoso jo bo itekanetseng le jo bo phatsimang.",
     choose: "Tlhopha puo ya gago",
     chooseSub: "Tlhopha puo e o e ratang go dirisa Nova Care.",
@@ -456,7 +456,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   ss: {
-    welcome: "Siyakwamukela futsi, Thandi 👋",
+    welcome: "Siyakwamukela futsi, Thandi",
     welcomeSub: "Imphilo yakho ibalulekile. Silapha ngelikusasa lelinemphilo futsi lelikhanyako.",
     choose: "Khetsa lulwimi lwakho",
     chooseSub: "Khetsa lulwimi lolutsandzako kusebentisa Nova Care.",
@@ -499,7 +499,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   ve: {
-    welcome: "Ri a ni ṱanganedza hafhu, Thandi 👋",
+    welcome: "Ri a ni ṱanganedza hafhu, Thandi",
     welcomeSub: "Mutakalo waṋu ndi wa ndeme. Ri fhano u itela matshelo a re na mutakalo na u penya.",
     choose: "Nangani luambo lwaṋu",
     chooseSub: "Nangani luambo lune na lu funa u shumisa Nova Care.",
@@ -542,7 +542,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   ts: {
-    welcome: "Ha mi amukela nakambe, Thandi 👋",
+    welcome: "Ha mi amukela nakambe, Thandi",
     welcomeSub: "Rihanyo ra wena ra nkoka. Hi laha ku aka mundzuku lowu hanyeke kahle naswona wu vangamaka.",
     choose: "Hlawula ririmi ra wena",
     chooseSub: "Hlawula ririmi leri u ri tsakelaka ku tirhisa Nova Care.",
@@ -585,7 +585,7 @@ export const patientTranslations: Record<PatientLanguage, PatientStrings> = {
     care: englishCare,
   },
   nr: {
-    welcome: "Siyakwamukela godu, Thandi 👋",
+    welcome: "Siyakwamukela godu, Thandi",
     welcomeSub: "Ipilo yakho iqakathekile. Silapha ngomuso onempilo nokhanyako.",
     choose: "Khetha ilimi lakho",
     chooseSub: "Khetha ilimi olithandako ukusebenzisa i-Nova Care.",

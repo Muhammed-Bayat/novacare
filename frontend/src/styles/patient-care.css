@@ -9,6 +9,12 @@
 .nv-patient .nav button { background: none; border: 0; border-bottom: 4px solid transparent; padding: 18px 2px; font: inherit; font-weight: 600; color: #264a81; cursor: pointer; }
 .nv-patient .nav button.active { color: var(--text); border-bottom-color: var(--blue); }
 
+.nv-user-menu { position: relative; }
+.nv-profile-menu { position: absolute; right: 0; top: calc(100% + 10px); z-index: 20; width: min(300px, calc(100vw - 36px)); padding: 16px; display: grid; gap: 12px; }
+.nv-profile-menu h3 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+.nv-profile-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.nv-profile-actions .primary-btn, .nv-profile-actions .secondary-btn { padding: 11px 18px; border-radius: 14px; }
+
 .nv-care-view { display: grid; gap: 24px; margin-top: 24px; }
 .nv-care-view-head h1 { font-size: 36px; }
 .nv-care-view-head p { margin: 6px 0 0; }

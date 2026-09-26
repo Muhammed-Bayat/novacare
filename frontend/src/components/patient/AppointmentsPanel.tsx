@@ -45,10 +45,10 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
         {upcoming.length === 0 ? <div className="card nv-empty">{care.noUpcoming}</div> : (
           <ul className="nv-appt-list">
             {upcoming.map((appointment) => {
-              const { day, month } = dateParts(appointment.date);
+              const { weekday, day, month } = dateParts(appointment.date);
               return (
                 <li className="card nv-appt" key={appointment.id}>
-                  <div className="nv-appt-date" aria-hidden="true"><strong>{day}</strong><span>{month}</span></div>
+                  <div className="nv-appt-date" aria-hidden="true"><span>{weekday}</span><strong>{day}</strong><span>{month}</span></div>
                   <div className="nv-appt-body">
                     <h3>{appointment.hospitalName}</h3>
                     <p className="muted small">{appointment.serviceName} · {formatDate(appointment.date)} · {appointment.time}</p>

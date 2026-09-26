@@ -3,21 +3,21 @@ import logo from '../assets/nova-care-logo.png';
 import '../styles/admin-portal.css';
 
 const sideLinks = [
-  { icon: '⌂', label: 'Overview', active: true },
-  { icon: '👥', label: 'Users' },
-  { icon: '🩺', label: 'Staff' },
-  { icon: '🏥', label: 'Clinics' },
-  { icon: '📊', label: 'Reports' },
-  { icon: '⚙', label: 'Settings' },
+  { label: 'Overview', active: true },
+  { label: 'Users' },
+  { label: 'Staff' },
+  { label: 'Clinics' },
+  { label: 'Reports' },
+  { label: 'Settings' },
 ];
 
 const metrics = [
-  { icon: '👥', iconBackground: undefined, label: 'Total Patients', value: '12,482', note: '↗ +12% from last month', noteColor: '#14a06f' },
-  { icon: '🩺', iconBackground: '#e4faf0', label: 'Staff On Duty', value: '86', note: '↗ +6% from last week', noteColor: '#14a06f' },
-  { icon: '🗓️', iconBackground: '#f1ecff', label: 'Appointments Today', value: '248', note: '↗ +8% from yesterday', noteColor: '#14a06f' },
-  { icon: '🌍', iconBackground: undefined, label: 'Language Usage', value: '11', note: 'Active languages', noteColor: undefined },
-  { icon: '🛡', iconBackground: '#e4faf0', label: 'System Health', value: '99.9%', note: '● All systems operational', noteColor: '#14a06f' },
-  { icon: '🎧', iconBackground: undefined, label: 'Support Tickets', value: '12', note: '↗ +3 from yesterday', noteColor: '#de4a48' },
+  { icon: 'Patients', iconBackground: undefined, label: 'Total Patients', value: '12,482', note: '+12% from last month', noteColor: '#14a06f' },
+  { icon: 'Staff', iconBackground: '#e4faf0', label: 'Staff On Duty', value: '86', note: '+6% from last week', noteColor: '#14a06f' },
+  { icon: 'Visits', iconBackground: '#f1ecff', label: 'Appointments Today', value: '248', note: '+8% from yesterday', noteColor: '#14a06f' },
+  { icon: 'Lang', iconBackground: undefined, label: 'Language Usage', value: '11', note: 'Active languages', noteColor: undefined },
+  { icon: 'Health', iconBackground: '#e4faf0', label: 'System Health', value: '99.9%', note: 'All systems operational', noteColor: '#14a06f' },
+  { icon: 'Support', iconBackground: undefined, label: 'Support Tickets', value: '12', note: '+3 from yesterday', noteColor: '#de4a48' },
 ];
 
 const growth = [
@@ -30,11 +30,11 @@ const growth = [
 ];
 
 const appointmentTypes = [
-  '● General Checkup 42%',
-  '● Follow-up 24%',
-  '● Specialist 18%',
-  '● Lab Test 10%',
-  '● Vaccination 6%',
+  'General Checkup 42%',
+  'Follow-up 24%',
+  'Specialist 18%',
+  'Lab Test 10%',
+  'Vaccination 6%',
 ];
 
 const activity = [
@@ -64,8 +64,8 @@ export function AdminPortalPage() {
           <input className="search" placeholder="Search patients, staff, clinics, or anything..." />
         </div>
         <div className="actions">
-          <button type="button" className="icon-btn" aria-label="Notifications">🔔</button>
-          <button type="button" className="user-chip">Admin User · System Administrator ⌄</button>
+          <button type="button" className="icon-btn" aria-label="Notifications">N</button>
+          <button type="button" className="user-chip">Admin User · System Administrator</button>
         </div>
       </TopBar>
 
@@ -73,7 +73,7 @@ export function AdminPortalPage() {
         <aside className="sidebar">
           {sideLinks.map((link) => (
             <a key={link.label} className={link.active ? 'side-link active' : 'side-link'} href="#">
-              {link.icon} {link.label}
+              {link.label}
             </a>
           ))}
         </aside>
@@ -111,7 +111,7 @@ export function AdminPortalPage() {
                   <h3 style={{ margin: 0, color: 'var(--text)' }}>Patient Growth</h3>
                   <div className="small muted">Total registered patients over the last 6 months</div>
                 </div>
-                <button type="button" className="ghost-btn">Last 6 months ⌄</button>
+                <button type="button" className="ghost-btn">Last 6 months</button>
               </div>
               <div className="bars">
                 {growth.map((month) => (
@@ -125,7 +125,7 @@ export function AdminPortalPage() {
             <article className="card cardpad">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, color: 'var(--text)' }}>Appointments by Type</h3>
-                <button type="button" className="ghost-btn">This month ⌄</button>
+                <button type="button" className="ghost-btn">This month</button>
               </div>
               <div className="donut" />
               <div className="small muted" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -138,7 +138,7 @@ export function AdminPortalPage() {
             <article className="card cardpad activity">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, color: 'var(--text)' }}>Recent Activity</h3>
-                <a style={{ color: 'var(--blue)', fontWeight: 800 }} href="#">View all →</a>
+                <a style={{ color: 'var(--blue)', fontWeight: 800 }} href="#">View all</a>
               </div>
               {activity.map((item) => (
                 <div key={item.event} className="row">
@@ -157,7 +157,7 @@ export function AdminPortalPage() {
                   <h3 style={{ margin: 0, color: 'var(--text)' }}>Users Management</h3>
                   <div className="small muted">Manage patients, staff, and admin users</div>
                 </div>
-                <button type="button" className="ghost-btn">＋ Add User</button>
+                <button type="button" className="ghost-btn">Add User</button>
               </div>
               <div className="table-wrap">
                 <table>
@@ -184,7 +184,7 @@ export function AdminPortalPage() {
                         </td>
                         <td>{user.clinic}</td>
                         <td>
-                          <span className={user.statusClassName}>● {user.status}</span>
+                          <span className={user.statusClassName}>{user.status}</span>
                         </td>
                         <td>{user.lastActive}</td>
                         <td>•••</td>

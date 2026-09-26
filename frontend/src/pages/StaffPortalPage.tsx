@@ -12,10 +12,10 @@ const navItems = [
 ];
 
 const metrics = [
-  { icon: '🗓️', iconBackground: undefined, value: '12', label: 'Appointments Today', note: '3 in progress', noteClassName: 'muted' },
-  { icon: '👥', iconBackground: undefined, value: '28', label: 'Patients in Care', note: '6 new this week', noteClassName: 'muted' },
-  { icon: '✓', iconBackground: '#e4faf0', value: '5', label: 'Pending Tasks', note: '2 high priority', noteClassName: undefined },
-  { icon: '💬', iconBackground: '#f1ecff', value: '3', label: 'New Messages', note: '1 requires response', noteClassName: 'muted' },
+  { icon: 'Appt', iconBackground: undefined, value: '12', label: 'Appointments Today', note: '3 in progress', noteClassName: 'muted' },
+  { icon: 'Care', iconBackground: undefined, value: '28', label: 'Patients in Care', note: '6 new this week', noteClassName: 'muted' },
+  { icon: 'Task', iconBackground: '#e4faf0', value: '5', label: 'Pending Tasks', note: '2 high priority', noteClassName: undefined },
+  { icon: 'Msg', iconBackground: '#f1ecff', value: '3', label: 'New Messages', note: '1 requires response', noteClassName: 'muted' },
 ];
 
 const appointments = [
@@ -55,7 +55,7 @@ export function StaffPortalPage() {
         <TopNav items={navItems} />
         <div className="actions">
           <SearchButton />
-          <button type="button" className="user-chip">Dr. Sarah Mitchell ⌄</button>
+          <button type="button" className="user-chip">Dr. Sarah Mitchell</button>
         </div>
       </TopBar>
 
@@ -66,7 +66,7 @@ export function StaffPortalPage() {
         </div>
         <div className="hero-card side-banner">
           <div className="script">
-            Better<br />Health<br />Brighter<br />Days ♡
+            Better<br />Health<br />Brighter<br />Days
           </div>
           <div className="motto">
             <div>
@@ -96,7 +96,7 @@ export function StaffPortalPage() {
         <article className="card card-pad">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 className="section-title" style={{ fontSize: 24 }}>Today’s Appointments</h2>
-            <a style={{ color: 'var(--blue)', fontWeight: 800 }} href="#">View Full Schedule →</a>
+            <a style={{ color: 'var(--blue)', fontWeight: 800 }} href="#">View Full Schedule</a>
           </div>
           <div className="table-wrap">
             <table>
@@ -136,7 +136,7 @@ export function StaffPortalPage() {
 
         <div className="stack">
           <article className="card card-pad">
-            <h3 style={{ margin: 0, color: 'var(--text)' }}>👤 Patient Lookup</h3>
+            <h3 style={{ margin: 0, color: 'var(--text)' }}>Patient Lookup</h3>
             <div className="muted small" style={{ margin: '6px 0 12px' }}>Search by name, DOB, or patient ID</div>
             <div style={{ display: 'flex', gap: 10 }}>
               <input className="search" placeholder="Search patients... (e.g. John Smith, 01/15/1980)" />
@@ -147,7 +147,7 @@ export function StaffPortalPage() {
           <div className="split">
             <article className="card card-pad">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <h3 style={{ margin: 0, color: 'var(--text)' }}>☑ Pending Tasks</h3>
+                <h3 style={{ margin: 0, color: 'var(--text)' }}>Pending Tasks</h3>
                 <a style={{ color: 'var(--blue)', fontWeight: 800 }}>View All</a>
               </div>
               {tasks.map((task) => (
@@ -163,7 +163,7 @@ export function StaffPortalPage() {
 
             <article className="card card-pad">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <h3 style={{ margin: 0, color: 'var(--text)' }}>⚠ Triage Queue</h3>
+                <h3 style={{ margin: 0, color: 'var(--text)' }}>Triage Queue</h3>
                 <a style={{ color: 'var(--blue)', fontWeight: 800 }}>View All</a>
               </div>
               {triageQueue.map((entry) => (
@@ -181,7 +181,7 @@ export function StaffPortalPage() {
           <div className="split">
             <article className="card card-pad">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <h3 style={{ margin: 0, color: 'var(--text)' }}>✉ Recent Messages</h3>
+                <h3 style={{ margin: 0, color: 'var(--text)' }}>Recent Messages</h3>
                 <a style={{ color: 'var(--blue)', fontWeight: 800 }}>View All</a>
               </div>
               {recentMessages.map((message) => (
@@ -196,12 +196,12 @@ export function StaffPortalPage() {
             </article>
 
             <article className="card card-pad">
-              <h3 style={{ margin: '0 0 14px', color: 'var(--text)' }}>⚡ Quick Actions</h3>
+              <h3 style={{ margin: '0 0 14px', color: 'var(--text)' }}>Quick Actions</h3>
               <div className="grid-2">
-                <button type="button" className="ghost-btn">🗓️ Check In Patient</button>
-                <button type="button" className="ghost-btn">📄 Update Record</button>
-                <button type="button" className="ghost-btn">💬 Send Message</button>
-                <button type="button" className="ghost-btn">＋ Place Order</button>
+                <button type="button" className="ghost-btn">Check In Patient</button>
+                <button type="button" className="ghost-btn">Update Record</button>
+                <button type="button" className="ghost-btn">Send Message</button>
+                <button type="button" className="ghost-btn">Place Order</button>
               </div>
             </article>
           </div>
