@@ -140,6 +140,8 @@
 .nv-recommended-hospital { display: grid; gap: 10px; padding: 14px; border: 1px solid #e3eefb; border-radius: 16px; background: #f7fbff; }
 .nv-recommended-hospital strong, .nv-recommended-hospital span { display: block; }
 .nv-recommended-hospital > div:first-child span { margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.nv-recommended-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.nv-recommended-hospital .nv-distance { color: var(--blue); font-weight: 800; }
 
 @media (max-width: 1240px) {
   .nv-finder-grid { grid-template-columns: 1fr; }

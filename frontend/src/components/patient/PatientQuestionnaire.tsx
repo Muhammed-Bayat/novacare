@@ -1,5 +1,6 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { AppointmentTriageSummary, Hospital, QuestionnaireIntake, QuestionnaireQuestion, QuestionnaireUrgency } from '../../api.ts';
+import { distanceInKm, type Coordinates } from './careMath.ts';
 
 type Stage = 'intro' | 'questions' | 'result';
 
@@ -37,13 +38,15 @@ function serviceKeywords(intake: QuestionnaireIntake, department: string): strin
   return ['general', 'family', 'outpatient', 'emergency'];
 }
 
-function recommendedHospitals(hospitals: Hospital[], intake: QuestionnaireIntake, department: string): Hospital[] {
-  const keywords = serviceKeywords(intake, department);
-  const matches = hospitals.filter((hospital) => hospital.services.some((service) => {
-    const name = service.name.toLowerCase();
-    return keywords.some((keyword) => name.includes(keyword));
-  }));
-  return (matches.length > 0 ? matches : hospitals).slice(0, 3);
+function readUserLocation(): Promise<Coordinates | null> {
+  if (!navigator.geolocation) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  });
 }
 
 function matchingServices(hospital: Hospital, intake: QuestionnaireIntake, department: string): Hospital['services'] {
@@ -142,11 +145,57 @@ export function PatientQuestionnaire({
   const [result, setResult] = useState<QuestionnaireResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [userLocation, setUserLocation] = useState<Coordinates>();
+  const [locationState, setLocationState] = useState<'locating' | 'ready' | 'unavailable'>('locating');
+
+  useEffect(() => {
+    if (stage !== 'result' || userLocation) return;
+    let cancelled = false;
+    setLocationState('locating');
+    void readUserLocation().then((location) => {
+      if (cancelled) return;
+      if (location) {
+        setUserLocation(location);
+        setLocationState('ready');
+      } else {
+        setLocationState('unavailable');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [stage, userLocation]);
+
+  function locateMe() {
+    setLocationState('locating');
+    void readUserLocation().then((location) => {
+      if (location) {
+        setUserLocation(location);
+        setLocationState('ready');
+      } else {
+        setLocationState('unavailable');
+      }
+    });
+  }
 
   const question = intake?.questions[questionIndex];
   const progress = stage === 'intro' ? 12 : stage === 'result' ? 100 : intake ? 28 + ((questionIndex + 1) / intake.questions.length) * 62 : 28;
   const canContinue = useMemo(() => question?.type === 'scale' || (question ? answers[question.id] !== undefined : false), [answers, question]);
-  const recommendations = intake && result ? recommendedHospitals(hospitals, intake, result.department) : [];
+  const recommendations = useMemo(() => {
+    if (!intake || !result) return [];
+    const keywords = serviceKeywords(intake, result.department);
+    const matches = hospitals.filter((hospital) => hospital.services.some((service) => {
+      const name = service.name.toLowerCase();
+      return keywords.some((keyword) => name.includes(keyword));
+    }));
+    const pool = matches.length > 0 ? matches : hospitals;
+    if (!userLocation) return pool.slice(0, 3);
+    return pool
+      .map((hospital) => ({ hospital, distance: distanceInKm(userLocation, hospital) }))
+      .sort((left, right) => left.distance - right.distance)
+      .slice(0, 3)
+      .map((entry) => entry.hospital);
+  }, [hospitals, intake, result, userLocation]);
   const resultSummary = intake && result ? appointmentSummary(intake, result) : undefined;
 
   async function start(event: FormEvent<HTMLFormElement>) {
@@ -265,20 +314,33 @@ export function PatientQuestionnaire({
             <span>Pathway: {intake.pathwayName}</span>
           </div>
           <div className="nv-recommended-care">
-            <div>
-              <strong>Recommended hospitals for this service</strong>
-              <p className="muted small">These facilities have services that best match the questionnaire result.</p>
+            <div className="nv-recommended-head">
+              <div>
+                <strong>{userLocation ? 'Nearest hospitals for this service' : 'Recommended hospitals for this service'}</strong>
+                <p className="muted small">
+                  {locationState === 'locating' && !userLocation
+                    ? 'Locating you to rank the closest facilities.'
+                    : userLocation
+                      ? 'Ranked by distance from your location.'
+                      : 'These facilities have services that best match the questionnaire result.'}
+                </p>
+              </div>
+              {locationState === 'unavailable' && !userLocation ? (
+                <button className="secondary-btn" type="button" onClick={locateMe}>Use my location</button>
+              ) : null}
             </div>
             {recommendations.length > 0 ? (
               <div className="nv-recommended-list">
                 {recommendations.map((hospital) => {
                   const services = matchingServices(hospital, intake, result.department);
                   const selectedService = services[0];
+                  const distance = userLocation ? distanceInKm(userLocation, hospital) : undefined;
                   return (
                     <article className="nv-recommended-hospital" key={hospital.id}>
                       <div>
                         <strong>{hospital.name}</strong>
                         <span>{hospital.address}</span>
+                        {distance !== undefined ? <span className="nv-distance">{distance.toFixed(1)} km away</span> : null}
                       </div>
                       <div className="nv-service-tags">
                         {services.map((service) => <span className="nv-tag" key={`${hospital.id}-${service.id}`}>{service.name}</span>)}
