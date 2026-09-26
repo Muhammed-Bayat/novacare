@@ -1,0 +1,2290 @@
+[
+  {
+    "name": "Cecilia Makiwane Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.9278,
+    "longitude": 27.74422,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Cloete Joubert Hospital  Barkly East",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.9676,
+    "longitude": 27.58507,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Cofimvaba Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.0119,
+    "longitude": 27.58348,
+    "services": [
+      "HIV Care",
+      "Oral Health",
+      "Emergency Care",
+      "Obstetrics and Gynaecology",
+      "Maternity Care",
+      "General Medicine",
+      "Surgical Services",
+      "Paediatrics",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Cradock Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.1673,
+    "longitude": 25.62243,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Dr Malizo Mpehle Memorial Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.3165,
+    "longitude": 28.778056,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Dora Nginza Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.8825,
+    "longitude": 25.563114,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Dordrecht Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.3913,
+    "longitude": 27.045615,
+    "services": [
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Elliot Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.3371,
+    "longitude": 27.83797,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Empilisweni Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.5332,
+    "longitude": 27.35337,
+    "services": [
+      "HIV Care",
+      "Emergency Care",
+      "Laboratory Services",
+      "Maternity Care",
+      "General Medicine",
+      "Surgical Services",
+      "Paediatrics",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Fort Beaufort Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.7802,
+    "longitude": 26.633571,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Frere Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.9959,
+    "longitude": 27.89156,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Frontier Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.8892,
+    "longitude": 26.871347,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Glen Grey Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.719898999999998,
+    "longitude": 27.19939,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Greenville Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.9316,
+    "longitude": 30.108882,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Grey Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.8793,
+    "longitude": 27.39579,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Hewu Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.1727,
+    "longitude": 26.80522,
+    "services": [
+      "HIV Care",
+      "Laboratory Services",
+      "General Medicine",
+      "Obstetrics and Gynaecology",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Holy Cross Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.0812,
+    "longitude": 29.49531,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Humansdorp Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -34.0302,
+    "longitude": 24.78144,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Indwe Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.4683,
+    "longitude": 27.34042,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Isilimela Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.7342,
+    "longitude": 29.35888,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Jamestown Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.1236,
+    "longitude": 26.8074,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Komga Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.576,
+    "longitude": 27.89576,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Lady Grey Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.7128,
+    "longitude": 27.21188,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Maclear Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.0759,
+    "longitude": 28.34775,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Madwaleni Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.0958,
+    "longitude": 28.87875,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Madzikane kaZulu Memorial Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.9009,
+    "longitude": 28.99562,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Martje Venter Hospital Tarkastad",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.0089,
+    "longitude": 26.25884,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Midland Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.2608,
+    "longitude": 24.53619,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mjanyana Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.836,
+    "longitude": 28.1038,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Molteno Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.3916,
+    "longitude": 26.3555,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mount Ayliff Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.8052,
+    "longitude": 29.3596,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mthatha General Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.5903,
+    "longitude": 28.76593,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Nelson Mandela Academic Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.5881,
+    "longitude": 28.764234,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Nessie Knight Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.009099,
+    "longitude": 28.68223,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Nompumelelo Hospital  Peddie",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.2092,
+    "longitude": 27.13244,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Port Alfred Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.5953,
+    "longitude": 26.88312,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Port Elizabeth Provincial Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.9584,
+    "longitude": 25.59982,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Barnabas Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.564199,
+    "longitude": 29.11617,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Elizabeth's Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.3598,
+    "longitude": 29.56532,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Francis Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.6887,
+    "longitude": 26.69921,
+    "services": [
+      "Rehabilitation Services",
+      "Pharmacy Services",
+      "Mental Health Counselling",
+      "Chronic Care"
+    ]
+  },
+  {
+    "name": "St Lucy's Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.3007,
+    "longitude": 28.62983,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Patrick's Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.8654,
+    "longitude": 29.85162,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "SAWAS Memorial Hospital Jansenville",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.9422,
+    "longitude": 24.66203,
+    "services": [
+      "Emergency Care",
+      "Maternity Care",
+      "General Medicine",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Settlers Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.3024,
+    "longitude": 26.51464,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Sipetu Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.0917,
+    "longitude": 29.18731,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "SS Gida Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.6745,
+    "longitude": 27.1435,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Sterkstroom Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.5531,
+    "longitude": 26.55338,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Steynsburg Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.2932,
+    "longitude": 25.813211,
+    "services": [
+      "Emergency Care",
+      "Maternity Care",
+      "General Surgery",
+      "General Medicine",
+      "Pharmacy Services",
+      "HIV Care",
+      "Oral Health",
+      "Physiotherapy"
+    ]
+  },
+  {
+    "name": "Stutterheim Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.5713,
+    "longitude": 27.419427,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Sundays Valley  Hospital Kirkwood",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.3947,
+    "longitude": 25.44001,
+    "services": [
+      "Maternity Care",
+      "Emergency Care",
+      "General Medicine",
+      "General Surgery",
+      "Diagnostic Imaging"
+    ]
+  },
+  {
+    "name": "Tafalofefe Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.4102,
+    "longitude": 28.51829,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Tayler Bequest Hospital Matatiele",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.3327,
+    "longitude": 28.80195,
+    "services": [
+      "HIV Care",
+      "General Medicine",
+      "Surgical Services",
+      "Paediatrics",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "General Surgery",
+      "Diagnostic Imaging"
+    ]
+  },
+  {
+    "name": "Taylor Bequest Hospital Elundini",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.6894,
+    "longitude": 28.50961,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Uitenhage Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.7415,
+    "longitude": 25.40679,
+    "services": [
+      "Obstetrics and Gynaecology",
+      "Intensive Care",
+      "Physiotherapy",
+      "Paediatrics",
+      "Diagnostic Imaging",
+      "General Surgery",
+      "Maternity Care",
+      "Laboratory Services"
+    ]
+  },
+  {
+    "name": "Umlamli Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -30.560399,
+    "longitude": 27.47457,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Victoria Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.7752,
+    "longitude": 26.84678,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Wilhelm Stahl Hospital Middelburg",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -31.4917,
+    "longitude": 24.99351,
+    "services": [
+      "HIV Care",
+      "Maternity Care",
+      "General Medicine",
+      "Surgical Services",
+      "Paediatrics",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "General Surgery",
+      "Diagnostic Imaging"
+    ]
+  },
+  {
+    "name": "Willowmore Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -33.3004,
+    "longitude": 23.46757,
+    "services": [
+      "HIV Care",
+      "Oral Health",
+      "Emergency Care",
+      "Obstetrics and Gynaecology",
+      "Maternity Care",
+      "Paediatrics",
+      "Pharmacy Services",
+      "General Surgery",
+      "Diagnostic Imaging"
+    ]
+  },
+  {
+    "name": "Zitulele Hospital",
+    "province": "Eastern Cape",
+    "address": "Eastern Cape, South Africa",
+    "latitude": -32.0505,
+    "longitude": 29.09162,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mofumahadi Manapo Mopeli Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -28.537,
+    "longitude": 28.80507,
+    "services": [
+      "General Surgery",
+      "Obstetrics and Gynaecology",
+      "Orthopaedics",
+      "Paediatrics",
+      "Dermatology",
+      "Urology"
+    ]
+  },
+  {
+    "name": "Mohau Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -27.8323,
+    "longitude": 25.91538,
+    "services": [
+      "Maternity Care",
+      "Paediatrics",
+      "Pharmacy Services",
+      "Diagnostic Imaging",
+      "Dietetics",
+      "Occupational Therapy",
+      "Physiotherapy",
+      "Oral Health",
+      "General Surgery",
+      "Emergency Care"
+    ]
+  },
+  {
+    "name": "Nala Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -27.3946,
+    "longitude": 26.61783,
+    "services": [
+      "Emergency Care",
+      "Maternity Care",
+      "General Medicine",
+      "Paediatrics",
+      "General Surgery",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "Diagnostic Imaging",
+      "Dietetics",
+      "Occupational Therapy",
+      "Oral Health",
+      "Surgical Services"
+    ]
+  },
+  {
+    "name": "National District Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -29.127,
+    "longitude": 26.2064,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Nketoana Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -27.8028,
+    "longitude": 28.41893,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Parys Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -26.8959,
+    "longitude": 27.47207,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Pelonomi Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -29.1413,
+    "longitude": 26.24572,
+    "services": [
+      "Obstetrics and Gynaecology",
+      "General Surgery",
+      "Intensive Care",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "Occupational Therapy",
+      "Speech Therapy",
+      "General Medicine",
+      "Emergency Care",
+      "Maternity Care",
+      "Chronic Care"
+    ]
+  },
+  {
+    "name": "Phekolong Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -28.2176,
+    "longitude": 28.32645,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Phumelela Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -27.4335,
+    "longitude": 29.15583,
+    "services": [
+      "Emergency Care",
+      "General Medicine",
+      "Maternity Care",
+      "Paediatrics"
+    ]
+  },
+  {
+    "name": "Phuthuloha Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -28.8813,
+    "longitude": 27.87202,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Senorita Ntlabathi Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -29.2029,
+    "longitude": 27.44807,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Stoffel Coetzee Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -30.2177,
+    "longitude": 26.52442,
+    "services": [
+      "General Medicine",
+      "Pharmacy Services",
+      "Maternity Care",
+      "Psychiatry",
+      "Paediatrics"
+    ]
+  },
+  {
+    "name": "Thebe Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -28.2722,
+    "longitude": 29.13805,
+    "services": [
+      "Emergency Care",
+      "General Medicine",
+      "Maternity Care",
+      "Paediatrics",
+      "Diagnostic Imaging",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Thusanong Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -27.8773,
+    "longitude": 26.65922,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Tokollo Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -27.2891,
+    "longitude": 27.96168,
+    "services": [
+      "Emergency Care",
+      "Maternity Care",
+      "General Medicine",
+      "Pharmacy Services",
+      "Diagnostic Imaging",
+      "HIV Care",
+      "General Surgery",
+      "Occupational Therapy",
+      "Speech Therapy",
+      "Physiotherapy",
+      "Dietetics",
+      "Oral Health"
+    ]
+  },
+  {
+    "name": "Universitas C Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -29.118,
+    "longitude": 26.18432,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Winburg Hospital",
+    "province": "Free State",
+    "address": "Free State, South Africa",
+    "latitude": -28.5098,
+    "longitude": 27.00802,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Charlotte Maxeke Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.174,
+    "longitude": 28.04691,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Chris Hani Baragwanath Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.26,
+    "longitude": 27.93799,
+    "services": [
+      "Dermatology",
+      "General Medicine",
+      "Obstetrics and Gynaecology",
+      "Orthopaedics",
+      "Paediatrics",
+      "Pharmacy Services",
+      "Emergency Care",
+      "Psychiatry",
+      "General Surgery",
+      "Dialysis",
+      "Diagnostic Imaging",
+      "Intensive Care",
+      "Laboratory Services"
+    ]
+  },
+  {
+    "name": "Mamelodi Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -25.7186,
+    "longitude": 28.36788,
+    "services": [
+      "General Medicine",
+      "Maternity Care",
+      "Paediatrics",
+      "General Surgery",
+      "Diagnostic Imaging"
+    ]
+  },
+  {
+    "name": "Odi Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -25.5184,
+    "longitude": 28.02248,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Pholosong Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.3398,
+    "longitude": 28.37705,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Pretoria West Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -25.7365,
+    "longitude": 28.13962,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Rahima Moosa Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.1882,
+    "longitude": 27.97329,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Sebokeng Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.6061,
+    "longitude": 27.84622,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "South Rand Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.2529,
+    "longitude": 28.06211,
+    "services": [
+      "Oral Health",
+      "Maternity Care",
+      "General Medicine"
+    ]
+  },
+  {
+    "name": "Tambo Memorial Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.2184,
+    "longitude": 28.24449,
+    "services": [
+      "General Medicine",
+      "General Surgery",
+      "Orthopaedics",
+      "Obstetrics and Gynaecology",
+      "Paediatrics",
+      "Ophthalmology",
+      "Dermatology"
+    ]
+  },
+  {
+    "name": "Tembisa Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -25.9828,
+    "longitude": 28.23756,
+    "services": [
+      "Maternity Care",
+      "General Medicine"
+    ]
+  },
+  {
+    "name": "Thelle Mogoerane Regional Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -26.3569,
+    "longitude": 28.224311,
+    "services": [
+      "Obstetrics and Gynaecology",
+      "Ophthalmology",
+      "Diagnostic Imaging",
+      "General Medicine",
+      "Emergency Care"
+    ]
+  },
+  {
+    "name": "Tshwane District Hospital",
+    "province": "Gauteng",
+    "address": "Gauteng, South Africa",
+    "latitude": -25.7327,
+    "longitude": 28.202561,
+    "services": [
+      "General Medicine",
+      "Paediatrics",
+      "Obstetrics and Gynaecology",
+      "Occupational Therapy",
+      "Physiotherapy",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Eshowe Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.891,
+    "longitude": 31.466456,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Estcourt Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.0205,
+    "longitude": 29.893932,
+    "services": [
+      "Emergency Care",
+      "Laboratory Services",
+      "Diagnostic Imaging",
+      "Psychiatry",
+      "Pharmacy Services",
+      "General Medicine",
+      "General Surgery",
+      "Maternity Care",
+      "Surgical Services"
+    ]
+  },
+  {
+    "name": "GJ Crooke's Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -30.2882,
+    "longitude": 30.74487,
+    "services": [
+      "Emergency Care",
+      "Orthopaedics",
+      "Obstetrics and Gynaecology",
+      "Paediatrics",
+      "Oral Health",
+      "Rehabilitation Services"
+    ]
+  },
+  {
+    "name": "Grey's Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.5796,
+    "longitude": 30.363784,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Greytown Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.0657,
+    "longitude": 30.600049,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Hlabisa Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.1455,
+    "longitude": 31.880697,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Inkosi Albert Luthuli Central Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.8739,
+    "longitude": 30.958756,
+    "services": [
+      "General Surgery",
+      "Dietetics",
+      "General Medicine",
+      "Neurology",
+      "Obstetrics and Gynaecology",
+      "Oncology",
+      "Orthopaedics",
+      "Paediatrics"
+    ]
+  },
+  {
+    "name": "Itshelejuba Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -27.2774,
+    "longitude": 31.347971,
+    "services": [
+      "Pharmacy Services",
+      "Oral Health",
+      "Occupational Therapy",
+      "Obstetrics and Gynaecology",
+      "General Surgery",
+      "HIV Care"
+    ]
+  },
+  {
+    "name": "KwaMagwaza Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.6293,
+    "longitude": 31.34105,
+    "services": [
+      "General Medicine",
+      "Chronic Care",
+      "Mental Health Counselling",
+      "Orthopaedics",
+      "Physiotherapy",
+      "Psychiatry",
+      "General Surgery",
+      "Diagnostic Imaging"
+    ]
+  },
+  {
+    "name": "Ladysmith Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.5567,
+    "longitude": 29.766058,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Lower Umfolozi War Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.7395,
+    "longitude": 31.897211,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Madadeni Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -27.763500186086958,
+    "longitude": 30.0508,
+    "services": [
+      "Maternity Care",
+      "General Medicine",
+      "Emergency Care",
+      "Chronic Care"
+    ]
+  },
+  {
+    "name": "Mahatma Gandhi Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.7183,
+    "longitude": 31.028852,
+    "services": [
+      "Obstetrics and Gynaecology",
+      "Dietetics",
+      "Physiotherapy",
+      "Diagnostic Imaging",
+      "Mental Health Counselling",
+      "Surgical Services",
+      "Pharmacy Services"
+    ]
+  },
+  {
+    "name": "Manguzi Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -26.984,
+    "longitude": 32.756375,
+    "services": [
+      "Chronic Care",
+      "Emergency Care",
+      "Dietetics",
+      "General Medicine",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Mbongolwane Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.9354,
+    "longitude": 31.195414,
+    "services": [
+      "General Medicine",
+      "Orthopaedics",
+      "Laboratory Services",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "McCords Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.8382,
+    "longitude": 30.996943,
+    "services": [
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Montebello Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.4394,
+    "longitude": 30.807162,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mosvold Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -27.1383,
+    "longitude": 32.004746,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mseleni Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -27.3256,
+    "longitude": 32.556644,
+    "services": [
+      "Laboratory Services",
+      "General Medicine",
+      "Obstetrics and Gynaecology",
+      "Occupational Therapy",
+      "Paediatrics",
+      "General Surgery",
+      "Emergency Care",
+      "Psychiatry",
+      "Orthopaedics",
+      "Diagnostic Imaging",
+      "HIV Care"
+    ]
+  },
+  {
+    "name": "Murchison Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -30.727999,
+    "longitude": 30.344023,
+    "services": [
+      "Emergency Care",
+      "Diagnostic Imaging",
+      "Obstetrics and Gynaecology",
+      "Physiotherapy",
+      "Speech Therapy"
+    ]
+  },
+  {
+    "name": "Newcastle Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -27.7631,
+    "longitude": 29.935643,
+    "services": [
+      "Maternity Care",
+      "Paediatrics",
+      "Orthopaedics",
+      "Oncology",
+      "Physiotherapy",
+      "Occupational Therapy",
+      "Intensive Care",
+      "Emergency Care",
+      "General Medicine"
+    ]
+  },
+  {
+    "name": "Ngwelezana Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.7795,
+    "longitude": 31.864116,
+    "services": [
+      "General Medicine",
+      "Paediatrics",
+      "Ophthalmology",
+      "Psychiatry",
+      "Dietetics"
+    ]
+  },
+  {
+    "name": "Niemeyer Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -27.6519,
+    "longitude": 30.0712,
+    "services": [
+      "Rehabilitation Services",
+      "General Medicine"
+    ]
+  },
+  {
+    "name": "Nkandla Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.6245,
+    "longitude": 31.086834,
+    "services": [
+      "Emergency Care",
+      "Maternity Care",
+      "General Medicine",
+      "Paediatrics",
+      "General Surgery",
+      "Pharmacy Services",
+      "Physiotherapy",
+      "Diagnostic Imaging",
+      "Dietetics",
+      "Occupational Therapy",
+      "Oral Health",
+      "Surgical Services"
+    ]
+  },
+  {
+    "name": "Nkonjeni Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.2266,
+    "longitude": 31.41477,
+    "services": [
+      "General Medicine",
+      "Chronic Care",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Northdale Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.5756,
+    "longitude": 30.402653,
+    "services": [
+      "Emergency Care",
+      "Dietetics",
+      "Diagnostic Imaging",
+      "Pharmacy Services",
+      "Mental Health Counselling",
+      "Maternity Care",
+      "Obstetrics and Gynaecology"
+    ]
+  },
+  {
+    "name": "Osindisweni Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.6082,
+    "longitude": 30.983202,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Port Shepstone Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -30.7435,
+    "longitude": 30.450878,
+    "services": [
+      "Emergency Care",
+      "General Medicine",
+      "General Surgery",
+      "Intensive Care",
+      "Maternity Care",
+      "Laboratory Services",
+      "Surgical Services",
+      "Orthopaedics",
+      "Physiotherapy",
+      "Psychiatry",
+      "Diagnostic Imaging"
+    ]
+  },
+  {
+    "name": "Prince Mshiyeni Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.9548,
+    "longitude": 30.936625,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Rietvlei Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -30.48779,
+    "longitude": 29.82481,
+    "services": [
+      "Emergency Care",
+      "General Medicine",
+      "Maternity Care",
+      "Paediatrics"
+    ]
+  },
+  {
+    "name": "RK Khan Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.9151,
+    "longitude": 30.886237,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Aidans Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.8507,
+    "longitude": 31.011035,
+    "services": [
+      "Urology",
+      "General Surgery",
+      "Dialysis"
+    ]
+  },
+  {
+    "name": "St Andrew's Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -30.575499,
+    "longitude": 29.889283,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Apollinaris Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -30.0165,
+    "longitude": 29.72575,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Stanger Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.3327,
+    "longitude": 31.28516,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Umphumulo Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.1425,
+    "longitude": 31.04259,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Untunjambili Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -28.942,
+    "longitude": 30.94846,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Vryheid Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -27.7583,
+    "longitude": 30.797088,
+    "services": [
+      "Emergency Care",
+      "Mental Health Counselling",
+      "Laboratory Services",
+      "General Medicine",
+      "Obstetrics and Gynaecology",
+      "Occupational Therapy",
+      "Paediatrics",
+      "Physiotherapy",
+      "Rehabilitation Services",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Wentworth Hospital",
+    "province": "KwaZulu-Natal",
+    "address": "KwaZulu-Natal, South Africa",
+    "latitude": -29.9329,
+    "longitude": 30.989162,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Letaba Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.8741,
+    "longitude": 30.26933,
+    "services": [
+      "Oral Health",
+      "Paediatrics",
+      "General Medicine",
+      "Maternity Care",
+      "Pharmacy Services"
+    ]
+  },
+  {
+    "name": "Louis Trichardt Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.0291,
+    "longitude": 29.90614,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Malamulele Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -22.9969,
+    "longitude": 30.69669,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mankweng Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.8808,
+    "longitude": 29.725885,
+    "services": [
+      "General Medicine",
+      "Chronic Care",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Maphutha L Malatjie Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.9253,
+    "longitude": 31.03717,
+    "services": [
+      "General Medicine",
+      "Maternity Care",
+      "Chronic Care"
+    ]
+  },
+  {
+    "name": "Matlala Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.8321,
+    "longitude": 29.50233,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mecklenburg Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.3853,
+    "longitude": 30.072501,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Messina Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -22.3416,
+    "longitude": 30.04285,
+    "services": [
+      "General Medicine",
+      "Emergency Care",
+      "Maternity Care",
+      "Chronic Care"
+    ]
+  },
+  {
+    "name": "Mokopane Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.1553,
+    "longitude": 28.989183,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Nkhensani Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.3125,
+    "longitude": 30.69215,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Philadelphia Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -25.2581,
+    "longitude": 29.144713,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Pietersburg Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.8958,
+    "longitude": 29.456908,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Joseph's Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.89,
+    "longitude": 29.45,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "St Rita's Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.8446,
+    "longitude": 29.80403,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Sekororo Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.2515,
+    "longitude": 30.44767,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Seshego Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.8548,
+    "longitude": 29.396878,
+    "services": [
+      "General Medicine",
+      "Chronic Care",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Siloam Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -22.8994,
+    "longitude": 30.19422,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Thabazimbi Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.5987,
+    "longitude": 27.4069,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Tshilidzini Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -22.9947,
+    "longitude": 30.41415,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Van Velden Memorial Tzaneen Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.8345,
+    "longitude": 30.16427,
+    "services": [
+      "General Medicine",
+      "Chronic Care",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Voortrekker Memorial Potgietersrus Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.1962,
+    "longitude": 29.01405,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Warmbaths Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.8859,
+    "longitude": 28.28873,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "WF Knobel Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.634,
+    "longitude": 29.12057,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Witpoort Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -23.3344,
+    "longitude": 28.01118,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Zebediela Hospital",
+    "province": "Limpopo",
+    "address": "Limpopo, South Africa",
+    "latitude": -24.4818,
+    "longitude": 29.40445,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Matibidi Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -24.5884,
+    "longitude": 30.7696,
+    "services": [
+      "Rehabilitation Services",
+      "General Surgery",
+      "Obstetrics and Gynaecology",
+      "Paediatrics",
+      "Psychiatry"
+    ]
+  },
+  {
+    "name": "Matikwana Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -24.9876,
+    "longitude": 31.23628,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Middelburg Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.774099,
+    "longitude": 29.45133,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mmametlhake Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.1046,
+    "longitude": 28.55872,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Piet Retief Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -27.0188,
+    "longitude": 30.80625,
+    "services": [
+      "Obstetrics and Gynaecology",
+      "Paediatrics",
+      "Psychiatry",
+      "Rehabilitation Services"
+    ]
+  },
+  {
+    "name": "Rob Ferreira Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.4755,
+    "longitude": 30.97111,
+    "services": [
+      "Obstetrics and Gynaecology",
+      "Paediatrics",
+      "Psychiatry",
+      "Rehabilitation Services",
+      "General Surgery"
+    ]
+  },
+  {
+    "name": "Sabie Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.0926,
+    "longitude": 30.782,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Shongwe Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.6851,
+    "longitude": 31.490584,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Standerton Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -26.94,
+    "longitude": 29.244242,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Themba Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.3452,
+    "longitude": 31.1228,
+    "services": [
+      "Maternity Care",
+      "General Medicine"
+    ]
+  },
+  {
+    "name": "Tintswalo Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -24.5918,
+    "longitude": 31.05983,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Tonga Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.6947,
+    "longitude": 31.7881,
+    "services": [
+      "General Medicine",
+      "Emergency Care",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Waterval Boven Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.647899685217393,
+    "longitude": 30.33855,
+    "services": [
+      "General Medicine",
+      "General Surgery",
+      "Paediatrics",
+      "Psychiatry",
+      "Ophthalmology"
+    ]
+  },
+  {
+    "name": "Witbank Hospital",
+    "province": "Mpumalanga",
+    "address": "Mpumalanga, South Africa",
+    "latitude": -25.8756,
+    "longitude": 29.226596,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Schweizer-Reneke Hospital",
+    "province": "North West",
+    "address": "North West, South Africa",
+    "latitude": -27.1818,
+    "longitude": 25.32879,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Taung Hospital",
+    "province": "North West",
+    "address": "North West, South Africa",
+    "latitude": -27.5377,
+    "longitude": 24.79175,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Thusong Hospital",
+    "province": "North West",
+    "address": "North West, South Africa",
+    "latitude": -26.0546,
+    "longitude": 25.948932,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Zeerust Hospital",
+    "province": "North West",
+    "address": "North West, South Africa",
+    "latitude": -25.5428,
+    "longitude": 26.06647,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Knysna Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -34.0369,
+    "longitude": 23.05806,
+    "services": [
+      "Obstetrics and Gynaecology",
+      "General Medicine",
+      "Paediatrics",
+      "Maternity Care"
+    ]
+  },
+  {
+    "name": "Laingsburg Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.1944,
+    "longitude": 20.85028,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "LAPA Munnik Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.018,
+    "longitude": 18.99444,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mitchells Plain Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -34.0266,
+    "longitude": 18.61584,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Montagu Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.7977,
+    "longitude": 20.12333,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Mossel Bay Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -34.1858,
+    "longitude": 22.1275,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Murraysburg Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -31.9625,
+    "longitude": 23.76917,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "New Somerset Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.9044,
+    "longitude": 18.41683,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Otto Du Plessis Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -34.5372,
+    "longitude": 20.035636,
+    "services": [
+      "Orthopaedics",
+      "General Surgery",
+      "Psychiatry",
+      "Obstetrics and Gynaecology"
+    ]
+  },
+  {
+    "name": "Oudtshoorn Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.5888,
+    "longitude": 22.18889,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Paarl Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.7263,
+    "longitude": 18.97028,
+    "services": [
+      "Dermatology",
+      "Emergency Care",
+      "General Surgery",
+      "Obstetrics and Gynaecology",
+      "Surgical Services",
+      "Ophthalmology",
+      "Orthopaedics"
+    ]
+  },
+  {
+    "name": "Prince Albert Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.2166,
+    "longitude": 22.02583,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Radie Kotze Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -32.9063,
+    "longitude": 18.76222,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Riversdale Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -34.0936,
+    "longitude": 21.25472,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Robertson Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.8016,
+    "longitude": 19.89133,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Stellenbosch Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.9305,
+    "longitude": 18.87028,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Swartland Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.456,
+    "longitude": 18.723322,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Swellendam Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -34.023399000000005,
+    "longitude": 20.4488,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Tygerberg Level 2 Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.9147,
+    "longitude": 18.611569,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Uniondale Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.6594,
+    "longitude": 23.12556,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Victoria Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -34.0117,
+    "longitude": 18.45925,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Vredenburg Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -32.9136,
+    "longitude": 17.99083,
+    "services": [
+      "General Medicine",
+      "Pharmacy Services"
+    ]
+  },
+  {
+    "name": "Vredendal Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -31.6694,
+    "longitude": 18.50472,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Wesfleur Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.5643,
+    "longitude": 18.49541,
+    "services": [
+      "General consultation"
+    ]
+  },
+  {
+    "name": "Worcester Hospital",
+    "province": "Western Cape",
+    "address": "Western Cape, South Africa",
+    "latitude": -33.6444,
+    "longitude": 19.458072,
+    "services": [
+      "General consultation"
+    ]
+  }
+]

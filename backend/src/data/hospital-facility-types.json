@@ -1,0 +1,1640 @@
+[
+  {
+    "name": "Aberdeen Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Adelaide Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Aliwal North Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "All Saints Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Andries Vosloo Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bambisana Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bedford Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bhisho Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "BJ Vorster  Hospital Kareedouw",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital",
+    "aliases": [
+      "BJ Vorster Hospital Kareedouw"
+    ]
+  },
+  {
+    "name": "Burgersdorp Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Butterworth Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Cala Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Canzibe Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Cathcart Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Cecilia Makiwane Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Cloete Joubert Hospital  Barkly East",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Cofimvaba Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Cradock Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dora Nginza Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Dordrecht Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dr Malizo Mpehle Memorial Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Elliot Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Empilisweni Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Fort Beaufort Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Frere Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Frontier Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Glen Grey Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Greenville Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Grey Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Hewu Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Holy Cross Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Humansdorp Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Indwe Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Isilimela Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Jamestown Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Komga Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Lady Grey Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Livingstone Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Maclear Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Madwaleni Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Madzikane kaZulu Memorial Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Martje Venter Hospital Tarkastad",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Midland Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mjanyana Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Molteno Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mount Ayliff Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mthatha General Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Nelson Mandela Academic Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Nessie Knight Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Nompumelelo Hospital  Peddie",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Port Alfred Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Port Elizabeth Provincial Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "SAWAS Memorial Hospital Jansenville",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Settlers Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Sipetu Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "SS Gida Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Barnabas Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Elizabeth's Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "St Francis Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Lucy's Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Patrick's Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Sterkstroom Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Steynsburg Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Stutterheim Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Sundays Valley  Hospital Kirkwood",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Tafalofefe Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Tayler Bequest Hospital Matatiele",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Taylor Bequest Hospital Elundini",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Uitenhage Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Umlamli Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Victoria Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Wilhelm Stahl Hospital Middelburg",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Willowmore Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Zitulele Hospital",
+    "province": "Eastern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Boitumelo Hospital",
+    "province": "Free State",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Bongani Hospital",
+    "province": "Free State",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Botshabelo Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Diamond Diamant Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dihlabeng Hospital",
+    "province": "Free State",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Dr JS Moroka Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Elizabeth Ross Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Embekweni Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Fezi Ngumbentombi Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Itemoheng Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "John Daniel Newberry Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Katleho Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mafube Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Matlakeng Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mofumahadi Manapo Mopeli Hospital",
+    "province": "Free State",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Mohau Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Nala Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "National District Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Nketoana Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Parys Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Pelonomi Hospital",
+    "province": "Free State",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Phekolong Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Phumelela Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Phuthuloha Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Senorita Ntlabathi Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Stoffel Coetzee Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Thebe Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Thusanong Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Tokollo Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Universitas C Hospital",
+    "province": "Free State",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Winburg Hospital",
+    "province": "Free State",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bertha Gxowa Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bheki Mlangeni District Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bronkhorstspruit Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Carletonville Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Charlotte Maxeke Hospital",
+    "province": "Gauteng",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Chris Hani Baragwanath Hospital",
+    "province": "Gauteng",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Dr George Mukhari Hospital",
+    "province": "Gauteng",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Dr Yusuf Dadoo Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Edenvale Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Far East Rand Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Heidelberg Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Helen Joseph Hospital",
+    "province": "Gauteng",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Jubilee Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Kalafong Hospital",
+    "province": "Gauteng",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Kopanong Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Leratong Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Mamelodi Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Odi Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Pholosong Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Pretoria West Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Rahima Moosa Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Sebokeng Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "South Rand Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Steve Biko Academic Hospital",
+    "province": "Gauteng",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Tambo Memorial Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Tembisa Hospital",
+    "province": "Gauteng",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Thelle Mogoerane Regional Hospital",
+    "province": "Gauteng",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Tshwane District Hospital",
+    "province": "Gauteng",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Addington Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Appelsbosch Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Benedictine Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bethesda Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Catherine Booth Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Ceza Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Charles Johnson Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Christ the King Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Church of Scotland Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dundee Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "East Griqualand and Usher Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Edendale Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Ekhombe Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Emmaus Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Eshowe Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Estcourt Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "GJ Crooke's Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Grey's Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Greytown Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Hlabisa Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Inkosi Albert Luthuli Central Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Itshelejuba Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "King Edward VIII Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "KwaMagwaza Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Ladysmith Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Lower Umfolozi War Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Madadeni Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Mahatma Gandhi Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Manguzi Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mbongolwane Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "McCords Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Montebello Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mosvold Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mseleni Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Murchison Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Newcastle Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Ngwelezana Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Niemeyer Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Nkandla Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Nkonjeni Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Northdale Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Osindisweni Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Port Shepstone Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Prince Mshiyeni Memorial Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Rietvlei Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "RK Khan Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "St Aidans Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "St Andrew's Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Apollinaris Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Mary's Hospital Mariannhill",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Stanger Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Umphumulo Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Untunjambili Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Vryheid Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Wentworth Hospital",
+    "province": "KwaZulu-Natal",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Botlokwa Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dilokong Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Donald Fraser Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dr CN Phatudi Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dr Machupe Mphahlele Memorial Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Elim Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Ellisras Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "FH Odendaal Nylstroom Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "George Masebe Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Groblersdal Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Helene Franz Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Jane Furse Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Kgapane Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Lebowakgomo Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Letaba Hospital",
+    "province": "Limpopo",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Louis Trichardt Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Malamulele Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mankweng Hospital",
+    "province": "Limpopo",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Maphutha L Malatjie Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Matlala Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mecklenburg Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Messina Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mokopane Hospital",
+    "province": "Limpopo",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Nkhensani Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Philadelphia Hospital",
+    "province": "Limpopo",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Pietersburg Hospital",
+    "province": "Limpopo",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Sekororo Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Seshego Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Siloam Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Joseph's Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "St Rita's Hospital",
+    "province": "Limpopo",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Thabazimbi Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Tshilidzini Hospital",
+    "province": "Limpopo",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Van Velden Memorial Tzaneen Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Voortrekker Memorial Potgietersrus Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Warmbaths Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "WF Knobel Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Witpoort Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Zebediela Hospital",
+    "province": "Limpopo",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Amajuba Memorial Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Barberton Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bernice Samuels Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Bethal Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Carolina Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Elsie Ballot Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Embhuleni Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Ermelo Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Evander Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "HA Grove Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Impungwe Hospital Wolwekrans",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "KwaMhlanga Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Lydenburg Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mapulaneng Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Matibidi Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Matikwana Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Middelburg Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mmametlhake Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Piet Retief Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Rob Ferreira Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Sabie Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Shongwe Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Standerton Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Themba Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Tintswalo Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Tonga Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Waterval Boven Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Witbank Hospital",
+    "province": "Mpumalanga",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Brits Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Christiana Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Ganyesa Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Gelukspan Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "General de la Rey Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Job Shimankana Tabane Hospital",
+    "province": "North West",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Joe Morolong Memorial Hospital",
+    "province": "North West",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Klerksdorp-Tshepong Tertiary Hospital",
+    "province": "North West",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Koster Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Lehurutshe Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mahikeng Provincial Hospital",
+    "province": "North West",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Moses Kotane Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Nic Bodenstein Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Potchefstroom Hospital",
+    "province": "North West",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Schweizer-Reneke Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Taung Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Thusong Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Zeerust Hospital",
+    "province": "North West",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Calvinia Abraham Esau Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "De Aar Central Karoo Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Dr Harry Surtie Hospital",
+    "province": "Northern Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Hartswater Connie Vorster Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Kakamas Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Kimberley Hospital",
+    "province": "Northern Cape",
+    "facilityType": "Provincial Tertiary Hospital"
+  },
+  {
+    "name": "Kuruman Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Manne Dipico Colesberg Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Postmasburg Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Prieska Bill Pickard Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Prof ZK Matthews Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Springbok Dr Van Niekerk Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Tshwaragano Hospital",
+    "province": "Northern Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Alan Blyth Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Beaufort West Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Caledon Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Ceres Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Citrusdal Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Clanwilliam Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Eerste River Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "False Bay Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "George Hospital",
+    "province": "Western Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "GF Jooste Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Groote Schuur Hospital",
+    "province": "Western Cape",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Helderberg Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Hermanus Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Karl Bremer Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Khayelitsha Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Knysna Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Laingsburg Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "LAPA Munnik Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mitchells Plain Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Montagu Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Mossel Bay Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Murraysburg Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "New Somerset Hospital",
+    "province": "Western Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Otto Du Plessis Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Oudtshoorn Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Paarl Hospital",
+    "province": "Western Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Prince Albert Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Radie Kotze Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Riversdale Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Robertson Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Stellenbosch Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Swartland Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Swellendam Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Tygerberg Hospital",
+    "province": "Western Cape",
+    "facilityType": "National Central Hospital"
+  },
+  {
+    "name": "Tygerberg Level 2 Hospital",
+    "province": "Western Cape",
+    "facilityType": "Regional Hospital"
+  },
+  {
+    "name": "Uniondale Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Victoria Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Vredenburg Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Vredendal Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Wesfleur Hospital",
+    "province": "Western Cape",
+    "facilityType": "District Hospital"
+  },
+  {
+    "name": "Worcester Hospital",
+    "province": "Western Cape",
+    "facilityType": "Regional Hospital"
+  }
+]

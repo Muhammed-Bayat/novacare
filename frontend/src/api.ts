@@ -8,15 +8,79 @@ export interface CurrentUser {
   email: string | null;
   displayName: string | null;
   userType: UserType;
+  isPlatformOperator: boolean;
+  staffRole: 'administrator' | 'nurse' | 'doctor' | null;
+  hospitalId: string | null;
+}
+
+export interface Hospital {
+  id: string;
+  name: string;
+  province: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  facilityType: string | null;
+  services: { id: string; name: string }[];
+}
+
+export interface Appointment {
+  id: string;
+  hospitalId: string;
+  serviceId: string;
+  date: string;
+  time: string;
+  status: string;
+  hospitalName: string;
+  serviceName: string;
+  address: string;
+}
+
+export interface QueueEntry {
+  id: string;
+  status: 'waiting' | 'called';
+  hospitalName: string;
+  serviceName: string;
+  address: string;
+  joinedAt: string;
+  position: number;
+  estimatedWaitMinutes: number;
+}
+
+export interface PatientProfile {
+  phone: string | null;
+  dateOfBirth: string | null;
+  homeAddress: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  chronicConditions: string[];
+  allergies: string[];
+  medications: string[];
+  bloodType: string | null;
+  accessNeeds: string | null;
+  healthNotes: string | null;
+  healthDataConsent: boolean;
+}
+
+export interface ClinicalDiagnosis {
+  id: string;
+  diagnosis: string;
+  diagnosedOn: string;
+  clinicianName: string | null;
+  notes: string | null;
 }
 
 export async function authenticatedRequest<T>(
   path: string,
   accessToken: string,
+  options: { method?: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; body?: unknown } = {},
 ): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    method: options.method,
+    headers: { Authorization: `Bearer ${accessToken}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
+  if (response.status === 204) return undefined as T;
   const payload: unknown = await response.json();
 
   if (!response.ok) {
