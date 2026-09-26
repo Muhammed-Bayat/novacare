@@ -51,6 +51,16 @@ function stubPatientData(appointments: unknown[], queueEntries: unknown[] = [], 
   }));
 }
 
+function stubAdminData(user: Parameters<typeof stubCurrentUser>[0] = {}, members: unknown[] = [], pendingInvitations: unknown[] = []) {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/v1/admin/staff')) {
+      return { ok: true, json: async () => ({ data: { hospitalId: 'h1', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital', members, pendingInvitations } }) };
+    }
+    return { ok: true, json: async () => ({ data: { id: 'user-1', auth0Subject: 'auth0|user-1', email: 'user@example.com', displayName: 'Amina Dlamini', userType: 'patient', isPlatformOperator: false, staffRole: null, hospitalId: null, hospitalName: null, ...user } }) };
+  }));
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -183,7 +193,7 @@ describe('App', () => {
   it('shows a staff sign-in prompt when opening the staff portal anonymously', () => {
     renderAt('/staff');
     expect(screen.getByRole('heading', { name: 'Staff sign-in required' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Today’s Appointments' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Sign in' }).length).toBeGreaterThan(0);
   });
 
   it('renders the staff portal with the signed-in user and hospital', async () => {
@@ -204,28 +214,48 @@ describe('App', () => {
 
   it('redirects team members who open the wrong portal', async () => {
     auth.state.isAuthenticated = true;
-    stubCurrentUser({ userType: 'admin', staffRole: 'administrator' });
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/staff');
     expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
   });
 
   it('renders the admin portal for an assigned administrator with the invite form', async () => {
     auth.state.isAuthenticated = true;
-    stubCurrentUser({ userType: 'admin', staffRole: 'administrator', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital' });
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/admin');
     expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Invite a staff member or doctor by email')).toBeInTheDocument();
+    expect(screen.getByLabelText('Team member email')).toBeInTheDocument();
+    expect(screen.getByLabelText('Role')).toBeInTheDocument();
   });
 
-  it('invites a staff member from the admin portal', async () => {
+  it.each([
+    ['nurse', 'Nurse · all specialties'],
+    ['doctor', 'Doctor · all specialties'],
+    ['administrator', 'Administrator'],
+  ])('invites a %s from the admin portal', async (role, optionLabel) => {
     auth.state.isAuthenticated = true;
-    stubCurrentUser({ userType: 'admin', staffRole: 'administrator' });
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/admin');
-    await userEvent.type(await screen.findByPlaceholderText('Invite a staff member or doctor by email'), 'kelly@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
+    const emailInput = await screen.findByLabelText('Team member email');
+    await userEvent.selectOptions(screen.getByLabelText('Role'), optionLabel);
+    await userEvent.type(emailInput, `${role}@example.com`);
+    await userEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
     const invitePost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/admin/staff') && (options as RequestInit | undefined)?.method === 'POST');
     expect(invitePost).toBeDefined();
-    expect(JSON.parse(String((invitePost?.[1] as RequestInit).body))).toMatchObject({ email: 'kelly@example.com', role: 'nurse' });
+    expect(JSON.parse(String((invitePost?.[1] as RequestInit).body))).toMatchObject({ email: `${role}@example.com`, role });
+  });
+
+  it('shows hospital team members and pending invitations on the admin portal', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, [
+      { email: 'nurse@example.com', displayName: 'Amina Dlamini', role: 'nurse', since: '2026-09-26T12:00:00.000Z' },
+    ], [
+      { email: 'dr@example.com', role: 'doctor', expiresAt: '2026-09-29T12:00:00.000Z', sentAt: '2026-09-26T12:00:00.000Z' },
+    ]);
+    renderAt('/admin');
+    expect(await screen.findByText(/nurse@example\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/dr@example\.com/)).toBeInTheDocument();
+    expect(screen.getByText('Invitation pending')).toBeInTheDocument();
   });
 
   it('starts the Auth0 sign-in flow from the landing page', async () => {
@@ -243,7 +273,7 @@ describe('App', () => {
 
   it('routes signed-in administrators on / to their dashboard', async () => {
     auth.state.isAuthenticated = true;
-    stubCurrentUser({ userType: 'admin', staffRole: 'administrator' });
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/');
     expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
   });

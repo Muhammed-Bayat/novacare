@@ -58,8 +58,8 @@ export function LandingPage() {
           <h1>Simple, Trusted Healthcare for Everyone</h1>
           <p className="muted">Book appointments, find trusted care nearby and stay connected with your healthcare team from one clear patient portal.</p>
           <div className="hero-actions">
-            <button type="button" className="primary-btn">Book Appointment</button>
-            <button type="button" className="secondary-btn">Find a Doctor</button>
+            <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Book Appointment</button>
+            <button type="button" className="secondary-btn" onClick={() => void loginWithRedirect()}>Find a Doctor</button>
           </div>
           <div className="trust">
             <span>People first</span>

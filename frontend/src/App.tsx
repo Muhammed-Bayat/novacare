@@ -1,50 +1,117 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { authenticatedRequest, type Appointment, type ClinicalDiagnosis, type CurrentUser, type Hospital, type PatientProfile, type QueueEntry } from './api.ts';
+import { authenticatedRequest, type Appointment, type ClinicalDiagnosis, type CurrentUser, type Hospital, type HospitalAccess, type PatientProfile, type QueueEntry } from './api.ts';
+import { Brand, TopBar, TopNav } from './components/TopBar.tsx';
 import { AdminPortalPage } from './pages/AdminPortalPage.tsx';
 import { LandingPage } from './pages/LandingPage.tsx';
 import { PatientPortalPage } from './pages/PatientPortalPage.tsx';
+import { getPortalPath } from './portal.ts';
 import { SignInPage } from './pages/SignInPage.tsx';
 import { StaffPortalPage } from './pages/StaffPortalPage.tsx';
+import './styles/patient-portal.css';
+import './styles/patient-care.css';
 
 const BOOKING_START = '07:00';
 const BOOKING_END = '19:00';
+const CLAIM_TOKEN_STORAGE_KEY = 'novacare.claimToken';
 
 function HomeRoute() {
   const { isAuthenticated } = useAuth0();
   const handlingAuthRedirect = new URLSearchParams(window.location.search).has('code');
+  const pendingClaimToken = isAuthenticated && !handlingAuthRedirect
+    ? window.sessionStorage.getItem(CLAIM_TOKEN_STORAGE_KEY)
+    : null;
+  if (pendingClaimToken) {
+    return <Navigate to={`/invitations/claim?token=${encodeURIComponent(pendingClaimToken)}`} replace />;
+  }
   return isAuthenticated || handlingAuthRedirect ? <SignInPage /> : <LandingPage />;
 }
 
 function InvitationClaimPage() {
   const { isAuthenticated, isLoading, error, getAccessTokenSilently, loginWithRedirect } = useAuth0();
+  const navigate = useNavigate();
   const [message, setMessage] = useState('Preparing your invitation...');
-  const token = new URLSearchParams(window.location.search).get('token');
+  const [claimedRole, setClaimedRole] = useState<string>();
+  const [claimFailed, setClaimFailed] = useState(false);
+  const claimStarted = useRef(false);
+  const [token] = useState<string | null>(() => {
+    const urlToken = new URLSearchParams(window.location.search).get('token');
+    if (urlToken) {
+      window.sessionStorage.setItem(CLAIM_TOKEN_STORAGE_KEY, urlToken);
+      return urlToken;
+    }
+    const storedToken = window.sessionStorage.getItem(CLAIM_TOKEN_STORAGE_KEY);
+    if (storedToken) {
+      window.history.replaceState({}, document.title, `${window.location.pathname}?token=${encodeURIComponent(storedToken)}`);
+      return storedToken;
+    }
+    return null;
+  });
 
   useEffect(() => {
-    if (!token || isLoading) return;
+    if (!token || isLoading || claimStarted.current) return;
     if (!isAuthenticated) {
       void loginWithRedirect({ appState: { returnTo: `${window.location.pathname}${window.location.search}` } });
       return;
     }
-    let cancelled = false;
-    async function claim() {
+    claimStarted.current = true;
+    void (async () => {
       try {
         const accessToken = await getAccessTokenSilently();
         const result = await authenticatedRequest<{ data: { role: string } }>('/api/v1/invitations/claim', accessToken, { method: 'POST', body: { token } });
-        if (!cancelled) setMessage(`Your ${result.data.role} access has been activated. You can now continue to NovaCare.`);
+        setClaimedRole(result.data.role);
+        setMessage(`Your ${result.data.role} access has been activated.`);
+        window.sessionStorage.removeItem(CLAIM_TOKEN_STORAGE_KEY);
+        window.history.replaceState({}, document.title, window.location.pathname);
       } catch (claimError) {
-        if (!cancelled) setMessage(claimError instanceof Error ? claimError.message : 'We could not claim this invitation.');
+        setClaimFailed(true);
+        setMessage(claimError instanceof Error ? claimError.message : 'We could not claim this invitation.');
       }
-    }
-    void claim();
-    return () => { cancelled = true; };
+    })();
   }, [getAccessTokenSilently, isAuthenticated, isLoading, loginWithRedirect, token]);
 
-  if (!token) return <main className="status">This invitation link is invalid.</main>;
+  async function continueToPortal() {
+    try {
+      const accessToken = await getAccessTokenSilently();
+      const me = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', accessToken);
+      navigate(getPortalPath(me.data), { replace: true });
+    } catch {
+      navigate('/signin', { replace: true });
+    }
+  }
+
+  if (!token) return <main className="nv-signin">
+    <section className="hero-card signin-card">
+      <h1>This invitation link is invalid</h1>
+      <p className="muted">Ask your overseer for a fresh invitation, then open it while signed in with the invited email address.</p>
+      <button type="button" className="primary-btn" onClick={() => { window.sessionStorage.removeItem(CLAIM_TOKEN_STORAGE_KEY); navigate('/', { replace: true }); }}>Go to sign in</button>
+    </section>
+  </main>;
   if (error) return <main className="status">Sign-in failed: {error.message}</main>;
-  return <main className="status">{message}</main>;
+  return <main className="nv-signin">
+    <section className="hero-card signin-card">
+      {claimedRole ? (
+        <>
+          <h1>Access activated</h1>
+          <p className="muted">{message} Continue to your portal to get started.</p>
+          <button type="button" className="primary-btn" onClick={() => void continueToPortal()}>Continue to your portal</button>
+        </>
+      ) : claimFailed ? (
+        <>
+          <h1>We could not activate this invitation</h1>
+          <p className="muted">{message}</p>
+          <p className="muted">Check that you are signed in with the same email address the invitation was sent to, then open the invitation link again.</p>
+          <button type="button" className="primary-btn" onClick={() => navigate('/signin', { replace: true })}>Go to sign in</button>
+        </>
+      ) : (
+        <>
+          <h1>Setting up your access…</h1>
+          <p className="muted">{message}</p>
+        </>
+      )}
+    </section>
+  </main>;
 }
 
 function formatDate(date: string) {
@@ -160,11 +227,214 @@ function Dashboard() {
 }
 
 function OverseerPage() {
-  const { getAccessTokenSilently } = useAuth0(); const navigate = useNavigate();
-  const [hospitals, setHospitals] = useState<Hospital[]>([]); const [hospitalId, setHospitalId] = useState(''); const [email, setEmail] = useState(''); const [message, setMessage] = useState<string>(); const [error, setError] = useState<string>();
-  useEffect(() => { let cancelled = false; async function load() { try { const token = await getAccessTokenSilently(); const me = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token); if (!me.data.isPlatformOperator) { navigate('/', { replace: true }); return; } const result = await authenticatedRequest<{ data: Hospital[] }>('/api/v1/hospitals', token); if (!cancelled) { setHospitals(result.data); setHospitalId(result.data[0]?.id ?? ''); } } catch (loadError) { if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Could not load overseer tools.'); } } void load(); return () => { cancelled = true; }; }, [getAccessTokenSilently, navigate]);
-  async function assign(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setError(undefined); try { const token = await getAccessTokenSilently(); const result = await authenticatedRequest<{ data: { message: string } }>('/api/v1/overseer/administrators', token, { method: 'POST', body: { hospitalId, email } }); setMessage(result.data.message); setEmail(''); } catch (inviteError) { setError(inviteError instanceof Error ? inviteError.message : 'Could not assign administrator.'); } }
-  return <main className="profile-page"><header className="booking-header"><button className="back-button" type="button" onClick={() => navigate('/')}>Patient view</button><div><p className="eyebrow">Platform overseer</p><h1>Hospital access.</h1></div></header><div className="profile-layout"><form className="profile-form" onSubmit={(event) => void assign(event)}><section><p className="eyebrow">Assign hospital administrator</p><p>Administrators can manage one hospital and invite their own nurses and doctors.</p><label>Hospital<select value={hospitalId} onChange={(event) => setHospitalId(event.target.value)}>{hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} · {hospital.province}</option>)}</select></label><label>Administrator email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label></section>{error ? <p className="error-message">{error}</p> : null}{message ? <p>{message}</p> : null}<button type="submit">Assign administrator</button></form><aside className="diagnosis-panel"><p className="eyebrow">Workflow</p><h2>How access works</h2><p>You assign an administrator to a hospital. They sign in with that email to claim access, then invite nurses and doctors.</p></aside></div></main>;
+  const { user, logout, getAccessTokenSilently } = useAuth0();
+  const navigate = useNavigate();
+  const [hospitals, setHospitals] = useState<Hospital[]>();
+  const [search, setSearch] = useState('');
+  const [selectedHospital, setSelectedHospital] = useState<Hospital>();
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState<string>();
+  const [claimUrl, setClaimUrl] = useState<string>();
+  const [copied, setCopied] = useState(false);
+  const [access, setAccess] = useState<HospitalAccess>();
+  const [loadError, setLoadError] = useState<string>();
+  const [inviteError, setInviteError] = useState<string>();
+  const [assigning, setAssigning] = useState(false);
+  const deferredSearch = useDeferredValue(search);
+  const matches = (hospitals ?? []).filter((hospital) => hospital.name.toLowerCase().includes(deferredSearch.trim().toLowerCase()));
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const token = await getAccessTokenSilently();
+        const me = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token);
+        if (!me.data.isPlatformOperator) { navigate('/', { replace: true }); return; }
+        const result = await authenticatedRequest<{ data: Hospital[] }>('/api/v1/hospitals', token);
+        if (!cancelled) setHospitals(result.data);
+      } catch (error) {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Could not load overseer tools.');
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [getAccessTokenSilently, navigate]);
+
+  useEffect(() => {
+    if (!selectedHospital) { setAccess(undefined); return; }
+    let cancelled = false;
+    async function loadAccess() {
+      try {
+        const token = await getAccessTokenSilently();
+        const result = await authenticatedRequest<{ data: HospitalAccess }>(`/api/v1/overseer/hospitals/${selectedHospital!.id}/access`, token);
+        if (!cancelled) setAccess(result.data);
+      } catch {
+        if (!cancelled) setAccess(undefined);
+      }
+    }
+    void loadAccess();
+    return () => { cancelled = true; };
+  }, [getAccessTokenSilently, selectedHospital]);
+
+  async function assign(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedHospital) return;
+    setAssigning(true); setInviteError(undefined); setMessage(undefined); setClaimUrl(undefined); setCopied(false);
+    try {
+      const token = await getAccessTokenSilently();
+      const result = await authenticatedRequest<{ data: { message: string; claimUrl: string } }>('/api/v1/overseer/administrators', token, { method: 'POST', body: { hospitalId: selectedHospital.id, email } });
+      setMessage(result.data.message);
+      setClaimUrl(result.data.claimUrl);
+      setEmail('');
+      const refreshed = await authenticatedRequest<{ data: HospitalAccess }>(`/api/v1/overseer/hospitals/${selectedHospital.id}/access`, token);
+      setAccess(refreshed.data);
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : 'Could not assign administrator.');
+    } finally {
+      setAssigning(false);
+    }
+  }
+
+  async function copyClaimLink() {
+    if (!claimUrl) return;
+    try {
+      await navigator.clipboard.writeText(claimUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  function chooseHospital(hospital: Hospital) {
+    setSelectedHospital(hospital);
+    setMessage(undefined);
+    setInviteError(undefined);
+    setClaimUrl(undefined);
+    setCopied(false);
+  }
+
+  const displayName = user?.given_name ?? user?.name ?? 'Overseer';
+  const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'N';
+
+  return (
+    <div className="app nv-patient">
+      <TopBar>
+        <Brand />
+        <TopNav items={[{ label: 'Hospital access', active: true }]} />
+        <div className="actions">
+          <button type="button" className="user-chip">
+            <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>Hi, {displayName}</span>
+          </button>
+          <button type="button" className="ghost-btn" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Logout</button>
+        </div>
+      </TopBar>
+
+      <section className="hero-card hero nv-patient-hero">
+        <div className="hero-left">
+          <div className="hero-copy">
+            <p className="eyebrow">NovaCare platform overseer</p>
+            <h1>Hospital access.</h1>
+            <p className="muted">Assign an administrator to a hospital. They manage their hospital, invite nurses and doctors, and keep care coordinated.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="nv-care-view">
+        <section className="card nv-care-card" aria-label="Find a hospital">
+          <header className="nv-care-card-head">
+            <h2 className="section-title">Find a hospital</h2>
+            <p className="muted small">Search the directory by name, then assign its administrator. The invitation expires in 72 hours.</p>
+          </header>
+          <div className="nv-finder-grid">
+            <div className="nv-finder-controls">
+              <label className="nv-field">Hospital name
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Groote Schuur" autoComplete="off" />
+              </label>
+              <div className="nv-results" aria-live="polite">
+                {loadError ? <p className="nv-error" role="alert">{loadError}</p> : null}
+                {hospitals === undefined && !loadError ? <p className="muted small">Loading the hospital directory…</p> : null}
+                {hospitals !== undefined ? <p className="muted small">{matches.length} hospital{matches.length === 1 ? '' : 's'} found</p> : null}
+                {hospitals !== undefined && matches.length === 0 ? <p className="muted small">No hospitals match this name. Try a shorter search.</p> : null}
+                <ul className="nv-result-list">
+                  {matches.map((hospital) => (
+                    <li key={hospital.id}>
+                      <button type="button" className={`nv-result ${selectedHospital?.id === hospital.id ? 'selected' : ''}`} onClick={() => chooseHospital(hospital)}>
+                        <span><strong>{hospital.name}</strong><small className="muted">{hospital.address}</small></span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="nv-finder-detail">
+              {!selectedHospital ? (
+                <div className="nv-select-prompt"><p className="muted small">Select a hospital to assign its administrator.</p></div>
+              ) : (
+                <div className="nv-detail-card">
+                  <div className="nv-detail-head">
+                    <div>
+                      <h3>{selectedHospital.name}</h3>
+                      <p className="muted small">{selectedHospital.facilityType ?? selectedHospital.province}</p>
+                    </div>
+                    <span className="badge blue">{selectedHospital.services.length} services</span>
+                  </div>
+                  <p className="muted small">{selectedHospital.address}</p>
+                  <div className="nv-service-tags">
+                    {selectedHospital.services.map((service) => <span key={service.id} className="nv-tag">{service.name}</span>)}
+                  </div>
+                  <div className="nv-access-list">
+                    <strong className="small">Administrator access</strong>
+                    {access === undefined ? (
+                      <p className="muted small">Loading access status…</p>
+                    ) : <>
+                      {access.administrators.length === 0 && access.pendingInvitations.length === 0 ? (
+                        <p className="muted small" style={{ margin: 0 }}>No administrator assigned yet.</p>
+                      ) : null}
+                      {access.administrators.map((administrator) => (
+                        <p key={administrator.email ?? administrator.displayName} className="nv-access-row">
+                          <span>{administrator.displayName || administrator.email}<small className="muted"> · {administrator.email}</small></span>
+                          <span className="badge green">Active</span>
+                        </p>
+                      ))}
+                      {access.pendingInvitations.map((invitation) => (
+                        <p key={invitation.email} className="nv-access-row">
+                          <span>{invitation.email}</span>
+                          <span className={`badge ${new Date(invitation.expiresAt) < new Date() ? 'red' : 'yellow'}`}>
+                            {new Date(invitation.expiresAt) < new Date() ? 'Expired' : 'Invitation pending'}
+                          </span>
+                        </p>
+                      ))}
+                    </>}
+                  </div>
+                  <form className="nv-book-form" onSubmit={(event) => void assign(event)}>
+                    <label className="nv-field">Administrator email
+                      <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required />
+                    </label>
+                    {inviteError ? <p className="nv-error" role="alert">{inviteError}</p> : null}
+                    {message ? <p className="nv-notice" role="status">{message}</p> : null}
+                    {claimUrl ? (
+                      <div className="nv-claim-box">
+                        <strong className="small">Invitation link</strong>
+                        <code>{claimUrl}</code>
+                        <div className="nv-claim-copy">
+                          <span className="muted small">Also sent by email. Open or share this link if the email does not arrive — the recipient must sign in with the invited email address.</span>
+                          <button type="button" className="ghost-btn" onClick={() => void copyClaimLink()}>{copied ? 'Copied' : 'Copy link'}</button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="nv-book-actions">
+                      <button type="submit" className="primary-btn" disabled={assigning}>{assigning ? 'Sending invitation…' : 'Assign administrator'}</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </section>
+    </div>
+  );
 }
 
 function QueuePage() {

@@ -2,15 +2,8 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { authenticatedRequest, type CurrentUser } from '../api.ts';
+import { getPortalPath } from '../portal.ts';
 import '../styles/sign-in.css';
-
-function getPortalPath(user: CurrentUser): string {
-  if (user.isPlatformOperator) return '/overseer';
-  if (user.staffRole === 'administrator') return '/admin';
-  if (user.staffRole === 'nurse') return '/staff';
-  if (user.staffRole === 'doctor') return '/doctor';
-  return '/patient';
-}
 
 export function SignInPage() {
   const { isAuthenticated, isLoading, error, loginWithRedirect, getAccessTokenSilently } = useAuth0();

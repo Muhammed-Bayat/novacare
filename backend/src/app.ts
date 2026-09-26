@@ -4,7 +4,7 @@ import express from 'express';
 import helmet from 'helmet';
 import { requireAuth } from './auth.js';
 import { getPool } from './db.js';
-import { sendInvitationEmail } from './email.js';
+import { buildInvitationUrl, sendInvitationEmail } from './email.js';
 
 type UserRow = { id: string; auth0_subject: string; email: string | null; display_name: string | null };
 type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
@@ -239,8 +239,9 @@ async function buildQuestionnaireWithGemini(complaint: string): Promise<Question
   }
 }
 
-async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string }): Promise<void> {
+async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string; baseUrl: string }): Promise<{ claimUrl: string }> {
   const token = invitationToken();
+  const claimUrl = buildInvitationUrl(token, input.baseUrl);
   const invitation = await getPool().query(
     `INSERT INTO staff_invitations (hospital_id, email, role, invited_by, token_hash, expires_at, claimed_by, claimed_at, sent_at)
      VALUES ($1, lower($2), $3, $4, $5, now() + interval '72 hours', NULL, NULL, NULL)
@@ -251,12 +252,13 @@ async function createAndSendInvitation(input: { hospitalId: string; hospitalName
     [input.hospitalId, input.email, input.role, input.invitedBy, tokenHash(token)],
   );
   if (!invitation.rowCount) throw new Error('This recipient has already claimed this hospital role.');
-  await sendInvitationEmail({ recipient: input.email, role: input.role, hospitalName: input.hospitalName, token });
+  await sendInvitationEmail({ recipient: input.email, role: input.role, hospitalName: input.hospitalName, claimUrl });
   await getPool().query(
     `UPDATE staff_invitations SET sent_at = now()
      WHERE hospital_id = $1 AND lower(email) = lower($2) AND role = $3 AND token_hash = $4`,
     [input.hospitalId, input.email, input.role, tokenHash(token)],
   );
+  return { claimUrl };
 }
 
 async function synchronizeUser(subject: string, email: string | null, displayName: string | null): Promise<UserRow> {
@@ -296,6 +298,20 @@ export function createApp() {
     },
   }));
   app.use(express.json());
+  app.use((req, res, next) => {
+    res.on('finish', () => {
+      if (req.path.startsWith('/api/')) console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode}`);
+    });
+    next();
+  });
+
+  function resolveBaseUrl(req: express.Request): string {
+    const origin = req.get('origin');
+    if (origin && origins.includes(origin)) return origin;
+    const configured = process.env.APP_BASE_URL;
+    if (!configured) throw new Error('APP_BASE_URL is not configured');
+    return configured;
+  }
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
@@ -310,8 +326,7 @@ export function createApp() {
                 (SELECT h.name FROM hospital_memberships hm JOIN hospitals h ON h.id = hm.hospital_id WHERE hm.user_id = $1 AND hm.active) AS hospital_name`, [user.id],
       );
       const access = roles.rows[0]!;
-      const userType = await getPool().query<{ user_type: string }>('SELECT user_type FROM users WHERE id = $1', [user.id]);
-      const derivedUserType = access.role === 'administrator' ? 'admin' : access.role ? 'staff' : userType.rows[0]?.user_type ?? 'patient';
+      const derivedUserType = access.role === 'administrator' ? 'admin' : access.role ? 'staff' : 'patient';
       res.json({ data: { id: user.id, auth0Subject: user.auth0_subject, email: user.email, displayName: user.display_name, userType: derivedUserType, isPlatformOperator: access.operator, staffRole: access.role, hospitalId: access.hospital_id, hospitalName: access.hospital_name } });
     } catch (error) {
       next(error);
@@ -379,8 +394,38 @@ export function createApp() {
       if (typeof hospitalId !== 'string' || typeof email !== 'string' || !email.includes('@')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a hospital and valid administrator email.' } }); return; }
       const hospital = await getPool().query<{ name: string }>('SELECT name FROM hospitals WHERE id = $1 AND active', [hospitalId]);
       if (!hospital.rowCount) { res.status(404).json({ error: { code: 'HOSPITAL_NOT_FOUND', message: 'That hospital is not available.' } }); return; }
-      await createAndSendInvitation({ hospitalId, hospitalName: hospital.rows[0]!.name, email, role: 'administrator', invitedBy: user.id });
-      res.status(201).json({ data: { message: 'Administrator invitation email sent. It expires in 72 hours.' } });
+      const { claimUrl } = await createAndSendInvitation({ hospitalId, hospitalName: hospital.rows[0]!.name, email, role: 'administrator', invitedBy: user.id, baseUrl: resolveBaseUrl(req) });
+      res.status(201).json({ data: { message: 'Administrator invitation email sent. It expires in 72 hours.', claimUrl } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/overseer/hospitals/:id/access', requireAuth, async (req, res, next) => {
+    try {
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      const operator = await getPool().query('SELECT 1 FROM platform_operators WHERE user_id = $1', [user.id]);
+      if (!operator.rowCount) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Platform overseer access is required.' } }); return; }
+      const hospital = await getPool().query('SELECT 1 FROM hospitals WHERE id = $1 AND active', [req.params.id]);
+      if (!hospital.rowCount) { res.status(404).json({ error: { code: 'HOSPITAL_NOT_FOUND', message: 'That hospital is not available.' } }); return; }
+      const administrators = await getPool().query<{ email: string | null; display_name: string | null; created_at: string }>(
+        `SELECT u.email, u.display_name, hm.created_at
+         FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id
+         WHERE hm.hospital_id = $1 AND hm.role = 'administrator' AND hm.active
+         ORDER BY hm.created_at`,
+        [req.params.id],
+      );
+      const invitations = await getPool().query<{ email: string; expires_at: string; sent_at: string | null }>(
+        `SELECT email, expires_at, sent_at
+         FROM staff_invitations
+         WHERE hospital_id = $1 AND role = 'administrator' AND claimed_at IS NULL
+         ORDER BY created_at DESC`,
+        [req.params.id],
+      );
+      res.json({
+        data: {
+          administrators: administrators.rows.map((row) => ({ email: row.email, displayName: row.display_name, since: row.created_at })),
+          pendingInvitations: invitations.rows.map((row) => ({ email: row.email, expiresAt: row.expires_at, sentAt: row.sent_at })),
+        },
+      });
     } catch (error) { next(error); }
   });
 
@@ -389,10 +434,41 @@ export function createApp() {
       const membership = await getPool().query<{ hospital_id: string; hospital_name: string }>(`SELECT hm.hospital_id, h.name AS hospital_name FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id JOIN hospitals h ON h.id = hm.hospital_id WHERE u.auth0_subject = $1 AND hm.role = 'administrator' AND hm.active`, [req.auth!.subject]);
       const hospitalId = membership.rows[0]?.hospital_id;
       const { email, role } = req.body as { email?: unknown; role?: unknown };
-      if (!hospitalId || typeof email !== 'string' || !email.includes('@') || (role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid staff or doctor email.' } }); return; }
+      if (!hospitalId || typeof email !== 'string' || !email.includes('@') || (role !== 'administrator' && role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid team role and email.' } }); return; }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
-      await createAndSendInvitation({ hospitalId, hospitalName: membership.rows[0]!.hospital_name, email, role, invitedBy: user.id });
-      res.status(201).json({ data: { message: `${role === 'nurse' ? 'Staff' : 'Doctor'} invitation email sent. It expires in 72 hours.` } });
+      const { claimUrl } = await createAndSendInvitation({ hospitalId, hospitalName: membership.rows[0]!.hospital_name, email, role, invitedBy: user.id, baseUrl: resolveBaseUrl(req) });
+      const roleLabel = role === 'administrator' ? 'Administrator' : role === 'nurse' ? 'Staff' : 'Doctor';
+      res.status(201).json({ data: { message: `${roleLabel} invitation email sent. It expires in 72 hours.`, claimUrl } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/admin/staff', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await getPool().query<{ hospital_id: string; hospital_name: string }>(`SELECT hm.hospital_id, h.name AS hospital_name FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id JOIN hospitals h ON h.id = hm.hospital_id WHERE u.auth0_subject = $1 AND hm.role = 'administrator' AND hm.active`, [req.auth!.subject]);
+      const hospital = membership.rows[0];
+      if (!hospital) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Administrator access is required.' } }); return; }
+      const members = await getPool().query<{ email: string | null; display_name: string | null; role: 'administrator' | 'nurse' | 'doctor'; created_at: string }>(
+        `SELECT u.email, u.display_name, hm.role, hm.created_at
+         FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id
+         WHERE hm.hospital_id = $1 AND hm.active
+         ORDER BY hm.created_at`,
+        [hospital.hospital_id],
+      );
+      const invitations = await getPool().query<{ email: string; role: 'administrator' | 'nurse' | 'doctor'; expires_at: string; sent_at: string | null }>(
+        `SELECT email, role, expires_at, sent_at
+         FROM staff_invitations
+         WHERE hospital_id = $1 AND claimed_at IS NULL
+         ORDER BY created_at DESC`,
+        [hospital.hospital_id],
+      );
+      res.json({
+        data: {
+          hospitalId: hospital.hospital_id,
+          hospitalName: hospital.hospital_name,
+          members: members.rows.map((row) => ({ email: row.email, displayName: row.display_name, role: row.role, since: row.created_at })),
+          pendingInvitations: invitations.rows.map((row) => ({ email: row.email, role: row.role, expiresAt: row.expires_at, sentAt: row.sent_at })),
+        },
+      });
     } catch (error) { next(error); }
   });
 

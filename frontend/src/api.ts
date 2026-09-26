@@ -109,6 +109,20 @@ export interface ClinicalDiagnosis {
   notes: string | null;
 }
 
+export interface HospitalAccess {
+  administrators: { email: string | null; displayName: string | null; since: string }[];
+  pendingInvitations: { email: string; expiresAt: string; sentAt: string | null }[];
+}
+
+export type TeamRole = 'administrator' | 'nurse' | 'doctor';
+
+export interface HospitalTeam {
+  hospitalId: string;
+  hospitalName: string;
+  members: { email: string | null; displayName: string | null; role: TeamRole; since: string }[];
+  pendingInvitations: { email: string; role: TeamRole; expiresAt: string; sentAt: string | null }[];
+}
+
 export async function authenticatedRequest<T>(
   path: string,
   accessToken: string,
