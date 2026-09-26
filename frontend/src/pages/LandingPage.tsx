@@ -1,7 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import heroImage from '../assets/landing-care-hero.png';
-import logo from '../assets/nova-care-logo.png';
 import '../styles/landing-page.css';
 
 const navItems = [
@@ -71,7 +70,6 @@ export function LandingPage() {
           <img className="hero-photo" src={heroImage} alt="Doctor supporting a patient in a hospital room" />
           <div className="hero-callout">
             <strong>Care today for a brighter tomorrow.</strong>
-            <img src={logo} alt="Nova Care" />
           </div>
         </div>
       </section>
