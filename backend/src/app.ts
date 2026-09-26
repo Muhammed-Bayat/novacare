@@ -219,7 +219,7 @@ function geminiText(payload: unknown): string | undefined {
 async function buildQuestionnaireWithGemini(complaint: string): Promise<QuestionnaireIntake> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) return fallbackQuestionnaire(complaint);
-  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-1.5-flash';
+  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
   const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`);
   url.searchParams.set('key', apiKey);
   const prompt = `You are helping a South African patient portal prepare an intake questionnaire. Return only JSON with keys: pathwayId, pathwayName, summary, department, urgency, questions. urgency must be one of emergency, urgent, priority, routine. questions must be 2 to 5 short non-diagnostic questions with id, text, type, and options for single or yes-no questions, or min/max for scale questions. Do not give diagnosis or treatment. Complaint: ${complaint}`;
