@@ -35,12 +35,16 @@ describe('NovaCare API', () => {
   });
 
   it('translates via the Google Translate endpoint', async () => {
-    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, status: 200, json: async () => [[['Bhuka isikhathi', 'Book appointment', null, null, 10]], null, 'en'] }));
+    let requestedUrl = '';
+    const fetchMock = vi.fn(async (url: string) => {
+      requestedUrl = url;
+      return { ok: true, status: 200, json: async () => [[['Bhuka isikhathi', 'Book appointment', null, null, 10]], null, 'en'] };
+    });
     vi.stubGlobal('fetch', fetchMock);
     const response = await request(createApp()).post('/api/v1/translate').send({ texts: ['Book appointment'], target: 'zu' });
     expect(response.status).toBe(200);
     expect(response.body.data.translations).toEqual(['Bhuka isikhathi']);
-    const url = new URL(fetchMock.mock.calls[0][0]);
+    const url = new URL(requestedUrl);
     expect(url.searchParams.get('client')).toBe('gtx');
     expect(url.searchParams.get('tl')).toBe('zu');
   });
