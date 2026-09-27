@@ -7,6 +7,11 @@ import { recordAudit } from './audit.js';
 import { loadMembership, requireHospital, requireRole } from './authorization.js';
 import { getPool } from './db.js';
 import { buildInvitationUrl, sendInvitationEmail } from './email.js';
+import { ussdCallbackHandler } from './ussd.controller.js';
+import { smsIncomingHandler } from './sms.controller.js';
+import { createDispatchController } from './dispatch/dispatch.controller.js';
+import { createDispatchService } from './dispatch/dispatch.service.js';
+import { createDispatchEventHub } from './dispatch/events.js';
 
 type UserRow = { id: string; auth0_subject: string; email: string | null; display_name: string | null };
 type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
@@ -324,10 +329,10 @@ async function translateTexts(texts: string[], targetCode: string): Promise<stri
   return results;
 }
 
-async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string; baseUrl: string; departmentIds?: string[] }): Promise<{ claimUrl: string; emailSent: boolean }> {
+async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor' | 'dispatcher'; invitedBy: string; baseUrl: string; departmentIds?: string[] }): Promise<{ claimUrl: string; emailSent: boolean }> {
   const token = invitationToken();
   const claimUrl = buildInvitationUrl(token, input.baseUrl);
-  const departmentIds = input.role === 'administrator' ? [] : (input.departmentIds ?? []);
+  const departmentIds = input.role === 'administrator' || input.role === 'dispatcher' ? [] : (input.departmentIds ?? []);
   const invitation = await getPool().query(
     `INSERT INTO staff_invitations (hospital_id, email, role, invited_by, token_hash, expires_at, claimed_by, claimed_at, sent_at, department_ids)
      VALUES ($1, lower($2), $3, $4, $5, now() + interval '72 hours', NULL, NULL, NULL, $6)
@@ -379,7 +384,7 @@ function allowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-type StaffRole = 'administrator' | 'nurse' | 'doctor';
+type StaffRole = 'administrator' | 'nurse' | 'doctor' | 'dispatcher';
 type StaffMembership = { userId: string; hospitalId: string; role: StaffRole };
 
 async function staffMembership(subject: string, roles: StaffRole[]): Promise<StaffMembership | undefined> {
@@ -764,9 +769,10 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
     try {
       const membership = req.membership!;
       const { email, role, departmentIds: departmentIdsRaw } = req.body as { email?: unknown; role?: unknown; departmentIds?: unknown };
-      if (typeof email !== 'string' || !email.includes('@') || (role !== 'administrator' && role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid team role and email.' } }); return; }
+      if (typeof email !== 'string' || !email.includes('@') || (role !== 'administrator' && role !== 'nurse' && role !== 'doctor' && role !== 'dispatcher')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid team role and email.' } }); return; }
       const departmentIds = departmentIdsRaw === undefined ? [] : normalizeUuidList(departmentIdsRaw);
       if (!departmentIds) { res.status(400).json({ error: { code: 'INVALID_DEPARTMENTS', message: 'Choose up to 20 departments from your hospital.' } }); return; }
+      if (role === 'dispatcher' && departmentIds.length > 0) { res.status(400).json({ error: { code: 'INVALID_DEPARTMENTS', message: 'Dispatchers are not assigned clinical departments.' } }); return; }
       if (departmentIds.length > 0) {
         const owned = await getPool().query<{ id: string }>(
           'SELECT id FROM departments WHERE hospital_id = $1 AND active AND id = ANY($2::uuid[])',
@@ -783,7 +789,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         action: 'staff_invitation.created',
         metadata: { email: email.trim().toLowerCase(), role, departmentIds },
       });
-      const roleLabel = role === 'administrator' ? 'Administrator' : role === 'nurse' ? 'Staff' : 'Doctor';
+      const roleLabel = role === 'administrator' ? 'Administrator' : role === 'nurse' ? 'Staff' : role === 'doctor' ? 'Doctor' : 'Dispatcher';
       const message = emailSent
         ? `${roleLabel} invitation email sent. It expires in 72 hours.`
         : `Invitation created for ${roleLabel.toLowerCase()} — email delivery is unavailable, share the link below. It expires in 72 hours.`;
@@ -794,7 +800,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
   app.get('/api/v1/admin/staff', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
     try {
       const hospital = req.membership!;
-      const members = await getPool().query<{ membership_id: string; email: string | null; display_name: string | null; role: 'administrator' | 'nurse' | 'doctor'; active: boolean; created_at: string; departments: { id: string; name: string }[] }>(
+      const members = await getPool().query<{ membership_id: string; email: string | null; display_name: string | null; role: 'administrator' | 'nurse' | 'doctor' | 'dispatcher'; active: boolean; created_at: string; departments: { id: string; name: string }[] }>(
         `SELECT hm.id AS membership_id, u.email, u.display_name, hm.role, hm.active, hm.created_at,
                 COALESCE((
                   SELECT json_agg(json_build_object('id', d.id, 'name', d.name) ORDER BY d.name)
@@ -807,7 +813,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
          ORDER BY hm.active DESC, hm.created_at`,
         [hospital.hospitalId],
       );
-      const invitations = await getPool().query<{ email: string; role: 'administrator' | 'nurse' | 'doctor'; department_ids: string[]; expires_at: string; sent_at: string | null }>(
+      const invitations = await getPool().query<{ email: string; role: 'administrator' | 'nurse' | 'doctor' | 'dispatcher'; department_ids: string[]; expires_at: string; sent_at: string | null }>(
         `SELECT email, role, department_ids, expires_at, sent_at
          FROM staff_invitations
          WHERE hospital_id = $1 AND claimed_at IS NULL
@@ -840,7 +846,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         res.status(400).json({ error: { code: 'INVALID_MEMBERSHIP_UPDATE', message: 'Provide a role, active state, or department assignment to change.' } });
         return;
       }
-      if (role !== undefined && role !== 'administrator' && role !== 'nurse' && role !== 'doctor') {
+      if (role !== undefined && role !== 'administrator' && role !== 'nurse' && role !== 'doctor' && role !== 'dispatcher') {
         res.status(400).json({ error: { code: 'INVALID_MEMBERSHIP_UPDATE', message: 'Choose a valid team role.' } });
         return;
       }
@@ -854,7 +860,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         return;
       }
       const actor = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
-      const target = await getPool().query<{ user_id: string; role: 'administrator' | 'nurse' | 'doctor'; active: boolean }>(
+      const target = await getPool().query<{ user_id: string; role: 'administrator' | 'nurse' | 'doctor' | 'dispatcher'; active: boolean }>(
         'SELECT user_id, role, active FROM hospital_memberships WHERE id = $1 AND hospital_id = $2',
         [membershipId, hospitalId],
       );
@@ -864,7 +870,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         res.status(409).json({ error: { code: 'SELF_CHANGE', message: 'You cannot change your own hospital access. Ask another administrator.' } });
         return;
       }
-      const nextRole = (role ?? current.role) as 'administrator' | 'nurse' | 'doctor';
+      const nextRole = (role ?? current.role) as 'administrator' | 'nurse' | 'doctor' | 'dispatcher';
       const nextActive = (active ?? current.active) as boolean;
       if (current.role === 'administrator' && current.active && (nextRole !== 'administrator' || !nextActive)) {
         const admins = await getPool().query<{ count: string }>(
@@ -891,7 +897,9 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
           'UPDATE hospital_memberships SET role = $3, active = $4 WHERE id = $1 AND hospital_id = $2',
           [membershipId, hospitalId, nextRole, nextActive],
         );
-        if (departmentIds && nextRole !== 'administrator') {
+        if (nextRole === 'administrator' || nextRole === 'dispatcher') {
+          await client.query('DELETE FROM membership_departments WHERE membership_id = $1', [membershipId]);
+        } else if (departmentIds) {
           await client.query('DELETE FROM membership_departments WHERE membership_id = $1', [membershipId]);
           if (departmentIds.length > 0) {
             await client.query(
@@ -1400,7 +1408,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
       if (typeof token !== 'string' || token.length < 20) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'This invitation link is invalid.' } }); return; }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
       if (!user.email) { res.status(400).json({ error: { code: 'EMAIL_REQUIRED', message: 'Your sign-in account must have an email address.' } }); return; }
-      const claim = await getPool().query<{ hospital_id: string; role: 'administrator' | 'nurse' | 'doctor'; department_ids: string[] }>(
+      const claim = await getPool().query<{ hospital_id: string; role: 'administrator' | 'nurse' | 'doctor' | 'dispatcher'; department_ids: string[] }>(
         `UPDATE staff_invitations SET claimed_by = $1, claimed_at = now()
          WHERE token_hash = $2 AND lower(email) = lower($3) AND claimed_at IS NULL AND expires_at > now()
          RETURNING hospital_id, role, department_ids`,
@@ -2069,6 +2077,33 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
       next(error);
     }
   });
+
+  // Public USSD channel for Africa's Talking sandbox callbacks. Unauthenticated by design
+  // (Africa's Talking calls it externally); add callback validation/security before production.
+  app.post('/api/v1/channels/ussd', express.urlencoded({ extended: false }), ussdCallbackHandler);
+
+  // Public inbound SMS channel for Africa's Talking sandbox two-way SMS. Unauthenticated by
+  // design (Africa's Talking calls it externally); add callback validation/security before production.
+  app.post('/api/v1/channels/sms/incoming', express.urlencoded({ extended: false }), smsIncomingHandler);
+
+  // Dispatch Core: shared service-request domain (all simulated — demo prototype).
+  const dispatchHub = createDispatchEventHub();
+  const dispatchService = createDispatchService({ publish: dispatchHub.publish });
+  const dispatch = createDispatchController(dispatchService, dispatchHub);
+
+  app.post('/api/v1/service-requests', requireAuth, dispatch.createRequest);
+  app.get('/api/v1/service-requests', requireAuth, dispatch.listMine);
+  app.get('/api/v1/service-requests/events', requireAuth, requireRole('dispatcher', 'administrator'), dispatch.events);
+  app.get('/api/v1/service-requests/:id', requireAuth, dispatch.getRequest);
+
+  app.get('/api/v1/dispatcher/service-requests', requireAuth, requireRole('dispatcher', 'administrator'), dispatch.queue);
+  app.get('/api/v1/dispatcher/service-requests/:id', requireAuth, requireRole('dispatcher', 'administrator'), dispatch.detail);
+  app.post('/api/v1/dispatcher/service-requests/:id/acknowledge', requireAuth, requireRole('dispatcher'), dispatch.acknowledge);
+  app.post('/api/v1/dispatcher/service-requests/:id/respond', requireAuth, requireRole('dispatcher'), dispatch.respond);
+  app.post('/api/v1/dispatcher/service-requests/:id/assign-facility', requireAuth, requireRole('dispatcher'), dispatch.assignFacility);
+  app.post('/api/v1/dispatcher/service-requests/:id/assign-responder', requireAuth, requireRole('dispatcher'), dispatch.assignResponder);
+  app.get('/api/v1/dispatcher/available-responders', requireAuth, requireRole('dispatcher'), dispatch.availableResponders);
+  app.patch('/api/v1/dispatcher/service-requests/:id/status', requireAuth, requireRole('dispatcher'), dispatch.updateStatus);
 
   app.use((_req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } }));
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

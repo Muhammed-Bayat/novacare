@@ -19,8 +19,14 @@ import { migration as queueTriageWorkflowMigration } from './014_queue_triage_wo
 import { migration as appointmentCheckedInStatusMigration } from './015_appointment_checkedin_status.js';
 import { migration as adminDomainMigration } from './014_admin_domain.js';
 import { migration as adminSettingsMigration } from './015_admin_settings.js';
+import { migration as dispatcherRoleMigration } from './016_dispatcher_role.js';
+import { migration as dispatchSchemaMigration } from './017_dispatch_schema.js';
+import { migration as dispatchUnitsMigration } from './018_dispatch_units.js';
+import { migration as dispatcherInvitationsMigration } from './019_dispatcher_invitations.js';
+import { migration as responseUnitStatusesMigration } from './020_response_unit_statuses.js';
+import { migration as dispatchStatusTimestampsMigration } from './021_dispatch_status_timestamps.js';
 
-const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration, secureStaffInvitationsMigration, appointmentTriageSummaryMigration, queueTriageWorkflowMigration, appointmentCheckedInStatusMigration, adminDomainMigration, adminSettingsMigration];
+const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration, secureStaffInvitationsMigration, appointmentTriageSummaryMigration, queueTriageWorkflowMigration, appointmentCheckedInStatusMigration, adminDomainMigration, adminSettingsMigration, dispatcherRoleMigration, dispatchSchemaMigration, dispatchUnitsMigration, dispatcherInvitationsMigration, responseUnitStatusesMigration, dispatchStatusTimestampsMigration];
 
 export async function runMigrations(): Promise<void> {
   const pool = getPool();

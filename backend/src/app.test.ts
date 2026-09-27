@@ -19,6 +19,28 @@ describe('NovaCare API', () => {
     expect(response.status).toBe(503);
   });
 
+  it('does not expose dispatch routes without configured authentication', async () => {
+    const app = createApp();
+    const checks: Array<{ method: 'get' | 'post' | 'patch'; path: string }> = [
+      { method: 'get', path: '/api/v1/service-requests' },
+      { method: 'post', path: '/api/v1/service-requests' },
+      { method: 'get', path: '/api/v1/service-requests/some-id' },
+      { method: 'get', path: '/api/v1/service-requests/events' },
+      { method: 'get', path: '/api/v1/dispatcher/service-requests' },
+      { method: 'get', path: '/api/v1/dispatcher/service-requests/some-id' },
+      { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/acknowledge' },
+      { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/respond' },
+      { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/assign-facility' },
+      { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/assign-responder' },
+      { method: 'get', path: '/api/v1/dispatcher/available-responders' },
+      { method: 'patch', path: '/api/v1/dispatcher/service-requests/some-id/status' },
+    ];
+    for (const { method, path } of checks) {
+      const response = await request(app)[method](path).send({});
+      expect(response.status, `${method.toUpperCase()} ${path}`).toBe(503);
+    }
+  });
+
   it('rejects translation requests with invalid input', async () => {
     const missingTexts = await request(createApp()).post('/api/v1/translate').send({ target: 'zu' });
     expect(missingTexts.status).toBe(400);

@@ -1,4 +1,4 @@
-type InvitationRole = 'administrator' | 'nurse' | 'doctor';
+type InvitationRole = 'administrator' | 'nurse' | 'doctor' | 'dispatcher';
 
 type InvitationEmail = {
   recipient: string;
@@ -19,6 +19,10 @@ const roleContent: Record<InvitationRole, { label: string; description: (hospita
   doctor: {
     label: 'doctor',
     description: (hospitalName) => `You now have a NovaCare doctor account at ${hospitalName}. Once your access is active, you can view your department queue, complete consultations, and refer patients.`,
+  },
+  dispatcher: {
+    label: 'dispatcher',
+    description: (hospitalName) => `You now coordinate simulated service requests for ${hospitalName} on NovaCare. Once your access is active, you can review the dispatcher queue and manage the demo workflow.`,
   },
 };
 

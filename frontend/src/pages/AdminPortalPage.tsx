@@ -8,6 +8,7 @@ const roleLabels: Record<TeamRole, string> = {
   administrator: 'Administrator',
   nurse: 'Nurse',
   doctor: 'Doctor',
+  dispatcher: 'Dispatcher',
 };
 
 const auditLabels: Record<string, string> = {
@@ -284,7 +285,7 @@ export function AdminPortalPage() {
       const token = await getAccessTokenSilently();
       const result = await authenticatedRequest<{ data: { message: string; claimUrl: string } }>('/api/v1/admin/staff', token, {
         method: 'POST',
-        body: { email: inviteEmail, role: inviteRole, departmentIds: inviteRole === 'administrator' ? [] : inviteDepartmentIds },
+        body: { email: inviteEmail, role: inviteRole, departmentIds: inviteRole === 'administrator' || inviteRole === 'dispatcher' ? [] : inviteDepartmentIds },
       });
       setInviteMessage(result.data.message);
       setInviteClaimUrl(result.data.claimUrl);
@@ -319,7 +320,7 @@ export function AdminPortalPage() {
         body: {
           role: manageRole,
           active: manageActive,
-          ...(manageRole !== 'administrator' ? { departmentIds: manageDepartmentIds } : {}),
+          ...(manageRole !== 'administrator' && manageRole !== 'dispatcher' ? { departmentIds: manageDepartmentIds } : { departmentIds: [] }),
         },
       });
       setManageMessage('Team member updated.');
@@ -598,13 +599,14 @@ export function AdminPortalPage() {
                           <option value="administrator">Administrator</option>
                           <option value="nurse">Nurse</option>
                           <option value="doctor">Doctor</option>
+                          <option value="dispatcher">Dispatcher</option>
                         </select>
                       </label>
                       <label className="nv-field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <input type="checkbox" aria-label="Active team member" checked={manageActive} onChange={(event) => setManageActive(event.target.checked)} />
                         Active team member
                       </label>
-                      {manageRole !== 'administrator' ? (
+                      {manageRole !== 'administrator' && manageRole !== 'dispatcher' ? (
                         <fieldset className="nv-field" style={{ border: 'none', padding: 0, margin: 0 }}>
                           <legend className="small" style={{ fontWeight: 750, marginBottom: 6 }}>Departments — leave empty for all specialties</legend>
                           {assignableDepartments.map((department) => (
@@ -637,9 +639,10 @@ export function AdminPortalPage() {
                           <option value="administrator">Administrator</option>
                           <option value="nurse">Nurse</option>
                           <option value="doctor">Doctor</option>
+                          <option value="dispatcher">Dispatcher</option>
                         </select>
                       </label>
-                      {inviteRole !== 'administrator' ? (
+                      {inviteRole !== 'administrator' && inviteRole !== 'dispatcher' ? (
                         <fieldset className="nv-field" style={{ border: 'none', padding: 0, margin: 0 }}>
                           <legend className="small" style={{ fontWeight: 750, marginBottom: 6 }}>Departments — leave empty for all specialties</legend>
                           {assignableDepartments.map((department) => (
@@ -691,7 +694,7 @@ export function AdminPortalPage() {
                           {member.displayName || member.email}
                           <small className="muted"> · {member.email}</small>
                           <small className="muted"> · since {formatMemberDate(member.since)}</small>
-                          <small className="muted"> · {member.role === 'administrator' ? 'Hospital administrator' : member.departments.length > 0 ? member.departments.map((department) => department.name).join(', ') : 'All specialties'}</small>
+                          <small className="muted"> · {member.role === 'administrator' ? 'Hospital administrator' : member.role === 'dispatcher' ? 'Dispatch operations' : member.departments.length > 0 ? member.departments.map((department) => department.name).join(', ') : 'All specialties'}</small>
                         </span>
                         <span>
                           <span className="badge blue">{roleLabels[member.role]}</span>{' '}
@@ -705,7 +708,7 @@ export function AdminPortalPage() {
                         <span>
                           {invitation.email}
                           <small className="muted"> · {roleLabels[invitation.role]} invitation</small>
-                          <small className="muted"> · {invitation.departmentIds.length > 0 ? `${invitation.departmentIds.length} department${invitation.departmentIds.length === 1 ? '' : 's'} assigned` : 'All specialties'}</small>
+                          <small className="muted"> · {invitation.role === 'dispatcher' ? 'Dispatch operations' : invitation.departmentIds.length > 0 ? `${invitation.departmentIds.length} department${invitation.departmentIds.length === 1 ? '' : 's'} assigned` : 'All specialties'}</small>
                         </span>
                         <span className={`badge ${new Date(invitation.expiresAt) < new Date() ? 'red' : 'yellow'}`}>
                           {new Date(invitation.expiresAt) < new Date() ? 'Expired' : 'Invitation pending'}

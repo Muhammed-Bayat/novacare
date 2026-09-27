@@ -1,4 +1,4 @@
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
 export type UserType = 'patient' | 'staff' | 'admin';
 
@@ -9,7 +9,7 @@ export interface CurrentUser {
   displayName: string | null;
   userType: UserType;
   isPlatformOperator: boolean;
-  staffRole: 'administrator' | 'nurse' | 'doctor' | null;
+  staffRole: 'administrator' | 'nurse' | 'doctor' | 'dispatcher' | null;
   hospitalId: string | null;
   hospitalName: string | null;
 }
@@ -188,7 +188,7 @@ export interface HospitalAccess {
   pendingInvitations: { email: string; expiresAt: string; sentAt: string | null }[];
 }
 
-export type TeamRole = 'administrator' | 'nurse' | 'doctor';
+export type TeamRole = 'administrator' | 'nurse' | 'doctor' | 'dispatcher';
 
 export interface TeamDepartment {
   id: string;
@@ -302,6 +302,133 @@ export interface SlotCreateResult {
   departmentId: string;
   departmentName: string;
   date: string;
+}
+
+export type ServiceRequestType = 'AMBULANCE' | 'HOME_VISIT';
+export type ServiceChannel = 'WEB' | 'USSD' | 'SMS';
+export type ServiceUrgency = 'EMERGENCY' | 'URGENT' | 'STANDARD';
+export type ServiceStatus =
+  | 'CREATED'
+  | 'SEARCHING'
+  | 'NOTIFIED'
+  | 'ACKNOWLEDGED'
+  | 'ACCEPTED'
+  | 'ASSIGNED'
+  | 'DISPATCHED'
+  | 'EN_ROUTE'
+  | 'ARRIVED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'NO_PROVIDER_FOUND';
+
+export interface ServiceRequestTriage {
+  ambulanceReason?: string;
+  conscious?: 'YES' | 'NO' | 'UNKNOWN';
+  homeVisitReason?: string;
+  preferredResponder?: 'DOCTOR' | 'NURSE' | 'EITHER';
+}
+
+export interface ServiceRequestRow {
+  id: string;
+  reference_code: string;
+  requester_user_id: string | null;
+  requester_phone: string | null;
+  type: ServiceRequestType;
+  channel: ServiceChannel;
+  status: ServiceStatus;
+  urgency: ServiceUrgency;
+  reason: string | null;
+  triage: ServiceRequestTriage;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  search_radius_km: number | null;
+  facilities_notified: number | null;
+  escalation_flag: boolean;
+  assigned_facility_id: string | null;
+  assigned_responder_id: string | null;
+  assigned_unit_id: string | null;
+  created_at: string;
+  updated_at: string;
+  notified_at: string | null;
+  acknowledged_at: string | null;
+  assigned_at: string | null;
+  dispatched_at?: string | null;
+  en_route_at?: string | null;
+  arrived_at?: string | null;
+  in_progress_at?: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+}
+
+export interface DispatchMetrics {
+  active: number;
+  ambulance: number;
+  homeVisit: number;
+  awaitingAssignment: number;
+  dispatched: number;
+}
+
+export interface DispatcherQueue {
+  live: ServiceRequestRow[];
+  unresolved: ServiceRequestRow[];
+  metrics: DispatchMetrics;
+}
+
+export interface ServiceRequestHistoryEntry {
+  id: string;
+  from_status: ServiceStatus | null;
+  to_status: ServiceStatus;
+  actor_user_id: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export type NotificationResponseStatus = 'PENDING' | 'ACKNOWLEDGED' | 'AVAILABLE' | 'UNAVAILABLE' | 'ACCEPTED';
+
+export interface DispatchNotificationEntry {
+  id: string;
+  request_id: string;
+  facility_id: string;
+  distance_km: number | null;
+  notified_at: string;
+  acknowledged_at: string | null;
+  response_status: NotificationResponseStatus;
+  responded_at: string | null;
+  facility_name: string;
+}
+
+export interface ServiceRequestDetail extends ServiceRequestRow {
+  history: ServiceRequestHistoryEntry[];
+  notifications: DispatchNotificationEntry[];
+}
+
+export interface AvailableResponder {
+  id: string;
+  role: string;
+  availability: 'AVAILABLE' | 'BUSY' | 'OFF_DUTY';
+  home_visit_eligible: boolean;
+  on_duty: boolean;
+  display_name: string | null;
+  email: string | null;
+  hospital_id: string;
+  hospital_name: string;
+}
+
+export interface AvailableUnit {
+  id: string;
+  callsign: string;
+  unit_type: 'AMBULANCE';
+  status: 'AVAILABLE' | 'ASSIGNED' | 'EN_ROUTE' | 'OUT_OF_SERVICE';
+  hospital_id: string;
+  hospital_name: string;
+}
+
+export interface AvailableResponders {
+  responders: AvailableResponder[];
+  units: AvailableUnit[];
 }
 
 export async function publicGet<T>(path: string): Promise<T> {

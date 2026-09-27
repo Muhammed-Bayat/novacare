@@ -1,0 +1,108 @@
+/* Emergency & home-visit request panel — development/demo request flow in the mockup design language. */
+
+.nv-sr-sim-banner { margin: 0; }
+.nv-sr-safety {
+  display: grid;
+  gap: 4px;
+  padding: 14px 18px;
+  border: 1.5px solid #f3c2c1;
+  border-radius: 16px;
+  background: #fff5f5;
+  color: #a13230;
+}
+.nv-sr-safety strong { font-size: 15px; letter-spacing: -.01em; }
+.nv-sr-safety span { font-size: 13px; color: #b34a48; }
+
+.nv-sr-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.nv-sr-action {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  text-align: left;
+  padding: clamp(20px, 3vw, 30px);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  border: 1.5px solid var(--stroke);
+  border-radius: 20px;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.nv-sr-action:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(18, 53, 108, .10); }
+.nv-sr-action h2 { margin: 0; font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -.03em; }
+.nv-sr-action p { margin: 0; line-height: 1.4; }
+.nv-sr-action-tag {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.nv-sr-ambulance { border-color: #f3c2c1; background: linear-gradient(180deg, #fffafa 0%, #fff 70%); }
+.nv-sr-ambulance .nv-sr-action-tag { background: #ffe9e8; color: #b93633; }
+.nv-sr-ambulance.selected { border-color: #d74b49; box-shadow: 0 10px 26px rgba(215, 75, 73, .14); }
+.nv-sr-homevisit { border-color: #c9e2fa; background: linear-gradient(180deg, #f5fbff 0%, #fff 70%); }
+.nv-sr-homevisit .nv-sr-action-tag { background: #e8f4ff; color: #0f76da; }
+.nv-sr-homevisit.selected { border-color: var(--blue); box-shadow: 0 10px 26px rgba(26, 140, 239, .14); }
+
+.nv-sr-form { max-width: 760px; }
+.nv-sr-choice { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; }
+.nv-sr-choice legend { font-weight: 700; font-size: 13px; color: var(--text); padding: 0; margin-bottom: 10px; }
+.nv-sr-choice-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.nv-sr-chip {
+  padding: 11px 20px;
+  border-radius: 999px;
+  border: 1.5px solid #d0e1f2;
+  background: #f6fbff;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.nv-sr-chip:hover { border-color: var(--blue); }
+.nv-sr-chip.selected { border-color: var(--blue); background: var(--blue); color: #fff; }
+
+.nv-sr-locate-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.nv-sr-locate-row .secondary-btn { padding: 12px 18px; }
+.nv-sr-located { color: #178653; font-weight: 700; font-size: 13px; }
+
+.nv-sr-success {
+  display: grid;
+  gap: 4px;
+  padding: 14px 18px;
+  border: 1.5px solid #b9e8cd;
+  border-radius: 16px;
+  background: #ddf7e9;
+  color: #136c44;
+}
+.nv-sr-success strong { font-size: 15px; }
+.nv-sr-success span { font-size: 13px; }
+
+.nv-sr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.nv-sr-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; padding: 18px 20px; }
+.nv-sr-row-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.nv-sr-row-head strong { font-size: 16px; letter-spacing: -.01em; }
+.nv-sr-row-main p { margin: 2px 0; }
+.nv-sr-row-status { display: grid; gap: 8px; justify-items: end; text-align: right; }
+.nv-sr-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.nv-sr-blue { background: #e8f4ff; color: #0f76da; }
+.nv-sr-yellow { background: #fff3d9; color: #9c6c00; }
+.nv-sr-green { background: #ddf7e9; color: #178653; }
+.nv-sr-gray { background: #eef2f6; color: #61748b; }
+.nv-sr-red { background: #ffe9e8; color: #b93633; }
+.badge.urgency-standard { background: #eef2f6; color: #61748b; }
+
+@media (max-width: 860px) {
+  .nv-sr-actions { grid-template-columns: 1fr; }
+  .nv-sr-row { grid-template-columns: 1fr; }
+  .nv-sr-row-status { justify-items: start; text-align: left; }
+}

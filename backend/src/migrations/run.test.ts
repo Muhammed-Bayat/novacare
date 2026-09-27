@@ -5,6 +5,12 @@ import { migration as secureStaffInvitationsMigration } from './012_secure_staff
 import { migration as appointmentTriageSummaryMigration } from './013_appointment_triage_summary.js';
 import { migration as adminDomainMigration } from './014_admin_domain.js';
 import { migration as adminSettingsMigration } from './015_admin_settings.js';
+import { migration as dispatcherRoleMigration } from './016_dispatcher_role.js';
+import { migration as dispatchSchemaMigration } from './017_dispatch_schema.js';
+import { migration as dispatchUnitsMigration } from './018_dispatch_units.js';
+import { migration as dispatcherInvitationsMigration } from './019_dispatcher_invitations.js';
+import { migration as responseUnitStatusesMigration } from './020_response_unit_statuses.js';
+import { migration as dispatchStatusTimestampsMigration } from './021_dispatch_status_timestamps.js';
 
 describe('initial migration', () => {
   it('creates the local users table', () => {
@@ -75,5 +81,29 @@ describe('admin settings migration', () => {
     expect(adminSettingsMigration.sql).toContain('department_ids UUID[]');
     expect(adminSettingsMigration.sql).toContain('CREATE TABLE membership_departments');
     expect(adminSettingsMigration.sql).toContain('PRIMARY KEY (membership_id, department_id)');
+  });
+});
+
+describe('dispatch migrations', () => {
+  it('adds the dispatcher role and responder availability fields', () => {
+    expect(dispatcherRoleMigration.name).toBe('016_dispatcher_role');
+    expect(dispatcherRoleMigration.sql).toContain("'dispatcher'");
+    expect(dispatcherRoleMigration.sql).toContain('home_visit_eligible');
+  });
+
+  it('creates the request, history, notification, and reference tables', () => {
+    expect(dispatchSchemaMigration.name).toBe('017_dispatch_schema');
+    expect(dispatchSchemaMigration.sql).toContain('CREATE TABLE service_requests');
+    expect(dispatchSchemaMigration.sql).toContain('CREATE TABLE service_request_status_history');
+    expect(dispatchSchemaMigration.sql).toContain('CREATE TABLE dispatch_notifications');
+    expect(dispatchSchemaMigration.sql).toContain('CREATE TABLE service_reference_counters');
+  });
+
+  it('adds response-unit assignment and supported operational states', () => {
+    expect(dispatchUnitsMigration.sql).toContain('assigned_unit_id');
+    expect(dispatcherInvitationsMigration.sql).toContain("'dispatcher'");
+    expect(responseUnitStatusesMigration.sql).toContain("'EN_ROUTE'");
+    expect(responseUnitStatusesMigration.sql).toContain("'OUT_OF_SERVICE'");
+    expect(dispatchStatusTimestampsMigration.sql).toContain('dispatched_at');
   });
 });

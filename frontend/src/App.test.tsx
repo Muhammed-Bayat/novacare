@@ -20,7 +20,7 @@ vi.mock('@auth0/auth0-react', () => ({
   }),
 }));
 
-function stubCurrentUser(user: { userType?: string; isPlatformOperator?: boolean; staffRole?: 'administrator' | 'nurse' | 'doctor' | null; hospitalName?: string | null }) {
+function stubCurrentUser(user: { userType?: string; isPlatformOperator?: boolean; staffRole?: 'administrator' | 'nurse' | 'doctor' | 'dispatcher' | null; hospitalName?: string | null }) {
   vi.stubGlobal('fetch', vi.fn(async () => ({
     ok: true,
     json: async () => ({
@@ -165,6 +165,139 @@ function stubStaffData(user: Parameters<typeof stubCurrentUser>[0] = {}, triage:
       };
     }
     return { ok: true, json: async () => ({ data: { id: 'user-1', auth0Subject: 'auth0|user-1', email: 'user@example.com', displayName: 'Amina Dlamini', userType: 'patient', isPlatformOperator: false, staffRole: null, hospitalId: 'h1', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital', ...user } }) };
+  }));
+}
+
+interface DispatcherStubOptions {
+  live?: unknown[];
+  unresolved?: unknown[];
+  metrics?: unknown;
+  responders?: unknown[];
+  units?: unknown[];
+  detail?: unknown;
+}
+
+function stubDispatcherData(user: Parameters<typeof stubCurrentUser>[0] = {}, options: DispatcherStubOptions = {}) {
+  const {
+    live = [],
+    unresolved = [],
+    metrics = { active: 0, ambulance: 0, homeVisit: 0, awaitingAssignment: 0, dispatched: 0 },
+    responders = [],
+    units = [],
+    detail,
+  } = options;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/v1/dispatcher/service-requests/') && !url.endsWith('/available-responders')) {
+      return { ok: true, json: async () => ({ data: detail ?? null }) };
+    }
+    if (url.includes('/api/v1/dispatcher/service-requests')) {
+      return { ok: true, json: async () => ({ data: { live, unresolved, metrics } }) };
+    }
+    if (url.includes('/api/v1/dispatcher/available-responders')) {
+      return { ok: true, json: async () => ({ data: { responders, units } }) };
+    }
+    return { ok: true, json: async () => ({ data: { id: 'user-1', auth0Subject: 'auth0|user-1', email: 'dispatcher@example.com', displayName: 'Amina Dlamini', userType: 'staff', isPlatformOperator: false, staffRole: 'dispatcher', hospitalId: null, hospitalName: null, ...user } }) };
+  }));
+}
+
+const dispatcherRequestRow = {
+  id: 'sr1',
+  reference_code: 'NC-2026-000201',
+  requester_user_id: 'user-9',
+  requester_phone: null,
+  type: 'AMBULANCE',
+  channel: 'WEB',
+  status: 'NOTIFIED',
+  urgency: 'EMERGENCY',
+  reason: 'Severe chest pain',
+  triage: { ambulanceReason: 'chest-pain', conscious: 'YES' },
+  address: '7th Avenue, Parktown, Johannesburg',
+  latitude: -26.176,
+  longitude: 28.045,
+  search_radius_km: 5,
+  facilities_notified: 3,
+  escalation_flag: false,
+  assigned_facility_id: null,
+  assigned_responder_id: null,
+  assigned_unit_id: null,
+  created_at: '2026-09-27T10:00:00.000Z',
+  updated_at: '2026-09-27T10:01:00.000Z',
+  notified_at: '2026-09-27T10:01:00.000Z',
+  acknowledged_at: null,
+  assigned_at: null,
+  completed_at: null,
+  cancelled_at: null,
+  cancel_reason: null,
+};
+
+const dispatcherNotifications = [
+  { id: 'n1', request_id: 'sr1', facility_id: 'h1', distance_km: 1.2, notified_at: '2026-09-27T10:01:00.000Z', acknowledged_at: null, response_status: 'PENDING', responded_at: null, facility_name: 'Simulated Facility Near' },
+  { id: 'n2', request_id: 'sr1', facility_id: 'h2', distance_km: 3.4, notified_at: '2026-09-27T10:01:00.000Z', acknowledged_at: null, response_status: 'PENDING', responded_at: null, facility_name: 'Simulated Facility Mid' },
+];
+
+const dispatcherHistory = [
+  { id: 'hh1', from_status: null, to_status: 'CREATED', actor_user_id: null, note: null, created_at: '2026-09-27T10:00:00.000Z' },
+  { id: 'hh2', from_status: 'CREATED', to_status: 'SEARCHING', actor_user_id: null, note: null, created_at: '2026-09-27T10:00:30.000Z' },
+  { id: 'hh3', from_status: 'SEARCHING', to_status: 'NOTIFIED', actor_user_id: null, note: '3 simulated facilities notified', created_at: '2026-09-27T10:01:00.000Z' },
+];
+
+const patientServiceRequestRow = {
+  id: 'sr9',
+  reference_code: 'NC-2026-000301',
+  requester_user_id: 'user-1',
+  requester_phone: null,
+  type: 'AMBULANCE',
+  channel: 'WEB',
+  status: 'NOTIFIED',
+  urgency: 'EMERGENCY',
+  reason: null,
+  triage: { ambulanceReason: 'chest-pain', conscious: 'YES' },
+  address: '7th Avenue, Parktown, Johannesburg',
+  latitude: -26.176,
+  longitude: 28.045,
+  search_radius_km: 5,
+  facilities_notified: 3,
+  escalation_flag: false,
+  assigned_facility_id: null,
+  assigned_responder_id: null,
+  assigned_unit_id: null,
+  created_at: '2026-09-27T11:00:00.000Z',
+  updated_at: '2026-09-27T11:01:00.000Z',
+  notified_at: '2026-09-27T11:01:00.000Z',
+  acknowledged_at: null,
+  assigned_at: null,
+  completed_at: null,
+  cancelled_at: null,
+  cancel_reason: null,
+};
+
+const patientHomeVisitRow = {
+  ...patientServiceRequestRow,
+  id: 'sr10',
+  reference_code: 'NC-2026-000302',
+  type: 'HOME_VISIT',
+  status: 'DISPATCHED',
+  urgency: 'STANDARD',
+  triage: { homeVisitReason: 'wound-care', preferredResponder: 'NURSE' },
+  notified_at: null,
+  assigned_unit_id: null,
+};
+
+function stubServiceRequests(requests: unknown[], created?: unknown) {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/api/v1/service-requests')) {
+      if ((init?.method ?? 'GET') === 'POST') {
+        return { ok: true, status: 201, json: async () => ({ data: created }) };
+      }
+      return { ok: true, json: async () => ({ data: requests }) };
+    }
+    if (url.includes('/api/v1/questionnaire/intake')) return { ok: true, json: async () => ({ data: undefined }) };
+    if (url.includes('/api/v1/appointments')) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes('/api/v1/queue')) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: [] }) };
+    return { ok: true, json: async () => ({ data: { userType: 'patient' } }) };
   }));
 }
 
@@ -423,6 +556,98 @@ describe('App', () => {
     expect(auth.logout).toHaveBeenCalledWith({ logoutParams: { returnTo: window.location.origin } });
   });
 
+  it('shows a sign-in prompt when opening emergency requests anonymously', async () => {
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
+    expect(screen.getByRole('heading', { name: 'Sign in to send a test request' })).toBeInTheDocument();
+  });
+
+  it('lets patients send an ambulance test request with manual address', async () => {
+    auth.state.isAuthenticated = true;
+    stubServiceRequests([], patientServiceRequestRow);
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
+    expect(await screen.findByRole('heading', { name: 'Emergency & home-visit requests' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Development prototype — not a real emergency service.');
+    expect(screen.getByText('If this is a real emergency, call 10177 or 112 now.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Request an Ambulance' }));
+    await userEvent.selectOptions(screen.getByLabelText('What happened?'), 'chest-pain');
+    await userEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await userEvent.type(screen.getByLabelText('Or type your address'), '7th Avenue, Parktown, Johannesburg');
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
+
+    expect(await screen.findByText('NovaCare received your test request successfully.')).toBeInTheDocument();
+    expect(screen.getByText(/NC-2026-000301/)).toBeInTheDocument();
+    const post = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/service-requests') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(post).toBeDefined();
+    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+      type: 'AMBULANCE',
+      urgency: 'EMERGENCY',
+      triage: { ambulanceReason: 'chest-pain', conscious: 'YES' },
+      address: '7th Avenue, Parktown, Johannesburg',
+    });
+  });
+
+  it('requires triage answers before sending an ambulance test request', async () => {
+    auth.state.isAuthenticated = true;
+    stubServiceRequests([], patientServiceRequestRow);
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
+    await screen.findByRole('heading', { name: 'Emergency & home-visit requests' });
+    await userEvent.click(screen.getByRole('button', { name: 'Request an Ambulance' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
+    expect(screen.getByText('Choose what happened so the demo dispatcher sees the right category.')).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.some(([url, options]) => String(url).includes('/api/v1/service-requests') && (options as RequestInit | undefined)?.method === 'POST')).toBe(false);
+  });
+
+  it('lets patients send a home-visit test request using browser location', async () => {
+    auth.state.isAuthenticated = true;
+    stubServiceRequests([], patientHomeVisitRow);
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) => success({ coords: { latitude: -26.18, longitude: 28.03 } } as GeolocationPosition),
+      },
+    });
+    try {
+      renderAt('/patient');
+      await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
+      await screen.findByRole('heading', { name: 'Emergency & home-visit requests' });
+      await userEvent.click(screen.getByRole('button', { name: 'Request a Home Visit' }));
+      await userEvent.selectOptions(screen.getByLabelText('Reason for the visit'), 'wound-care');
+      await userEvent.click(screen.getByRole('button', { name: 'Nurse' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Use my current location' }));
+      expect(await screen.findByText(/Location captured/)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Send home-visit test request' }));
+
+      expect(await screen.findByText('NovaCare received your test request successfully.')).toBeInTheDocument();
+      const post = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/service-requests') && (options as RequestInit | undefined)?.method === 'POST');
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        type: 'HOME_VISIT',
+        urgency: 'STANDARD',
+        triage: { homeVisitReason: 'wound-care', preferredResponder: 'NURSE' },
+        latitude: -26.18,
+        longitude: 28.03,
+      });
+    } finally {
+      Reflect.deleteProperty(window.navigator, 'geolocation');
+    }
+  });
+
+  it('tracks the simulated status of previous test requests', async () => {
+    auth.state.isAuthenticated = true;
+    stubServiceRequests([patientServiceRequestRow, patientHomeVisitRow]);
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
+    expect(await screen.findByText('NC-2026-000301')).toBeInTheDocument();
+    expect(screen.getByText('Notified simulated facilities')).toBeInTheDocument();
+    expect(screen.getByText('Simulated responder assigned')).toBeInTheDocument();
+    expect(screen.getByText(/Reason: Chest pain · conscious: yes/)).toBeInTheDocument();
+    expect(screen.getByText(/Reason: Wound care · prefers nurse/)).toBeInTheDocument();
+  });
+
   it('shows a staff sign-in prompt when opening the staff portal anonymously', () => {
     renderAt('/staff');
     expect(screen.getByRole('heading', { name: 'Staff sign-in required' })).toBeInTheDocument();
@@ -491,6 +716,109 @@ describe('App', () => {
     expect(callPost).toBeDefined();
   });
 
+  it('shows a dispatcher sign-in prompt when opening the dispatcher portal anonymously', () => {
+    renderAt('/dispatcher');
+    expect(screen.getByRole('heading', { name: 'Dispatcher sign-in required' })).toBeInTheDocument();
+  });
+
+  it('redirects team members who open the dispatcher portal without the dispatcher role', async () => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole: 'nurse' });
+    renderAt('/dispatcher');
+    expect(await screen.findByRole('heading', { name: /Amina Dlamini/ })).toBeInTheDocument();
+    expect(screen.queryByText('Live queue')).not.toBeInTheDocument();
+  });
+
+  it('allows administrators to review the dispatcher queue without operational controls', async () => {
+    auth.state.isAuthenticated = true;
+    stubDispatcherData({ userType: 'admin', staffRole: 'administrator' }, {
+      live: [dispatcherRequestRow],
+      detail: { ...dispatcherRequestRow, history: dispatcherHistory, notifications: dispatcherNotifications },
+    });
+    renderAt('/dispatcher');
+    await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
+    expect(await screen.findByText('Read-only administrator view. Dispatcher access is required to change a simulated request.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel request' })).not.toBeInTheDocument();
+  });
+
+  it('renders the dispatcher console with live queue, metrics and the simulation banner', async () => {
+    auth.state.isAuthenticated = true;
+    stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
+      live: [dispatcherRequestRow],
+      metrics: { active: 1, ambulance: 1, homeVisit: 0, awaitingAssignment: 0, dispatched: 0 },
+    });
+    renderAt('/dispatcher');
+    expect(await screen.findByText('NC-2026-000201')).toBeInTheDocument();
+    expect(screen.getByText('Active requests')).toBeInTheDocument();
+    expect(screen.getAllByText('Ambulance').length).toBeGreaterThan(0);
+    expect(screen.getByText('Home visits')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting assignment')).toBeInTheDocument();
+    expect(screen.getByText('Dispatched')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Simulation environment.');
+  });
+
+  it('lets the dispatcher acknowledge a simulated facility from the detail view', async () => {
+    auth.state.isAuthenticated = true;
+    stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
+      live: [dispatcherRequestRow],
+      detail: { ...dispatcherRequestRow, history: dispatcherHistory, notifications: dispatcherNotifications },
+    });
+    renderAt('/dispatcher');
+    await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
+    expect(await screen.findByText('Notified facilities (simulated)')).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole('button', { name: 'Acknowledge' })[0]);
+
+    const respondPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/dispatcher/service-requests/sr1/respond') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(respondPost).toBeDefined();
+    expect(JSON.parse(String((respondPost?.[1] as RequestInit).body))).toMatchObject({ facilityId: 'h1', response: 'ACKNOWLEDGED' });
+  });
+
+  it('lets the dispatcher assign a simulated response unit to an assigned ambulance request', async () => {
+    auth.state.isAuthenticated = true;
+    const assignedRow = { ...dispatcherRequestRow, status: 'ASSIGNED', assigned_facility_id: 'h1' };
+    stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
+      live: [assignedRow],
+      units: [{ id: 'u1', callsign: 'A01', unit_type: 'AMBULANCE', status: 'AVAILABLE', hospital_id: 'h1', hospital_name: 'Simulated Facility Near' }],
+      detail: {
+        ...assignedRow,
+        history: [...dispatcherHistory, { id: 'hh4', from_status: 'ACCEPTED', to_status: 'ASSIGNED', actor_user_id: 'user-1', note: 'Facility assigned by dispatcher', created_at: '2026-09-27T10:05:00.000Z' }],
+        notifications: dispatcherNotifications.map((notification, index) => index === 0 ? { ...notification, response_status: 'ACCEPTED', acknowledged_at: '2026-09-27T10:02:00.000Z', responded_at: '2026-09-27T10:04:00.000Z' } : notification),
+      },
+    });
+    renderAt('/dispatcher');
+    await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
+    await userEvent.selectOptions(await screen.findByLabelText('Choose response unit'), 'unit:u1');
+    await userEvent.click(screen.getByRole('button', { name: 'Assign unit' }));
+
+    const assignPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/dispatcher/service-requests/sr1/assign-responder') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(assignPost).toBeDefined();
+    expect(JSON.parse(String((assignPost?.[1] as RequestInit).body))).toMatchObject({ unitId: 'u1' });
+  });
+
+  it('lets the dispatcher advance a dispatched request and cancel with a reason', async () => {
+    auth.state.isAuthenticated = true;
+    const dispatchedRow = { ...dispatcherRequestRow, status: 'DISPATCHED', assigned_facility_id: 'h1', assigned_unit_id: 'u1', assigned_at: '2026-09-27T10:06:00.000Z' };
+    stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
+      live: [dispatchedRow],
+      detail: { ...dispatchedRow, history: dispatcherHistory, notifications: dispatcherNotifications },
+    });
+    renderAt('/dispatcher');
+    await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark en route' }));
+
+    const forwardPatch = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/dispatcher/service-requests/sr1/status') && (options as RequestInit | undefined)?.method === 'PATCH');
+    expect(forwardPatch).toBeDefined();
+    expect(JSON.parse(String((forwardPatch?.[1] as RequestInit).body))).toMatchObject({ status: 'EN_ROUTE' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel request' }));
+    await userEvent.type(screen.getByLabelText('Cancellation reason'), 'Requester confirmed it was a false alarm');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
+
+    const cancelPatch = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/dispatcher/service-requests/sr1/status') && (options as RequestInit | undefined)?.method === 'PATCH');
+    expect(cancelPatch).toHaveLength(2);
+    expect(JSON.parse(String((cancelPatch[1][1] as RequestInit).body))).toMatchObject({ status: 'CANCELLED', cancelReason: 'Requester confirmed it was a false alarm' });
+  });
+
   it('lets a patient check in on the day of their appointment', async () => {
     auth.state.isAuthenticated = true;
     const now = new Date();
@@ -540,6 +868,7 @@ describe('App', () => {
     ['nurse', 'Nurse'],
     ['doctor', 'Doctor'],
     ['administrator', 'Administrator'],
+    ['dispatcher', 'Dispatcher'],
   ])('invites a %s from the admin portal', async (role, optionLabel) => {
     auth.state.isAuthenticated = true;
     stubAdminData({ userType: 'admin', staffRole: 'administrator' });

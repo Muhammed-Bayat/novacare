@@ -16,13 +16,14 @@ function member(role: StaffRole, hospitalId: string = hospitals.own): Membership
   return { hospitalId, hospitalName: 'NovaCare Demo Hospital', role };
 }
 
-type Actor = 'patient' | 'administrator' | 'nurse' | 'doctor';
+type Actor = 'patient' | 'administrator' | 'nurse' | 'doctor' | 'dispatcher';
 
 const actors: Record<Actor, { membership: Membership | null; userId: string }> = {
   patient: { membership: null, userId: 'user-patient' },
   administrator: { membership: member('administrator'), userId: 'user-admin' },
   nurse: { membership: member('nurse'), userId: 'user-nurse' },
   doctor: { membership: member('doctor'), userId: 'user-doctor' },
+  dispatcher: { membership: member('dispatcher'), userId: 'user-dispatcher' },
 };
 
 interface MatrixCase {
@@ -44,6 +45,11 @@ const matrix: MatrixCase[] = [
   { actor: 'patient', resource: 'staff.queue.read', scope: 'own', allowed: false },
   { actor: 'patient', resource: 'patient.record.read', scope: 'own', allowed: true },
   { actor: 'patient', resource: 'patient.record.read', scope: 'other', allowed: false },
+  { actor: 'patient', resource: 'patient.request.read', scope: 'own', allowed: true },
+  { actor: 'patient', resource: 'patient.request.read', scope: 'other', allowed: false },
+  { actor: 'patient', resource: 'patient.request.create', scope: 'own', allowed: true },
+  { actor: 'patient', resource: 'dispatcher.queue.read', scope: 'own', allowed: false },
+  { actor: 'patient', resource: 'dispatcher.request.operate', scope: 'own', allowed: false },
 
   { actor: 'administrator', resource: 'admin.team.read', scope: 'own', allowed: true },
   { actor: 'administrator', resource: 'admin.team.write', scope: 'own', allowed: true },
@@ -65,6 +71,9 @@ const matrix: MatrixCase[] = [
   { actor: 'administrator', resource: 'staff.triage.read', scope: 'own', allowed: false },
   { actor: 'administrator', resource: 'staff.queue.read', scope: 'own', allowed: false },
   { actor: 'administrator', resource: 'patient.record.read', scope: 'other', allowed: false },
+  { actor: 'administrator', resource: 'dispatcher.queue.read', scope: 'own', allowed: true },
+  { actor: 'administrator', resource: 'dispatcher.request.read', scope: 'own', allowed: true },
+  { actor: 'administrator', resource: 'dispatcher.request.operate', scope: 'own', allowed: false },
 
   { actor: 'nurse', resource: 'hospital.departments.read', scope: 'own', allowed: true },
   { actor: 'nurse', resource: 'staff.triage.read', scope: 'own', allowed: true },
@@ -92,6 +101,23 @@ const matrix: MatrixCase[] = [
   { actor: 'doctor', resource: 'admin.overview.read', scope: 'own', allowed: false },
   { actor: 'doctor', resource: 'patient.record.read', scope: 'own', allowed: true },
   { actor: 'doctor', resource: 'patient.record.read', scope: 'other', allowed: false },
+
+  // Dispatch coordination is cross-hospital by design: the dispatcher operates the
+  // network-wide queue, so dispatcher.* resources ignore the hospital scope.
+  { actor: 'dispatcher', resource: 'dispatcher.queue.read', scope: 'own', allowed: true },
+  { actor: 'dispatcher', resource: 'dispatcher.queue.read', scope: 'other', allowed: true },
+  { actor: 'dispatcher', resource: 'dispatcher.request.read', scope: 'own', allowed: true },
+  { actor: 'dispatcher', resource: 'dispatcher.request.operate', scope: 'own', allowed: true },
+  { actor: 'dispatcher', resource: 'dispatcher.request.operate', scope: 'other', allowed: true },
+  { actor: 'dispatcher', resource: 'admin.team.write', scope: 'own', allowed: false },
+  { actor: 'dispatcher', resource: 'admin.overview.read', scope: 'own', allowed: false },
+  { actor: 'dispatcher', resource: 'staff.queue.read', scope: 'own', allowed: false },
+  { actor: 'dispatcher', resource: 'patient.record.read', scope: 'own', allowed: true },
+  { actor: 'dispatcher', resource: 'patient.record.read', scope: 'other', allowed: false },
+  { actor: 'nurse', resource: 'dispatcher.queue.read', scope: 'own', allowed: false },
+  { actor: 'nurse', resource: 'dispatcher.request.operate', scope: 'own', allowed: false },
+  { actor: 'doctor', resource: 'dispatcher.queue.read', scope: 'own', allowed: false },
+  { actor: 'doctor', resource: 'dispatcher.request.operate', scope: 'own', allowed: false },
 ];
 
 describe('authorization matrix (Plan §11)', () => {
@@ -101,7 +127,7 @@ describe('authorization matrix (Plan §11)', () => {
       resource,
       membership: subject.membership,
       actorUserId: subject.userId,
-      entityOwnerId: resource === 'patient.record.read' ? (scope === 'own' ? subject.userId : 'user-other-patient') : null,
+      entityOwnerId: resource === 'patient.record.read' || resource === 'patient.request.read' ? (scope === 'own' ? subject.userId : 'user-other-patient') : null,
       requestedHospitalId: scope === 'own' ? hospitals.own : hospitals.other,
     });
     expect(decision.allowed).toBe(allowed);
@@ -174,6 +200,9 @@ describe('resource policies', () => {
   it('keeps staff and schedule resources hospital-scoped', () => {
     for (const [resource, policy] of Object.entries(resourcePolicies)) {
       if (resource.startsWith('patient.')) continue;
+      // Dispatch coordination is cross-hospital by design — the dispatcher
+      // operates the network-wide queue, so dispatcher.* is not hospital-scoped.
+      if (resource.startsWith('dispatcher.')) continue;
       expect(policy.hospitalScoped).toBe(true);
     }
   });
@@ -191,7 +220,10 @@ describe('resource policies', () => {
     expect(patientOnly.length).toBeGreaterThan(0);
     for (const [resource, policy] of patientOnly) {
       expect(policy.roles, resource).toBe('authenticated');
-      expect(policy.ownershipScoped, resource).toBe(true);
+      // Reads are ownership-gated; creates are open to any authenticated user
+      // because ownership is established from the actor at creation time.
+      if (resource.endsWith('.read')) expect(policy.ownershipScoped, resource).toBe(true);
+      else expect(policy.ownershipScoped ?? false, resource).toBe(false);
     }
   });
 });
