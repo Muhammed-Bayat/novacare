@@ -116,18 +116,125 @@ export interface HospitalAccess {
 
 export type TeamRole = 'administrator' | 'nurse' | 'doctor';
 
+export interface TeamDepartment {
+  id: string;
+  name: string;
+}
+
+export interface HospitalTeamMember {
+  membershipId: string;
+  email: string | null;
+  displayName: string | null;
+  role: TeamRole;
+  active: boolean;
+  since: string;
+  departments: TeamDepartment[];
+}
+
+export interface PendingInvitation {
+  email: string;
+  role: TeamRole;
+  departmentIds: string[];
+  expiresAt: string;
+  sentAt: string | null;
+}
+
 export interface HospitalTeam {
   hospitalId: string;
   hospitalName: string;
-  members: { email: string | null; displayName: string | null; role: TeamRole; since: string }[];
-  pendingInvitations: { email: string; role: TeamRole; expiresAt: string; sentAt: string | null }[];
+  members: HospitalTeamMember[];
+  pendingInvitations: PendingInvitation[];
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  averageConsultationMinutes: number;
+}
+
+export interface AdminDepartment {
+  id: string;
+  name: string;
+  averageConsultationMinutes: number;
+  active: boolean;
+  slotCount: number;
+  appointmentCount: number;
+}
+
+export interface DisplaySettings {
+  token: string | null;
+  active: boolean;
+}
+
+export interface AuditEvent {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  actor: { displayName: string | null; email: string | null } | null;
+}
+
+export interface OverviewDepartmentRow {
+  id: string;
+  name: string;
+  averageConsultationMinutes: number;
+  slotsToday: number;
+  capacityToday: number;
+  reservedToday: number;
+  appointmentsBooked: number;
+  appointmentsCancelled: number;
+  queueWaiting: number;
+  queueCalled: number;
+}
+
+export interface AdminOverview {
+  date: string;
+  totals: {
+    slotsToday: number;
+    capacityToday: number;
+    reservedToday: number;
+    appointmentsBooked: number;
+    appointmentsCancelled: number;
+    queueWaiting: number;
+    queueCalled: number;
+    activeMembers: number;
+    pendingInvitations: number;
+  };
+  departments: OverviewDepartmentRow[];
+}
+
+export interface HospitalDepartments {
+  hospitalId: string;
+  hospitalName: string;
+  departments: Department[];
+}
+
+export interface AppointmentSlot {
+  id: string;
+  departmentId: string;
+  departmentName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  reservedCount: number;
+}
+
+export interface SlotCreateResult {
+  created: number;
+  departmentId: string;
+  departmentName: string;
+  date: string;
 }
 
 export async function authenticatedRequest<T>(
   path: string,
-  accessToken: string,
+  accessToken: string | undefined,
   options: { method?: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; body?: unknown } = {},
 ): Promise<T> {
+  if (!accessToken) throw new Error('Your sign-in session could not be verified. Please sign in again.');
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: options.method,
     headers: { Authorization: `Bearer ${accessToken}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },

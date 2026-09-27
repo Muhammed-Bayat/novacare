@@ -167,3 +167,7 @@
 .nv-claim-box code { font-size: 12px; word-break: break-all; color: var(--text); font-weight: 600; }
 .nv-claim-copy { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .nv-claim-copy .ghost-btn { padding: 9px 14px; border-radius: 12px; }
+
+.nv-admin .nav { flex-wrap: wrap; gap: 6px 16px; }
+.nv-admin .nv-access-row { flex-wrap: wrap; }
+.nv-admin .nv-access-row > span:last-child { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

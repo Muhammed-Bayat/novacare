@@ -51,11 +51,77 @@ function stubPatientData(appointments: unknown[], queueEntries: unknown[] = [], 
   }));
 }
 
-function stubAdminData(user: Parameters<typeof stubCurrentUser>[0] = {}, members: unknown[] = [], pendingInvitations: unknown[] = []) {
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+interface AdminStubOptions {
+  members?: unknown[];
+  pendingInvitations?: unknown[];
+  departments?: unknown[];
+  slots?: unknown[];
+  adminDepartments?: unknown[];
+  display?: { token: string | null; active: boolean };
+  auditEvents?: unknown[];
+  overview?: unknown;
+}
+
+function stubAdminData(
+  user: Parameters<typeof stubCurrentUser>[0] = {},
+  options: AdminStubOptions = {},
+) {
+  const {
+    members = [],
+    pendingInvitations = [],
+    departments = [],
+    slots = [],
+    adminDepartments = [],
+    display = { token: null, active: false },
+    auditEvents = [],
+    overview,
+  } = options;
+  const defaultOverview = {
+    date: '2026-09-27',
+    totals: { slotsToday: 0, capacityToday: 0, reservedToday: 0, appointmentsBooked: 0, appointmentsCancelled: 0, queueWaiting: 0, queueCalled: 0, activeMembers: 0, pendingInvitations: 0 },
+    departments: [],
+  };
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const method = init?.method ?? 'GET';
+    if (url.includes('/api/v1/admin/departments')) {
+      if (method === 'POST') {
+        const body = JSON.parse(String(init?.body)) as { name: string; averageConsultationMinutes: number };
+        return { ok: true, status: 201, json: async () => ({ data: { id: 'd-new', name: body.name, averageConsultationMinutes: body.averageConsultationMinutes, active: true, slotCount: 0, appointmentCount: 0 } }) };
+      }
+      if (method === 'PATCH') {
+        const body = JSON.parse(String(init?.body)) as { active?: boolean };
+        return { ok: true, json: async () => ({ data: { id: 'd1', name: 'General Medicine', averageConsultationMinutes: 15, active: body.active ?? true } }) };
+      }
+      if (method === 'DELETE') return { ok: true, status: 204, json: async () => ({}) };
+      return { ok: true, json: async () => ({ data: adminDepartments }) };
+    }
+    if (url.includes('/api/v1/admin/display/rotate') && method === 'POST') {
+      return { ok: true, json: async () => ({ data: { token: 'kiosk-token-123', active: true } }) };
+    }
+    if (url.includes('/api/v1/admin/display')) {
+      if (method === 'PATCH') {
+        const body = JSON.parse(String(init?.body)) as { active: boolean };
+        return { ok: true, json: async () => ({ data: { active: body.active } }) };
+      }
+      return { ok: true, json: async () => ({ data: display }) };
+    }
+    if (url.includes('/api/v1/admin/audit')) return { ok: true, json: async () => ({ data: auditEvents }) };
+    if (url.includes('/api/v1/admin/overview')) return { ok: true, json: async () => ({ data: overview ?? defaultOverview }) };
     if (url.includes('/api/v1/admin/staff')) {
+      if (method === 'PATCH') return { ok: true, json: async () => ({ data: { membershipId: 'm1', role: 'nurse', active: true } }) };
       return { ok: true, json: async () => ({ data: { hospitalId: 'h1', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital', members, pendingInvitations } }) };
+    }
+    if (url.includes('/api/v1/departments')) {
+      return { ok: true, json: async () => ({ data: { hospitalId: 'h1', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital', departments } }) };
+    }
+    if (url.includes('/api/v1/admin/slots')) {
+      if (method === 'POST') {
+        const body = JSON.parse(String(init?.body)) as { departmentId: string; date: string };
+        return { ok: true, json: async () => ({ data: { created: 3, departmentId: body.departmentId, departmentName: 'General Medicine', date: body.date } }) };
+      }
+      if (method === 'DELETE') return { ok: true, status: 204, json: async () => ({}) };
+      return { ok: true, json: async () => ({ data: slots }) };
     }
     return { ok: true, json: async () => ({ data: { id: 'user-1', auth0Subject: 'auth0|user-1', email: 'user@example.com', displayName: 'Amina Dlamini', userType: 'patient', isPlatformOperator: false, staffRole: null, hospitalId: null, hospitalName: null, ...user } }) };
   }));
@@ -297,38 +363,188 @@ describe('App', () => {
     stubAdminData({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/admin');
     expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Hospital team' }));
     expect(screen.getByLabelText('Team member email')).toBeInTheDocument();
     expect(screen.getByLabelText('Role')).toBeInTheDocument();
   });
 
   it.each([
-    ['nurse', 'Nurse · all specialties'],
-    ['doctor', 'Doctor · all specialties'],
+    ['nurse', 'Nurse'],
+    ['doctor', 'Doctor'],
     ['administrator', 'Administrator'],
   ])('invites a %s from the admin portal', async (role, optionLabel) => {
     auth.state.isAuthenticated = true;
     stubAdminData({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Hospital team' }));
     const emailInput = await screen.findByLabelText('Team member email');
     await userEvent.selectOptions(screen.getByLabelText('Role'), optionLabel);
     await userEvent.type(emailInput, `${role}@example.com`);
     await userEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
     const invitePost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/admin/staff') && (options as RequestInit | undefined)?.method === 'POST');
     expect(invitePost).toBeDefined();
-    expect(JSON.parse(String((invitePost?.[1] as RequestInit).body))).toMatchObject({ email: `${role}@example.com`, role });
+    expect(JSON.parse(String((invitePost?.[1] as RequestInit).body))).toMatchObject({ email: `${role}@example.com`, role, departmentIds: [] });
   });
 
   it('shows hospital team members and pending invitations on the admin portal', async () => {
     auth.state.isAuthenticated = true;
-    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, [
-      { email: 'nurse@example.com', displayName: 'Amina Dlamini', role: 'nurse', since: '2026-09-26T12:00:00.000Z' },
-    ], [
-      { email: 'dr@example.com', role: 'doctor', expiresAt: '2026-09-29T12:00:00.000Z', sentAt: '2026-09-26T12:00:00.000Z' },
-    ]);
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      members: [
+        { membershipId: 'm1', email: 'nurse@example.com', displayName: 'Amina Dlamini', role: 'nurse', active: true, since: '2026-09-26T12:00:00.000Z', departments: [] },
+      ],
+      pendingInvitations: [
+        { email: 'dr@example.com', role: 'doctor', departmentIds: [], expiresAt: '2026-09-29T12:00:00.000Z', sentAt: '2026-09-26T12:00:00.000Z' },
+      ],
+    });
     renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Hospital team' }));
     expect(await screen.findByText(/nurse@example\.com/)).toBeInTheDocument();
     expect(screen.getByText(/dr@example\.com/)).toBeInTheDocument();
     expect(screen.getByText('Invitation pending')).toBeInTheDocument();
+    expect(screen.getAllByText(/All specialties/).length).toBeGreaterThan(0);
+  });
+
+  it('updates a team member from the manage form', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      members: [
+        { membershipId: 'm1', email: 'nurse@example.com', displayName: 'Thandi Khumalo', role: 'nurse', active: true, since: '2026-09-26T12:00:00.000Z', departments: [] },
+      ],
+    });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Hospital team' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }));
+
+    const patch = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/admin/staff/m1') && (options as RequestInit | undefined)?.method === 'PATCH');
+    expect(patch).toBeDefined();
+    expect(JSON.parse(String((patch?.[1] as RequestInit).body))).toMatchObject({ role: 'nurse', active: true, departmentIds: [] });
+    expect(await screen.findByText('Team member updated.')).toBeInTheDocument();
+  });
+
+  it('creates appointment slots from the admin schedule tab', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      departments: [
+        { id: 'd1', name: 'General Medicine', averageConsultationMinutes: 15 },
+      ],
+    });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Schedule' }));
+    expect(await screen.findByLabelText('Slot department')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Create slots' }));
+
+    const slotPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/admin/slots') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(slotPost).toBeDefined();
+    expect(JSON.parse(String((slotPost?.[1] as RequestInit).body))).toMatchObject({
+      departmentId: 'd1',
+      date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      startTime: '09:00',
+      endTime: '12:00',
+      slotMinutes: 15,
+      capacity: 3,
+    });
+    expect(await screen.findByText(/Created 3 slots for General Medicine/)).toBeInTheDocument();
+  });
+
+  it('lists published slots with their capacity on the schedule tab', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      departments: [
+        { id: 'd1', name: 'General Medicine', averageConsultationMinutes: 15 },
+      ],
+      slots: [
+        { id: 's1', departmentId: 'd1', departmentName: 'General Medicine', date: '2026-10-01', startTime: '09:00', endTime: '09:15', capacity: 3, reservedCount: 1 },
+      ],
+    });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Schedule' }));
+    expect(await screen.findByText('General Medicine')).toBeInTheDocument();
+    expect(screen.getByText(/2026-10-01 · 09:00–09:15/)).toBeInTheDocument();
+    expect(screen.getByText('1/3 booked')).toBeInTheDocument();
+  });
+
+  it("shows today's operations on the overview tab", async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      overview: {
+        date: '2026-09-27',
+        totals: { slotsToday: 12, capacityToday: 36, reservedToday: 9, appointmentsBooked: 7, appointmentsCancelled: 1, queueWaiting: 4, queueCalled: 1, activeMembers: 6, pendingInvitations: 2 },
+        departments: [
+          { id: 'd1', name: 'General Medicine', averageConsultationMinutes: 15, slotsToday: 12, capacityToday: 36, reservedToday: 9, appointmentsBooked: 7, appointmentsCancelled: 1, queueWaiting: 4, queueCalled: 1 },
+        ],
+      },
+    });
+    renderAt('/admin');
+    expect(await screen.findByRole('heading', { name: "Today's operations" })).toBeInTheDocument();
+    expect(await screen.findByText('9/36 slots')).toBeInTheDocument();
+    expect(screen.getByText('7 booked')).toBeInTheDocument();
+    expect(screen.getByText('5 waiting')).toBeInTheDocument();
+    expect(screen.getByText(/2 pending invitations/)).toBeInTheDocument();
+  });
+
+  it('creates a department from the departments tab', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      adminDepartments: [
+        { id: 'd1', name: 'General Medicine', averageConsultationMinutes: 15, active: true, slotCount: 0, appointmentCount: 0 },
+      ],
+    });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Departments' }));
+    await userEvent.type(await screen.findByLabelText('Department name'), 'Radiology');
+    await userEvent.click(screen.getByRole('button', { name: 'Add department' }));
+
+    const departmentPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/admin/departments') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(departmentPost).toBeDefined();
+    expect(JSON.parse(String((departmentPost?.[1] as RequestInit).body))).toMatchObject({ name: 'Radiology', averageConsultationMinutes: 15 });
+    expect(await screen.findByText(/Department "Radiology" created/)).toBeInTheDocument();
+  });
+
+  it('generates and shows a waiting-room display link', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Display' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Generate display link' }));
+
+    const rotate = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/admin/display/rotate') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(rotate).toBeDefined();
+    expect(await screen.findByText(/kiosk-token-123/)).toBeInTheDocument();
+    expect(screen.getByText('Display on')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Turn display off' })).toBeInTheDocument();
+  });
+
+  it('lists staff actions on the activity tab', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      auditEvents: [
+        {
+          id: 'e1',
+          action: 'staff_invitation.created',
+          entityType: 'staff_invitation',
+          entityId: null,
+          metadata: { email: 'nurse@example.com', role: 'nurse', departmentIds: [] },
+          createdAt: '2026-09-27T10:00:00.000Z',
+          actor: { displayName: 'Amina Dlamini', email: 'admin@example.com' },
+        },
+        {
+          id: 'e2',
+          action: 'appointment_slots.created',
+          entityType: 'appointment_slot',
+          entityId: null,
+          metadata: { departmentName: 'General Medicine', created: 3, date: '2026-10-01' },
+          createdAt: '2026-09-27T11:00:00.000Z',
+          actor: { displayName: 'Amina Dlamini', email: 'admin@example.com' },
+        },
+      ],
+    });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Activity' }));
+    expect(await screen.findByText('Invitation created')).toBeInTheDocument();
+    expect(screen.getByText(/nurse@example\.com/)).toBeInTheDocument();
+    expect(screen.getByText('Slots created')).toBeInTheDocument();
+    expect(screen.getByText(/General Medicine · 3 slots · 2026-10-01/)).toBeInTheDocument();
   });
 
   it('starts the Auth0 sign-in flow from the landing page', async () => {
