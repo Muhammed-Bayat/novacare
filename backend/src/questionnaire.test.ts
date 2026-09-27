@@ -67,7 +67,9 @@ describe('POST /api/v1/questionnaire/intake', () => {
     vi.stubEnv('GEMINI_API_KEY', 'test-key');
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    // Start beyond the real-clock cooldown left by the previous test, then walk forward.
+    const baseTime = Date.now() + 120_000;
+    vi.setSystemTime(new Date(baseTime));
     const fetchMock = vi.fn(async () => ({ ok: false, status: 429, json: async () => ({}) }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -75,14 +77,14 @@ describe('POST /api/v1/questionnaire/intake', () => {
     expect(first.body.data.source).toBe('local');
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    vi.setSystemTime(new Date('2026-09-27T12:00:30Z'));
+    vi.setSystemTime(new Date(baseTime + 30_000));
     const second = await request(createApp()).post('/api/v1/questionnaire/intake').send({ complaint: 'I hurt my ankle today' });
     expect(second.status).toBe(200);
     expect(second.body.data.source).toBe('local');
     expect(second.body.data.pathwayId).toBe('injury');
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    vi.setSystemTime(new Date('2026-09-27T12:01:01Z'));
+    vi.setSystemTime(new Date(baseTime + 61_000));
     const third = await request(createApp()).post('/api/v1/questionnaire/intake').send({ complaint: 'My chest feels tight' });
     expect(third.body.data.source).toBe('local');
     expect(fetchMock).toHaveBeenCalledTimes(2);

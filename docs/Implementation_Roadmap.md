@@ -35,11 +35,13 @@ frameworks, or hosting during the hackathon.
   - Add missing tables: `departments`, `wellness_profiles`, `appointment_slots`,
     `intake_submissions`, `documents`, `ai_intake_assessments`, `triage_decisions`,
     `referrals`, `notifications`, `audit_events`.
-- [ ] Reconcile `hospital_services` (existing) with `departments` (plan): pick one name and
+  - Partial: `014_admin_domain.ts` adds `departments`, `appointment_slots`, `audit_events`
+    (+ `average_consultation_minutes`); remaining tables still pending.
+- [x] Reconcile `hospital_services` (existing) with `departments` (plan): pick one name and
       migrate/rename so there is a single concept. Carry over `average_consultation_minutes`.
 - [ ] Add hospital-scoping foreign keys everywhere: every patient-facing or clinical row
       carries `hospital_id` (directly or via `appointment_id` → `appointments.hospital_id`).
-- [ ] Update `migrations/run.test.ts` assertions for the new tables.
+- [x] Update `migrations/run.test.ts` assertions for the new tables.
 
 **Depends on:** nothing.
 **Done when:** `npm run typecheck && npm test` passes locally and migrations run cleanly
@@ -59,11 +61,11 @@ against a fresh Neon branch/database.
 
 ### Step 1.3: Authorization middleware (the one thing everything else uses)
 
-- [ ] Create `backend/src/authorization.ts` with:
+- [x] Create `backend/src/authorization.ts` with:
   - `requireRole(role)` — checks `hospital_memberships` server-side.
   - `requireHospital()` — resolves hospital ID **from membership, never from the request body**.
   - `requireOwnership(loadEntity)` — patient-scoped resource guard.
-- [ ] Build the authorization matrix from Plan §11 as a table-driven Vitest suite:
+- [x] Build the authorization matrix from Plan §11 as a table-driven Vitest suite:
   roles × resource × read/write → allowed/denied. This test file is the contract for every
   later phase.
 
@@ -81,6 +83,10 @@ resources, all green.
     full-directory import; see Plan §8: curated seed is the source of truth).
   - Platform operator account, one admin, two nurses, two doctors, one demo patient.
   - Public display token row for the demo hospital.
+  - Partial: `npm run seed` exists and covers demo hospital + departments + staff/patient
+    memberships; extra hospitals still pending. The display token column now exists
+    (migration `015_admin_settings`) and a token can be generated from the admin
+    Display tab — the public `/display/:token` endpoint itself is still Step 4.5.
 - [ ] Decide the external-data stance now: current import migrations (005–008) stay as-is for
       the hackathon; no new external imports during the build (Plan §12 P2 only).
 
@@ -89,8 +95,8 @@ resources, all green.
 
 ### Step 1.5: Repo hygiene
 
-- [ ] Verify `.gitignore` covers `.env`; confirm no secrets in source (Plan §12 P0.8).
-- [ ] Confirm `render.yaml` + GitHub Actions run `typecheck`, `lint`, `test`, `build`.
+- [x] Verify `.gitignore` covers `.env`; confirm no secrets in source (Plan §12 P0.8).
+- [x] Confirm `render.yaml` + GitHub Actions run `typecheck`, `lint`, `test`, `build`.
 
 **Done when:** CI is green on a clean push.
 
@@ -100,13 +106,13 @@ resources, all green.
 
 ### Step 2.1: Staff invitation flow
 
-- [ ] `POST /api/v1/admin/staff` (exists — extend): validate admin membership, generate a
+- [x] `POST /api/v1/admin/staff` (exists — extend): validate admin membership, generate a
       signed expiring token, store only `token_hash`, create `staff_invitations` row, write an
       `audit_events` row.
-- [ ] Email sending: use the provider available in the Render environment if configured;
+- [x] Email sending: use the provider available in the Render environment if configured;
       otherwise fall back to **returning the invite link in the admin UI** for the demo
       (label it clearly). Do not block on email infrastructure.
-- [ ] `POST /api/v1/invitations/claim`: authenticated user submits token → server checks
+- [x] `POST /api/v1/invitations/claim`: authenticated user submits token → server checks
       expiry/unused, matches the invited email, creates `hospital_memberships`, marks
       `claimed_at`, audits. Never accept a role from the client body.
 
@@ -137,10 +143,12 @@ redirected; a patient hitting another patient's `:id` sees 403/empty, not data.
 
 ### Step 3.1: Admin schedule management
 
-- [ ] Endpoints: CRUD for `appointment_slots` scoped to hospital+department
+- [x] Endpoints: CRUD for `appointment_slots` scoped to hospital+department
       (`POST /api/v1/admin/slots`, `GET /api/v1/departments` public-to-hospital).
-- [ ] Validate capacity ≥ 1, no overlapping duplicate slots, hospital from membership.
-- [ ] UI at `/staff/schedule`: pick department, day, time range, slot length, capacity.
+- [x] Validate capacity ≥ 1, no overlapping duplicate slots, hospital from membership.
+- [x] UI at `/staff/schedule`: pick department, day, time range, slot length, capacity.
+  - Note: implemented as the **Schedule tab on `/admin`**; `/staff/schedule` route alias
+    pending Step 2.2 role routing.
 
 **Depends on:** 1.4, 2.1.
 **Done when:** admin can create tomorrow's slots for General Medicine and see them listed.

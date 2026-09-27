@@ -9,6 +9,7 @@
     "start": "npm run migrate:prod && node dist/server.js",
     "migrate": "tsx src/migrations/run.ts",
     "migrate:prod": "node dist/migrations/run.js",
+    "seed": "tsx src/data/seed.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

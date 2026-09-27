@@ -3,6 +3,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import express from 'express';
 import helmet from 'helmet';
 import { requireAuth } from './auth.js';
+import { recordAudit } from './audit.js';
+import { loadMembership, requireHospital, requireRole } from './authorization.js';
 import { getPool } from './db.js';
 import { buildInvitationUrl, sendInvitationEmail } from './email.js';
 
@@ -91,9 +93,32 @@ function isBookingTime(date: string, time: string): boolean {
     && date >= new Date().toISOString().slice(0, 10) && time >= '07:00' && time < '19:00';
 }
 
+function parseClock(value: unknown): number | undefined {
+  if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return undefined;
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function formatClock(totalMinutes: number): string {
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+}
+
+function sqlDateOnly(value: string): string {
+  return value.slice(0, 10);
+}
+
 function textList(value: unknown): string[] | undefined {
   if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return undefined;
   return value.map((item) => item.trim()).filter(Boolean).slice(0, 50);
+}
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Validates an optional array of UUIDs; returns null when the value is not a valid list. */
+function normalizeUuidList(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > 20) return null;
+  if (!value.every((item) => typeof item === 'string' && uuidPattern.test(item))) return null;
+  return [...new Set(value.map((item) => String(item).toLowerCase()))];
 }
 
 function triageSummary(value: unknown): AppointmentTriageSummary | null | undefined {
@@ -299,26 +324,34 @@ async function translateTexts(texts: string[], targetCode: string): Promise<stri
   return results;
 }
 
-async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string; baseUrl: string }): Promise<{ claimUrl: string }> {
+async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string; baseUrl: string; departmentIds?: string[] }): Promise<{ claimUrl: string; emailSent: boolean }> {
   const token = invitationToken();
   const claimUrl = buildInvitationUrl(token, input.baseUrl);
+  const departmentIds = input.role === 'administrator' ? [] : (input.departmentIds ?? []);
   const invitation = await getPool().query(
-    `INSERT INTO staff_invitations (hospital_id, email, role, invited_by, token_hash, expires_at, claimed_by, claimed_at, sent_at)
-     VALUES ($1, lower($2), $3, $4, $5, now() + interval '72 hours', NULL, NULL, NULL)
+    `INSERT INTO staff_invitations (hospital_id, email, role, invited_by, token_hash, expires_at, claimed_by, claimed_at, sent_at, department_ids)
+     VALUES ($1, lower($2), $3, $4, $5, now() + interval '72 hours', NULL, NULL, NULL, $6)
      ON CONFLICT (hospital_id, email, role) DO UPDATE
      SET invited_by = EXCLUDED.invited_by, token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at,
-         claimed_by = NULL, claimed_at = NULL, sent_at = NULL
+         claimed_by = NULL, claimed_at = NULL, sent_at = NULL, department_ids = EXCLUDED.department_ids
      WHERE staff_invitations.claimed_at IS NULL`,
-    [input.hospitalId, input.email, input.role, input.invitedBy, tokenHash(token)],
+    [input.hospitalId, input.email, input.role, input.invitedBy, tokenHash(token), departmentIds],
   );
   if (!invitation.rowCount) throw new Error('This recipient has already claimed this hospital role.');
-  await sendInvitationEmail({ recipient: input.email, role: input.role, hospitalName: input.hospitalName, claimUrl });
+  // Roadmap 2.1: never block on email infrastructure — the admin UI shows the claim link as fallback.
+  let emailSent = false;
+  try {
+    await sendInvitationEmail({ recipient: input.email, role: input.role, hospitalName: input.hospitalName, claimUrl });
+    emailSent = true;
+  } catch (error) {
+    console.error('[invitation] email could not be sent, claim link shown in admin UI instead:', error instanceof Error ? error.message : error);
+  }
   await getPool().query(
-    `UPDATE staff_invitations SET sent_at = now()
-     WHERE hospital_id = $1 AND lower(email) = lower($2) AND role = $3 AND token_hash = $4`,
-    [input.hospitalId, input.email, input.role, tokenHash(token)],
+    `UPDATE staff_invitations SET sent_at = CASE WHEN $4 THEN now() ELSE NULL END
+     WHERE hospital_id = $1 AND lower(email) = lower($2) AND role = $3 AND token_hash = $5`,
+    [input.hospitalId, input.email, input.role, emailSent, tokenHash(token)],
   );
-  return { claimUrl };
+  return { claimUrl, emailSent };
 }
 
 async function synchronizeUser(subject: string, email: string | null, displayName: string | null): Promise<UserRow> {
@@ -405,11 +438,11 @@ export function createApp() {
         `SELECT h.id, h.name, h.province, h.address, h.latitude, h.longitude, h.facility_type,
                 hs.id AS service_id, hs.name AS service_name
          FROM hospitals h
-         JOIN hospital_services hs ON hs.hospital_id = h.id AND hs.active
+         JOIN departments hs ON hs.hospital_id = h.id AND hs.active
          WHERE h.active AND ($1 = '' OR h.name ILIKE '%' || $1 || '%')
            AND ($2 = '' OR h.province ILIKE '%' || $2 || '%' OR h.address ILIKE '%' || $2 || '%')
            AND ($3 = '' OR EXISTS (
-             SELECT 1 FROM hospital_services matching_service
+             SELECT 1 FROM departments matching_service
              WHERE matching_service.hospital_id = h.id AND matching_service.active AND matching_service.name ILIKE '%' || $3 || '%'
            ))
          ORDER BY h.name, hs.name`,
@@ -539,46 +572,632 @@ export function createApp() {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/v1/admin/staff', requireAuth, async (req, res, next) => {
+  app.post('/api/v1/admin/staff', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
     try {
-      const membership = await getPool().query<{ hospital_id: string; hospital_name: string }>(`SELECT hm.hospital_id, h.name AS hospital_name FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id JOIN hospitals h ON h.id = hm.hospital_id WHERE u.auth0_subject = $1 AND hm.role = 'administrator' AND hm.active`, [req.auth!.subject]);
-      const hospitalId = membership.rows[0]?.hospital_id;
-      const { email, role } = req.body as { email?: unknown; role?: unknown };
-      if (!hospitalId || typeof email !== 'string' || !email.includes('@') || (role !== 'administrator' && role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid team role and email.' } }); return; }
+      const membership = req.membership!;
+      const { email, role, departmentIds: departmentIdsRaw } = req.body as { email?: unknown; role?: unknown; departmentIds?: unknown };
+      if (typeof email !== 'string' || !email.includes('@') || (role !== 'administrator' && role !== 'nurse' && role !== 'doctor')) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'Choose a valid team role and email.' } }); return; }
+      const departmentIds = departmentIdsRaw === undefined ? [] : normalizeUuidList(departmentIdsRaw);
+      if (!departmentIds) { res.status(400).json({ error: { code: 'INVALID_DEPARTMENTS', message: 'Choose up to 20 departments from your hospital.' } }); return; }
+      if (departmentIds.length > 0) {
+        const owned = await getPool().query<{ id: string }>(
+          'SELECT id FROM departments WHERE hospital_id = $1 AND active AND id = ANY($2::uuid[])',
+          [membership.hospitalId, departmentIds],
+        );
+        if (owned.rowCount !== departmentIds.length) { res.status(400).json({ error: { code: 'INVALID_DEPARTMENTS', message: 'Choose departments from your hospital.' } }); return; }
+      }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
-      const { claimUrl } = await createAndSendInvitation({ hospitalId, hospitalName: membership.rows[0]!.hospital_name, email, role, invitedBy: user.id, baseUrl: resolveBaseUrl(req) });
+      const { claimUrl, emailSent } = await createAndSendInvitation({ hospitalId: membership.hospitalId, hospitalName: membership.hospitalName, email, role, invitedBy: user.id, baseUrl: resolveBaseUrl(req), departmentIds });
+      await recordAudit({
+        actorUserId: user.id,
+        hospitalId: membership.hospitalId,
+        entityType: 'staff_invitation',
+        action: 'staff_invitation.created',
+        metadata: { email: email.trim().toLowerCase(), role, departmentIds },
+      });
       const roleLabel = role === 'administrator' ? 'Administrator' : role === 'nurse' ? 'Staff' : 'Doctor';
-      res.status(201).json({ data: { message: `${roleLabel} invitation email sent. It expires in 72 hours.`, claimUrl } });
+      const message = emailSent
+        ? `${roleLabel} invitation email sent. It expires in 72 hours.`
+        : `Invitation created for ${roleLabel.toLowerCase()} — email delivery is unavailable, share the link below. It expires in 72 hours.`;
+      res.status(201).json({ data: { message, claimUrl, emailSent } });
     } catch (error) { next(error); }
   });
 
-  app.get('/api/v1/admin/staff', requireAuth, async (req, res, next) => {
+  app.get('/api/v1/admin/staff', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
     try {
-      const membership = await getPool().query<{ hospital_id: string; hospital_name: string }>(`SELECT hm.hospital_id, h.name AS hospital_name FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id JOIN hospitals h ON h.id = hm.hospital_id WHERE u.auth0_subject = $1 AND hm.role = 'administrator' AND hm.active`, [req.auth!.subject]);
-      const hospital = membership.rows[0];
-      if (!hospital) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Administrator access is required.' } }); return; }
-      const members = await getPool().query<{ email: string | null; display_name: string | null; role: 'administrator' | 'nurse' | 'doctor'; created_at: string }>(
-        `SELECT u.email, u.display_name, hm.role, hm.created_at
+      const hospital = req.membership!;
+      const members = await getPool().query<{ membership_id: string; email: string | null; display_name: string | null; role: 'administrator' | 'nurse' | 'doctor'; active: boolean; created_at: string; departments: { id: string; name: string }[] }>(
+        `SELECT hm.id AS membership_id, u.email, u.display_name, hm.role, hm.active, hm.created_at,
+                COALESCE((
+                  SELECT json_agg(json_build_object('id', d.id, 'name', d.name) ORDER BY d.name)
+                  FROM membership_departments md
+                  JOIN departments d ON d.id = md.department_id
+                  WHERE md.membership_id = hm.id
+                ), '[]'::json) AS departments
          FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id
-         WHERE hm.hospital_id = $1 AND hm.active
-         ORDER BY hm.created_at`,
-        [hospital.hospital_id],
+         WHERE hm.hospital_id = $1
+         ORDER BY hm.active DESC, hm.created_at`,
+        [hospital.hospitalId],
       );
-      const invitations = await getPool().query<{ email: string; role: 'administrator' | 'nurse' | 'doctor'; expires_at: string; sent_at: string | null }>(
-        `SELECT email, role, expires_at, sent_at
+      const invitations = await getPool().query<{ email: string; role: 'administrator' | 'nurse' | 'doctor'; department_ids: string[]; expires_at: string; sent_at: string | null }>(
+        `SELECT email, role, department_ids, expires_at, sent_at
          FROM staff_invitations
          WHERE hospital_id = $1 AND claimed_at IS NULL
          ORDER BY created_at DESC`,
-        [hospital.hospital_id],
+        [hospital.hospitalId],
       );
       res.json({
         data: {
-          hospitalId: hospital.hospital_id,
-          hospitalName: hospital.hospital_name,
-          members: members.rows.map((row) => ({ email: row.email, displayName: row.display_name, role: row.role, since: row.created_at })),
-          pendingInvitations: invitations.rows.map((row) => ({ email: row.email, role: row.role, expiresAt: row.expires_at, sentAt: row.sent_at })),
+          hospitalId: hospital.hospitalId,
+          hospitalName: hospital.hospitalName,
+          members: members.rows.map((row) => ({ membershipId: row.membership_id, email: row.email, displayName: row.display_name, role: row.role, active: row.active, since: row.created_at, departments: row.departments })),
+          pendingInvitations: invitations.rows.map((row) => ({ email: row.email, role: row.role, departmentIds: row.department_ids, expiresAt: row.expires_at, sentAt: row.sent_at })),
         },
       });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/v1/admin/staff/:membershipId', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const membershipId = String(req.params.membershipId);
+      if (!uuidPattern.test(membershipId)) { res.status(404).json({ error: { code: 'MEMBERSHIP_NOT_FOUND', message: 'That team member was not found.' } }); return; }
+      const { role, active, departmentIds: departmentIdsRaw } = req.body as { role?: unknown; active?: unknown; departmentIds?: unknown };
+      if (role === undefined && active === undefined && departmentIdsRaw === undefined) {
+        res.status(400).json({ error: { code: 'INVALID_MEMBERSHIP_UPDATE', message: 'Provide a role, active state, or department assignment to change.' } });
+        return;
+      }
+      if (role !== undefined && role !== 'administrator' && role !== 'nurse' && role !== 'doctor') {
+        res.status(400).json({ error: { code: 'INVALID_MEMBERSHIP_UPDATE', message: 'Choose a valid team role.' } });
+        return;
+      }
+      if (active !== undefined && typeof active !== 'boolean') {
+        res.status(400).json({ error: { code: 'INVALID_MEMBERSHIP_UPDATE', message: 'The active state must be true or false.' } });
+        return;
+      }
+      const departmentIds = departmentIdsRaw === undefined ? undefined : normalizeUuidList(departmentIdsRaw);
+      if (!departmentIds) {
+        res.status(400).json({ error: { code: 'INVALID_DEPARTMENTS', message: 'Choose up to 20 departments from your hospital.' } });
+        return;
+      }
+      const actor = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      const target = await getPool().query<{ user_id: string; role: 'administrator' | 'nurse' | 'doctor'; active: boolean }>(
+        'SELECT user_id, role, active FROM hospital_memberships WHERE id = $1 AND hospital_id = $2',
+        [membershipId, hospitalId],
+      );
+      const current = target.rows[0];
+      if (!current) { res.status(404).json({ error: { code: 'MEMBERSHIP_NOT_FOUND', message: 'That team member was not found.' } }); return; }
+      if (current.user_id === actor.id) {
+        res.status(409).json({ error: { code: 'SELF_CHANGE', message: 'You cannot change your own hospital access. Ask another administrator.' } });
+        return;
+      }
+      const nextRole = (role ?? current.role) as 'administrator' | 'nurse' | 'doctor';
+      const nextActive = (active ?? current.active) as boolean;
+      if (current.role === 'administrator' && current.active && (nextRole !== 'administrator' || !nextActive)) {
+        const admins = await getPool().query<{ count: string }>(
+          "SELECT count(*) AS count FROM hospital_memberships WHERE hospital_id = $1 AND role = 'administrator' AND active AND id <> $2",
+          [hospitalId, membershipId],
+        );
+        if (Number(admins.rows[0]!.count) === 0) {
+          res.status(409).json({ error: { code: 'LAST_ADMINISTRATOR', message: 'At least one active administrator must remain. Promote another administrator first.' } });
+          return;
+        }
+      }
+      if (departmentIds && departmentIds.length > 0) {
+        const owned = await getPool().query<{ id: string }>(
+          'SELECT id FROM departments WHERE hospital_id = $1 AND id = ANY($2::uuid[])',
+          [hospitalId, departmentIds],
+        );
+        if (owned.rowCount !== departmentIds.length) { res.status(400).json({ error: { code: 'INVALID_DEPARTMENTS', message: 'Choose departments from your hospital.' } }); return; }
+      }
+
+      const client = await getPool().connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'UPDATE hospital_memberships SET role = $3, active = $4 WHERE id = $1 AND hospital_id = $2',
+          [membershipId, hospitalId, nextRole, nextActive],
+        );
+        if (departmentIds && nextRole !== 'administrator') {
+          await client.query('DELETE FROM membership_departments WHERE membership_id = $1', [membershipId]);
+          if (departmentIds.length > 0) {
+            await client.query(
+              `INSERT INTO membership_departments (membership_id, department_id)
+               SELECT $1::uuid, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+              [membershipId, departmentIds],
+            );
+          }
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      await recordAudit({
+        actorUserId: actor.id,
+        hospitalId,
+        entityType: 'hospital_membership',
+        entityId: membershipId,
+        action: 'hospital_membership.updated',
+        metadata: {
+          role: { from: current.role, to: nextRole },
+          active: { from: current.active, to: nextActive },
+          ...(departmentIds && nextRole !== 'administrator' ? { departmentIds } : {}),
+        },
+      });
+      res.json({ data: { membershipId, role: nextRole, active: nextActive } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/departments', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await loadMembership(req.auth!.subject);
+      if (!membership) { res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } }); return; }
+      const departments = await getPool().query<{ id: string; name: string; average_consultation_minutes: number }>(
+        'SELECT id, name, average_consultation_minutes FROM departments WHERE hospital_id = $1 AND active ORDER BY name',
+        [membership.hospitalId],
+      );
+      res.json({
+        data: {
+          hospitalId: membership.hospitalId,
+          hospitalName: membership.hospitalName,
+          departments: departments.rows.map((row) => ({ id: row.id, name: row.name, averageConsultationMinutes: row.average_consultation_minutes })),
+        },
+      });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/admin/departments', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const departments = await getPool().query<{ id: string; name: string; average_consultation_minutes: number; active: boolean; slot_count: string; appointment_count: string }>(
+        `SELECT d.id, d.name, d.average_consultation_minutes, d.active,
+                COALESCE(s.slot_count, 0) AS slot_count,
+                COALESCE(a.appointment_count, 0) AS appointment_count
+         FROM departments d
+         LEFT JOIN (
+           SELECT department_id, count(*) AS slot_count
+           FROM appointment_slots WHERE hospital_id = $1 GROUP BY department_id
+         ) s ON s.department_id = d.id
+         LEFT JOIN (
+           SELECT hospital_service_id AS department_id, count(*) AS appointment_count
+           FROM appointments WHERE hospital_id = $1 GROUP BY department_id
+         ) a ON a.department_id = d.id
+         WHERE d.hospital_id = $1
+         ORDER BY d.active DESC, d.name`,
+        [hospitalId],
+      );
+      res.json({
+        data: departments.rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          averageConsultationMinutes: Number(row.average_consultation_minutes),
+          active: row.active,
+          slotCount: Number(row.slot_count),
+          appointmentCount: Number(row.appointment_count),
+        })),
+      });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/admin/departments', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const membership = req.membership!;
+      const { name, averageConsultationMinutes } = req.body as { name?: unknown; averageConsultationMinutes?: unknown };
+      const trimmedName = boundedText(name, '', 80);
+      const validMinutes = typeof averageConsultationMinutes === 'number' && Number.isInteger(averageConsultationMinutes) && averageConsultationMinutes >= 5 && averageConsultationMinutes <= 240;
+      if (trimmedName.length < 2 || !validMinutes) {
+        res.status(400).json({ error: { code: 'INVALID_DEPARTMENT', message: 'Enter a department name of at least 2 characters and an average consultation time of 5 to 240 minutes.' } });
+        return;
+      }
+      const duplicate = await getPool().query('SELECT 1 FROM departments WHERE hospital_id = $1 AND lower(name) = lower($2)', [membership.hospitalId, trimmedName]);
+      if (duplicate.rowCount) { res.status(409).json({ error: { code: 'DEPARTMENT_EXISTS', message: 'A department with that name already exists at your hospital.' } }); return; }
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      let created;
+      try {
+        created = await getPool().query<{ id: string }>(
+          'INSERT INTO departments (hospital_id, name, average_consultation_minutes) VALUES ($1, $2, $3) RETURNING id',
+          [membership.hospitalId, trimmedName, averageConsultationMinutes],
+        );
+      } catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {
+          res.status(409).json({ error: { code: 'DEPARTMENT_EXISTS', message: 'A department with that name already exists at your hospital.' } });
+          return;
+        }
+        throw error;
+      }
+      await recordAudit({
+        actorUserId: user.id,
+        hospitalId: membership.hospitalId,
+        entityType: 'department',
+        entityId: created.rows[0]!.id,
+        action: 'department.created',
+        metadata: { name: trimmedName, averageConsultationMinutes },
+      });
+      res.status(201).json({ data: { id: created.rows[0]!.id, name: trimmedName, averageConsultationMinutes, active: true, slotCount: 0, appointmentCount: 0 } });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/v1/admin/departments/:id', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const departmentId = String(req.params.id);
+      if (!uuidPattern.test(departmentId)) { res.status(404).json({ error: { code: 'DEPARTMENT_NOT_FOUND', message: 'That department was not found.' } }); return; }
+      const { name, averageConsultationMinutes, active } = req.body as { name?: unknown; averageConsultationMinutes?: unknown; active?: unknown };
+      if (name === undefined && averageConsultationMinutes === undefined && active === undefined) {
+        res.status(400).json({ error: { code: 'INVALID_DEPARTMENT', message: 'Provide a name, average consultation time, or active state to change.' } });
+        return;
+      }
+      const current = await getPool().query<{ name: string; active: boolean }>(
+        'SELECT name, active FROM departments WHERE id = $1 AND hospital_id = $2',
+        [departmentId, hospitalId],
+      );
+      if (!current.rowCount) { res.status(404).json({ error: { code: 'DEPARTMENT_NOT_FOUND', message: 'That department was not found.' } }); return; }
+      const trimmedName = name === undefined ? current.rows[0]!.name : boundedText(name, '', 80);
+      if (trimmedName.length < 2) {
+        res.status(400).json({ error: { code: 'INVALID_DEPARTMENT', message: 'Enter a department name of at least 2 characters.' } });
+        return;
+      }
+      const nextMinutes = averageConsultationMinutes === undefined
+        ? undefined
+        : (typeof averageConsultationMinutes === 'number' && Number.isInteger(averageConsultationMinutes) && averageConsultationMinutes >= 5 && averageConsultationMinutes <= 240 ? averageConsultationMinutes : null);
+      if (averageConsultationMinutes !== undefined && nextMinutes === null) {
+        res.status(400).json({ error: { code: 'INVALID_DEPARTMENT', message: 'The average consultation time must be 5 to 240 minutes.' } });
+        return;
+      }
+      if (active !== undefined && typeof active !== 'boolean') {
+        res.status(400).json({ error: { code: 'INVALID_DEPARTMENT', message: 'The active state must be true or false.' } });
+        return;
+      }
+      if (name !== undefined) {
+        const duplicate = await getPool().query('SELECT 1 FROM departments WHERE hospital_id = $1 AND lower(name) = lower($2) AND id <> $3', [hospitalId, trimmedName, departmentId]);
+        if (duplicate.rowCount) { res.status(409).json({ error: { code: 'DEPARTMENT_EXISTS', message: 'A department with that name already exists at your hospital.' } }); return; }
+      }
+      const updated = await getPool().query<{ name: string; average_consultation_minutes: number; active: boolean }>(
+        `UPDATE departments SET name = $3, average_consultation_minutes = COALESCE($4, average_consultation_minutes), active = COALESCE($5, active)
+         WHERE id = $1 AND hospital_id = $2
+         RETURNING name, average_consultation_minutes, active`,
+        [departmentId, hospitalId, trimmedName, nextMinutes, active ?? null],
+      );
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      const row = updated.rows[0]!;
+      await recordAudit({
+        actorUserId: user.id,
+        hospitalId,
+        entityType: 'department',
+        entityId: departmentId,
+        action: 'department.updated',
+        metadata: { name: row.name, averageConsultationMinutes: Number(row.average_consultation_minutes), active: row.active },
+      });
+      res.json({ data: { id: departmentId, name: row.name, averageConsultationMinutes: Number(row.average_consultation_minutes), active: row.active } });
+    } catch (error) { next(error); }
+  });
+
+  app.delete('/api/v1/admin/departments/:id', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const departmentId = String(req.params.id);
+      if (!uuidPattern.test(departmentId)) { res.status(404).json({ error: { code: 'DEPARTMENT_NOT_FOUND', message: 'That department was not found.' } }); return; }
+      const department = await getPool().query<{ name: string }>('SELECT name FROM departments WHERE id = $1 AND hospital_id = $2', [departmentId, hospitalId]);
+      if (!department.rowCount) { res.status(404).json({ error: { code: 'DEPARTMENT_NOT_FOUND', message: 'That department was not found.' } }); return; }
+      const usage = await getPool().query<{ slots: string; appointments: string }>(
+        `SELECT (SELECT count(*) FROM appointment_slots WHERE department_id = $1) AS slots,
+                (SELECT count(*) FROM appointments WHERE hospital_service_id = $1) AS appointments`,
+        [departmentId],
+      );
+      const slots = Number(usage.rows[0]!.slots);
+      const appointments = Number(usage.rows[0]!.appointments);
+      if (slots > 0 || appointments > 0) {
+        res.status(409).json({
+          error: {
+            code: 'DEPARTMENT_IN_USE',
+            message: `This department has ${slots} published slot${slots === 1 ? '' : 's'} and ${appointments} booking${appointments === 1 ? '' : 's'}. Deactivate it instead of removing it.`,
+          },
+        });
+        return;
+      }
+      await getPool().query('DELETE FROM departments WHERE id = $1 AND hospital_id = $2', [departmentId, hospitalId]);
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      await recordAudit({
+        actorUserId: user.id,
+        hospitalId,
+        entityType: 'department',
+        entityId: departmentId,
+        action: 'department.deleted',
+        metadata: { name: department.rows[0]!.name },
+      });
+      res.status(204).send();
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/admin/display', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const result = await getPool().query<{ display_token: string | null; display_active: boolean }>(
+        'SELECT display_token, display_active FROM hospitals WHERE id = $1',
+        [req.hospitalId!],
+      );
+      const row = result.rows[0];
+      res.json({ data: { token: row?.display_token ?? null, active: row?.display_active ?? false } });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/admin/display/rotate', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const token = randomBytes(24).toString('base64url');
+      await getPool().query('UPDATE hospitals SET display_token = $2, display_active = true WHERE id = $1', [hospitalId, token]);
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      // Never put the kiosk token in audit metadata — it is a shared secret.
+      await recordAudit({ actorUserId: user.id, hospitalId, entityType: 'hospital', entityId: hospitalId, action: 'hospital_display.rotated', metadata: { active: true } });
+      res.json({ data: { token, active: true } });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/v1/admin/display', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const { active } = req.body as { active?: unknown };
+      if (typeof active !== 'boolean') { res.status(400).json({ error: { code: 'INVALID_DISPLAY_SETTING', message: 'The display state must be true or false.' } }); return; }
+      const updated = await getPool().query<{ display_active: boolean }>(
+        'UPDATE hospitals SET display_active = $2 WHERE id = $1 AND display_token IS NOT NULL RETURNING display_active',
+        [hospitalId, active],
+      );
+      if (!updated.rowCount) { res.status(400).json({ error: { code: 'NO_DISPLAY_TOKEN', message: 'Generate a display link first.' } }); return; }
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      await recordAudit({
+        actorUserId: user.id,
+        hospitalId,
+        entityType: 'hospital',
+        entityId: hospitalId,
+        action: active ? 'hospital_display.activated' : 'hospital_display.deactivated',
+        metadata: {},
+      });
+      res.json({ data: { active: updated.rows[0]!.display_active } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/admin/audit', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const rawLimit = typeof req.query.limit === 'string' ? Number(req.query.limit) : NaN;
+      const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, Math.floor(rawLimit))) : 50;
+      const events = await getPool().query<{ id: string; action: string; entity_type: string; entity_id: string | null; metadata: Record<string, unknown>; created_at: string; display_name: string | null; email: string | null }>(
+        `SELECT a.id, a.action, a.entity_type, a.entity_id, a.metadata, a.created_at,
+                u.display_name, u.email
+         FROM audit_events a
+         LEFT JOIN users u ON u.id = a.actor_user_id
+         WHERE a.hospital_id = $1
+         ORDER BY a.created_at DESC
+         LIMIT $2`,
+        [req.hospitalId!, limit],
+      );
+      res.json({
+        data: events.rows.map((row) => ({
+          id: row.id,
+          action: row.action,
+          entityType: row.entity_type,
+          entityId: row.entity_id,
+          metadata: row.metadata,
+          createdAt: row.created_at,
+          actor: row.display_name || row.email ? { displayName: row.display_name, email: row.email } : null,
+        })),
+      });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/admin/overview', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const [departments, appointments, queue, team] = await Promise.all([
+        getPool().query<{ id: string; name: string; average_consultation_minutes: number; slot_count: string; capacity: string; reserved: string }>(
+          `SELECT d.id, d.name, d.average_consultation_minutes,
+                  COALESCE(s.slot_count, 0) AS slot_count, COALESCE(s.capacity, 0) AS capacity, COALESCE(s.reserved, 0) AS reserved
+           FROM departments d
+           LEFT JOIN (
+             SELECT department_id, count(*) AS slot_count, sum(capacity) AS capacity, sum(reserved_count) AS reserved
+             FROM appointment_slots WHERE hospital_id = $1 AND slot_date = CURRENT_DATE GROUP BY department_id
+           ) s ON s.department_id = d.id
+           WHERE d.hospital_id = $1 AND d.active
+           ORDER BY d.name`,
+          [hospitalId],
+        ),
+        getPool().query<{ department_id: string; booked: string; cancelled: string }>(
+          `SELECT hospital_service_id AS department_id,
+                  count(*) FILTER (WHERE status = 'booked') AS booked,
+                  count(*) FILTER (WHERE status = 'cancelled') AS cancelled
+           FROM appointments WHERE hospital_id = $1 AND appointment_date = CURRENT_DATE
+           GROUP BY 1`,
+          [hospitalId],
+        ),
+        getPool().query<{ department_id: string; waiting: string; called: string }>(
+          `SELECT hospital_service_id AS department_id,
+                  count(*) FILTER (WHERE status = 'waiting') AS waiting,
+                  count(*) FILTER (WHERE status = 'called') AS called
+           FROM queue_entries WHERE hospital_id = $1 AND queue_date = CURRENT_DATE
+           GROUP BY 1`,
+          [hospitalId],
+        ),
+        getPool().query<{ active_members: string; pending_invitations: string; today: string }>(
+          `SELECT (SELECT count(*) FROM hospital_memberships WHERE hospital_id = $1 AND active) AS active_members,
+                  (SELECT count(*) FROM staff_invitations WHERE hospital_id = $1 AND claimed_at IS NULL AND expires_at > now()) AS pending_invitations,
+                  to_char(CURRENT_DATE, 'YYYY-MM-DD') AS today`,
+          [hospitalId],
+        ),
+      ]);
+      const appointmentsByDepartment = new Map(appointments.rows.map((row) => [row.department_id, row]));
+      const queueByDepartment = new Map(queue.rows.map((row) => [row.department_id, row]));
+      const rows = departments.rows.map((row) => {
+        const appointmentRow = appointmentsByDepartment.get(row.id);
+        const queueRow = queueByDepartment.get(row.id);
+        return {
+          id: row.id,
+          name: row.name,
+          averageConsultationMinutes: Number(row.average_consultation_minutes),
+          slotsToday: Number(row.slot_count),
+          capacityToday: Number(row.capacity),
+          reservedToday: Number(row.reserved),
+          appointmentsBooked: Number(appointmentRow?.booked ?? 0),
+          appointmentsCancelled: Number(appointmentRow?.cancelled ?? 0),
+          queueWaiting: Number(queueRow?.waiting ?? 0),
+          queueCalled: Number(queueRow?.called ?? 0),
+        };
+      });
+      const teamRow = team.rows[0]!;
+      res.json({
+        data: {
+          date: teamRow.today,
+          totals: {
+            slotsToday: rows.reduce((total, row) => total + row.slotsToday, 0),
+            capacityToday: rows.reduce((total, row) => total + row.capacityToday, 0),
+            reservedToday: rows.reduce((total, row) => total + row.reservedToday, 0),
+            appointmentsBooked: rows.reduce((total, row) => total + row.appointmentsBooked, 0),
+            appointmentsCancelled: rows.reduce((total, row) => total + row.appointmentsCancelled, 0),
+            queueWaiting: rows.reduce((total, row) => total + row.queueWaiting, 0),
+            queueCalled: rows.reduce((total, row) => total + row.queueCalled, 0),
+            activeMembers: Number(teamRow.active_members),
+            pendingInvitations: Number(teamRow.pending_invitations),
+          },
+          departments: rows,
+        },
+      });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/admin/slots', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const departmentId = typeof req.query.departmentId === 'string' && req.query.departmentId ? req.query.departmentId : null;
+      const date = typeof req.query.date === 'string' && req.query.date ? req.query.date : null;
+      if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ error: { code: 'INVALID_DATE', message: 'Choose a valid date.' } }); return; }
+      if (departmentId) {
+        const owned = await getPool().query('SELECT 1 FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [departmentId, hospitalId]);
+        if (!owned.rowCount) { res.status(404).json({ error: { code: 'DEPARTMENT_NOT_FOUND', message: 'That department is not available at your hospital.' } }); return; }
+      }
+      const slots = await getPool().query<{ id: string; department_id: string; department_name: string; slot_date: string; start_time: string; end_time: string; capacity: number; reserved_count: number }>(
+        `SELECT s.id, s.department_id, d.name AS department_name, to_char(s.slot_date, 'YYYY-MM-DD') AS slot_date,
+                s.start_time, s.end_time, s.capacity, s.reserved_count
+         FROM appointment_slots s
+         JOIN departments d ON d.id = s.department_id
+         WHERE s.hospital_id = $1 AND ($2::uuid IS NULL OR s.department_id = $2) AND ($3::date IS NULL OR s.slot_date = $3)
+         ORDER BY s.slot_date, s.start_time
+         LIMIT 500`,
+        [hospitalId, departmentId, date],
+      );
+      res.json({
+        data: slots.rows.map((row) => ({
+          id: row.id,
+          departmentId: row.department_id,
+          departmentName: row.department_name,
+          date: sqlDateOnly(row.slot_date),
+          startTime: row.start_time.slice(0, 5),
+          endTime: row.end_time.slice(0, 5),
+          capacity: Number(row.capacity),
+          reservedCount: Number(row.reserved_count),
+        })),
+      });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/admin/slots', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const membership = req.membership!;
+      const { departmentId, date, startTime, endTime, slotMinutes, capacity } = req.body as {
+        departmentId?: unknown; date?: unknown; startTime?: unknown; endTime?: unknown; slotMinutes?: unknown; capacity?: unknown;
+      };
+      const start = parseClock(startTime);
+      const end = parseClock(endTime);
+      const today = new Date().toISOString().slice(0, 10);
+      const validDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= today;
+      const validLength = typeof slotMinutes === 'number' && Number.isInteger(slotMinutes) && slotMinutes >= 5 && slotMinutes <= 240;
+      const validCapacity = typeof capacity === 'number' && Number.isInteger(capacity) && capacity >= 1 && capacity <= 50;
+      if (typeof departmentId !== 'string' || !validDate || start === undefined || end === undefined
+        || end <= start || start < 7 * 60 || end > 19 * 60 || !validLength || !validCapacity) {
+        res.status(400).json({ error: { code: 'INVALID_SLOT', message: 'Choose a department, a future date, a window between 07:00 and 19:00, a slot length of 5 to 240 minutes, and a capacity of 1 to 50.' } });
+        return;
+      }
+      const department = await getPool().query<{ name: string }>('SELECT name FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [departmentId, membership.hospitalId]);
+      if (!department.rowCount) { res.status(404).json({ error: { code: 'DEPARTMENT_NOT_FOUND', message: 'That department is not available at your hospital.' } }); return; }
+      const slotStarts: number[] = [];
+      for (let cursor = start; cursor + slotMinutes! <= end; cursor += slotMinutes!) slotStarts.push(cursor);
+      if (slotStarts.length === 0) { res.status(400).json({ error: { code: 'INVALID_SLOT', message: 'The slot length does not fit inside the chosen time window.' } }); return; }
+      if (slotStarts.length > 200) { res.status(400).json({ error: { code: 'INVALID_SLOT', message: 'Create at most 200 slots at a time.' } }); return; }
+
+      const client = await getPool().connect();
+      let created = 0;
+      try {
+        await client.query('BEGIN');
+        const clash = await client.query(
+          `SELECT 1 FROM appointment_slots
+           WHERE department_id = $1 AND slot_date = $2 AND start_time >= $3::time AND start_time < $4::time`,
+          [departmentId, date, formatClock(start), formatClock(end)],
+        );
+        if (clash.rowCount) {
+          await client.query('ROLLBACK');
+          res.status(409).json({ error: { code: 'SLOTS_EXIST', message: 'Slots already exist for part of that window. Choose a different time window.' } });
+          return;
+        }
+        for (const slotStart of slotStarts) {
+          const insert = await client.query(
+            `INSERT INTO appointment_slots (hospital_id, department_id, slot_date, start_time, end_time, capacity)
+             VALUES ($1, $2, $3, $4::time, $5::time, $6) RETURNING id`,
+            [membership.hospitalId, departmentId, date, formatClock(slotStart), formatClock(slotStart + slotMinutes!), capacity],
+          );
+          created += insert.rowCount ? Number(insert.rowCount) : 0;
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      const actor = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      await recordAudit({
+        actorUserId: actor.id,
+        hospitalId: membership.hospitalId,
+        entityType: 'appointment_slot',
+        action: 'appointment_slots.created',
+        metadata: { departmentId, departmentName: department.rows[0]!.name, date, created, slotMinutes, capacity },
+      });
+      res.status(201).json({ data: { created, departmentId, date, departmentName: department.rows[0]!.name } });
+    } catch (error) { next(error); }
+  });
+
+  app.delete('/api/v1/admin/slots/:id', requireAuth, requireRole('administrator'), requireHospital(), async (req, res, next) => {
+    try {
+      const hospitalId = req.hospitalId!;
+      const slotId = String(req.params.id);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slotId)) {
+        res.status(404).json({ error: { code: 'SLOT_NOT_FOUND', message: 'That appointment slot was not found.' } });
+        return;
+      }
+      const slot = await getPool().query<{ department_id: string; slot_date: string; start_time: string }>(
+        `SELECT department_id, to_char(slot_date, 'YYYY-MM-DD') AS slot_date, start_time
+         FROM appointment_slots WHERE id = $1 AND hospital_id = $2`,
+        [slotId, hospitalId],
+      );
+      if (!slot.rowCount) { res.status(404).json({ error: { code: 'SLOT_NOT_FOUND', message: 'That appointment slot was not found.' } }); return; }
+      const target = slot.rows[0]!;
+      const booked = await getPool().query(
+        `SELECT 1 FROM appointments
+         WHERE hospital_service_id = $1 AND appointment_date = $2 AND appointment_time = $3::time AND status = 'booked'`,
+        [target.department_id, sqlDateOnly(target.slot_date), target.start_time],
+      );
+      if (booked.rowCount) { res.status(409).json({ error: { code: 'SLOT_BOOKED', message: 'This slot already has a booking and cannot be removed.' } }); return; }
+      await getPool().query('DELETE FROM appointment_slots WHERE id = $1 AND hospital_id = $2', [slotId, hospitalId]);
+      const actor = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      await recordAudit({
+        actorUserId: actor.id,
+        hospitalId,
+        entityType: 'appointment_slot',
+        entityId: slotId,
+        action: 'appointment_slots.deleted',
+        metadata: { departmentId: target.department_id, date: sqlDateOnly(target.slot_date), startTime: target.start_time.slice(0, 5) },
+      });
+      res.status(204).send();
     } catch (error) { next(error); }
   });
 
@@ -588,19 +1207,38 @@ export function createApp() {
       if (typeof token !== 'string' || token.length < 20) { res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'This invitation link is invalid.' } }); return; }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
       if (!user.email) { res.status(400).json({ error: { code: 'EMAIL_REQUIRED', message: 'Your sign-in account must have an email address.' } }); return; }
-      const claim = await getPool().query<{ hospital_id: string; role: 'administrator' | 'nurse' | 'doctor' }>(
+      const claim = await getPool().query<{ hospital_id: string; role: 'administrator' | 'nurse' | 'doctor'; department_ids: string[] }>(
         `UPDATE staff_invitations SET claimed_by = $1, claimed_at = now()
          WHERE token_hash = $2 AND lower(email) = lower($3) AND claimed_at IS NULL AND expires_at > now()
-         RETURNING hospital_id, role`,
+         RETURNING hospital_id, role, department_ids`,
         [user.id, tokenHash(token), user.email],
       );
       const invitation = claim.rows[0];
       if (!invitation) { res.status(400).json({ error: { code: 'INVITATION_UNAVAILABLE', message: 'This invitation is expired, already claimed, or belongs to another email address.' } }); return; }
-      await getPool().query(
+      const membership = await getPool().query<{ id: string }>(
         `INSERT INTO hospital_memberships (user_id, hospital_id, role) VALUES ($1, $2, $3)
-         ON CONFLICT (user_id, hospital_id) DO UPDATE SET role = EXCLUDED.role, active = true`,
+         ON CONFLICT (user_id, hospital_id) DO UPDATE SET role = EXCLUDED.role, active = true
+         RETURNING id`,
         [user.id, invitation.hospital_id, invitation.role],
       );
+      const membershipId = membership.rows[0]!.id;
+      // Plan §4: the invited department assignments follow the claim. Administrators
+      // and legacy invitations carry no assignments, which means "all specialties".
+      await getPool().query('DELETE FROM membership_departments WHERE membership_id = $1', [membershipId]);
+      if (invitation.department_ids.length > 0) {
+        await getPool().query(
+          `INSERT INTO membership_departments (membership_id, department_id)
+           SELECT $1::uuid, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+          [membershipId, invitation.department_ids],
+        );
+      }
+      await recordAudit({
+        actorUserId: user.id,
+        hospitalId: invitation.hospital_id,
+        entityType: 'hospital_membership',
+        action: 'staff_invitation.claimed',
+        metadata: { role: invitation.role, departmentIds: invitation.department_ids },
+      });
       res.json({ data: { role: invitation.role, hospitalId: invitation.hospital_id } });
     } catch (error) { next(error); }
   });
@@ -615,7 +1253,7 @@ export function createApp() {
          FROM appointments a
          JOIN users u ON u.id = a.user_id
          JOIN hospitals h ON h.id = a.hospital_id
-         JOIN hospital_services hs ON hs.id = a.hospital_service_id
+         JOIN departments hs ON hs.id = a.hospital_service_id
          WHERE u.auth0_subject = $1 AND (a.status = 'cancelled' OR (a.status = 'booked' AND a.appointment_date >= CURRENT_DATE))
          ORDER BY a.status, a.appointment_date, a.appointment_time`,
         [req.auth!.subject],
@@ -638,7 +1276,7 @@ export function createApp() {
         res.status(400).json({ error: { code: 'INVALID_BOOKING_TIME', message: 'Bookings are available from 07:00 to 19:00 on future dates.' } });
         return;
       }
-      const service = await getPool().query('SELECT 1 FROM hospital_services WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, hospitalId]);
+      const service = await getPool().query('SELECT 1 FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, hospitalId]);
       if (!service.rowCount) {
         res.status(400).json({ error: { code: 'INVALID_SERVICE', message: 'That service is not available at the selected hospital.' } });
         return;
@@ -666,7 +1304,7 @@ export function createApp() {
         `UPDATE appointments a SET hospital_service_id = $1, appointment_date = $2, appointment_time = $3
          FROM users u
          WHERE a.id = $4 AND a.user_id = u.id AND u.auth0_subject = $5 AND a.status = 'booked'
-           AND EXISTS (SELECT 1 FROM hospital_services hs WHERE hs.id = $1 AND hs.hospital_id = a.hospital_id AND hs.active)
+           AND EXISTS (SELECT 1 FROM departments hs WHERE hs.id = $1 AND hs.hospital_id = a.hospital_id AND hs.active)
          RETURNING a.id`,
         [serviceId, date, time, req.params.id, req.auth!.subject],
       );
@@ -710,7 +1348,7 @@ export function createApp() {
         `UPDATE appointments a SET hospital_service_id = $1, appointment_date = $2, appointment_time = $3, status = 'booked'
          FROM users u
          WHERE a.id = $4 AND a.user_id = u.id AND u.auth0_subject = $5 AND a.status = 'cancelled'
-           AND EXISTS (SELECT 1 FROM hospital_services hs WHERE hs.id = $1 AND hs.hospital_id = a.hospital_id AND hs.active)
+           AND EXISTS (SELECT 1 FROM departments hs WHERE hs.id = $1 AND hs.hospital_id = a.hospital_id AND hs.active)
          RETURNING a.id`,
         [serviceId, date, time, req.params.id, req.auth!.subject],
       );
@@ -736,7 +1374,7 @@ export function createApp() {
          FROM queue_entries q
          JOIN users u ON u.id = q.user_id
          JOIN hospitals h ON h.id = q.hospital_id
-         JOIN hospital_services hs ON hs.id = q.hospital_service_id
+         JOIN departments hs ON hs.id = q.hospital_service_id
          WHERE u.auth0_subject = $1 AND q.queue_date = CURRENT_DATE AND q.status IN ('waiting', 'called')
          ORDER BY q.joined_at`,
         [req.auth!.subject],
@@ -807,7 +1445,7 @@ export function createApp() {
         res.status(400).json({ error: { code: 'INVALID_QUEUE', message: 'Choose a hospital and service to join the queue.' } });
         return;
       }
-      const service = await getPool().query('SELECT 1 FROM hospital_services WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, hospitalId]);
+      const service = await getPool().query('SELECT 1 FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, hospitalId]);
       if (!service.rowCount) {
         res.status(400).json({ error: { code: 'INVALID_SERVICE', message: 'That service is not available at the selected hospital.' } });
         return;
@@ -867,6 +1505,10 @@ export function createApp() {
     }
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505' && 'constraint' in error && error.constraint === 'queue_entries_one_active_service_per_day') {
       res.status(409).json({ error: { code: 'ALREADY_IN_QUEUE', message: 'You are already in this service queue today.' } });
+      return;
+    }
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505' && 'constraint' in error && String(error.constraint).startsWith('appointment_slots_')) {
+      res.status(409).json({ error: { code: 'SLOTS_EXIST', message: 'Slots already exist for that department, date, and time.' } });
       return;
     }
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

@@ -1,3 +1,5 @@
+import type { Membership } from '../authorization.js';
+
 declare global {
   namespace Express {
     interface Request {
@@ -6,6 +8,8 @@ declare global {
         email: string | null;
         displayName: string | null;
       };
+      membership?: Membership;
+      hospitalId?: string;
     }
   }
 }
