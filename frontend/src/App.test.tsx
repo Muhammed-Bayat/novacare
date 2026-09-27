@@ -51,6 +51,21 @@ function stubPatientData(appointments: unknown[], queueEntries: unknown[] = [], 
   }));
 }
 
+function stubChatFlow(hospitals: unknown[], turns: unknown[]) {
+  let turnIndex = 0;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/v1/intake/chat')) {
+      const turn = turns[Math.min(turnIndex, turns.length - 1)];
+      turnIndex += 1;
+      return { ok: true, json: async () => ({ data: turn }) };
+    }
+    if (url.includes('/api/v1/appointments')) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: hospitals }) };
+    return { ok: true, json: async () => ({ data: { userType: 'patient' } }) };
+  }));
+}
+
 function stubAdminData(user: Parameters<typeof stubCurrentUser>[0] = {}, members: unknown[] = [], pendingInvitations: unknown[] = []) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -58,6 +73,32 @@ function stubAdminData(user: Parameters<typeof stubCurrentUser>[0] = {}, members
       return { ok: true, json: async () => ({ data: { hospitalId: 'h1', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital', members, pendingInvitations } }) };
     }
     return { ok: true, json: async () => ({ data: { id: 'user-1', auth0Subject: 'auth0|user-1', email: 'user@example.com', displayName: 'Amina Dlamini', userType: 'patient', isPlatformOperator: false, staffRole: null, hospitalId: null, hospitalName: null, ...user } }) };
+  }));
+}
+
+function stubStaffData(user: Parameters<typeof stubCurrentUser>[0] = {}, triage: unknown[] = [], queue: unknown[] = []) {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/v1/staff/triage')) return { ok: true, json: async () => ({ data: triage }) };
+    if (url.includes('/api/v1/staff/queue')) return { ok: true, json: async () => ({ data: queue }) };
+    if (url.includes('/api/v1/hospitals')) {
+      return {
+        ok: true,
+        json: async () => ({
+          data: [{
+            id: 'h1',
+            name: 'Charlotte Maxeke Johannesburg Academic Hospital',
+            province: 'Gauteng',
+            address: 'Johannesburg',
+            latitude: -26.18,
+            longitude: 28.01,
+            facilityType: 'Academic hospital',
+            services: [{ id: 's1', name: 'General Medicine' }, { id: 's2', name: 'Emergency Department' }],
+          }],
+        }),
+      };
+    }
+    return { ok: true, json: async () => ({ data: { id: 'user-1', auth0Subject: 'auth0|user-1', email: 'user@example.com', displayName: 'Amina Dlamini', userType: 'patient', isPlatformOperator: false, staffRole: null, hospitalId: 'h1', hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital', ...user } }) };
   }));
 }
 
@@ -125,9 +166,9 @@ describe('App', () => {
     expect(screen.queryByText(/T00:00:00\.000Z/)).not.toBeInTheDocument();
   });
 
-  it('lets patients complete the AI questionnaire and open recommended booking', async () => {
+  it('lets patients chat with the AI intake and open recommended booking', async () => {
     auth.state.isAuthenticated = true;
-    stubPatientData([], [], [
+    stubChatFlow([
       {
         id: 'h1',
         name: 'Helen Joseph Hospital',
@@ -138,43 +179,39 @@ describe('App', () => {
         facilityType: 'Academic hospital',
         services: [{ id: 's1', name: 'Orthopaedics' }, { id: 's2', name: 'Emergency Department' }],
       },
-    ], {
-      pathwayId: 'injury',
-      pathwayName: 'Injury & musculoskeletal',
-      summary: 'Recent injury with difficulty walking.',
-      department: 'Orthopaedics',
-      urgency: 'priority',
-      source: 'gemini',
-      questions: [
-        { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'yes', label: 'Yes', value: 'normal' }, { id: 'no', label: 'No', value: 'no' }] },
-        { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
-      ],
-    });
+    ], [
+      { action: 'question', question: { id: 'weight_bearing', text: 'Can you put weight on the injured area?', type: 'single', options: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }] } },
+      { action: 'complete', source: 'gemini', intake: { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Ankle injury — unable to bear weight.', department: 'Emergency Department', urgency: 'emergency', redFlags: ['Unable to bear weight'] } },
+    ]);
 
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Start questionnaire' }));
-    expect(await screen.findByRole('heading', { name: 'Can you use or put weight on the injured area?' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }));
+    expect(await screen.findByText('Can you put weight on the injured area?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'No' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await userEvent.click(screen.getByRole('button', { name: 'See recommendation' }));
 
     expect(screen.getByRole('heading', { name: 'Emergency Department' })).toBeInTheDocument();
     expect(screen.getByText('Emergency assessment')).toBeInTheDocument();
     expect(screen.getByText('Helen Joseph Hospital')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Book here' }));
     expect(screen.getByRole('heading', { name: 'Appointments' })).toBeInTheDocument();
-    expect(screen.getByText('emergency assessment')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm booking' }));
+    expect(await screen.findByText('Appointment booked')).toBeInTheDocument();
+    expect(screen.getByText(/Helen Joseph Hospital/)).toBeInTheDocument();
+
+    const chatPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/intake/chat') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(chatPosts).toHaveLength(2);
+    expect(JSON.parse(String((chatPosts[0][1] as RequestInit).body))).toMatchObject({ complaint: 'I hurt my ankle today', answers: [] });
+    expect(JSON.parse(String((chatPosts[1][1] as RequestInit).body))).toMatchObject({ answers: [{ question: 'Can you put weight on the injured area?', answer: 'No' }] });
     const appointmentPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/appointments') && (options as RequestInit | undefined)?.method === 'POST');
     expect(appointmentPost).toBeDefined();
     const body = JSON.parse(String((appointmentPost?.[1] as RequestInit).body));
     expect(body).toMatchObject({ hospitalId: 'h1', serviceId: 's2', triageSummary: { urgency: 'emergency', pathwayName: 'Injury & musculoskeletal' } });
   });
 
-  it('ranks recommended hospitals by distance when location is available', async () => {
+  it('ranks recommended hospitals by distance and queue length when location is available', async () => {
     auth.state.isAuthenticated = true;
-    stubPatientData([], [], [
+    stubChatFlow([
       {
         id: 'far',
         name: 'Far Hospital',
@@ -193,17 +230,22 @@ describe('App', () => {
         latitude: -26.1815,
         longitude: 28.0283,
         facilityType: 'Academic hospital',
-        services: [{ id: 's2', name: 'General Consultation' }],
+        services: [{ id: 's2', name: 'General Consultation', waitingCount: 8 }],
       },
-    ], {
-      pathwayId: 'headache',
-      pathwayName: 'Headache & neurological',
-      summary: 'Persistent headache.',
-      department: 'General Medicine',
-      urgency: 'priority',
-      source: 'gemini',
-      questions: [{ id: 'pain', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 }],
-    });
+      {
+        id: 'quiet',
+        name: 'Quiet Hospital',
+        province: 'Gauteng',
+        address: 'Empire Road, Parktown',
+        latitude: -26.187,
+        longitude: 28.038,
+        facilityType: 'Academic hospital',
+        services: [{ id: 's3', name: 'General Consultation', waitingCount: 0 }],
+      },
+    ], [
+      { action: 'question', question: { id: 'pain', text: 'How severe is the pain?', type: 'scale' } },
+      { action: 'complete', source: 'gemini', intake: { pathwayId: 'headache', pathwayName: 'Headache & neurological', summary: 'Persistent headache.', department: 'General Medicine', urgency: 'priority', redFlags: [] } },
+    ]);
     Object.defineProperty(window.navigator, 'geolocation', {
       configurable: true,
       value: {
@@ -213,16 +255,19 @@ describe('App', () => {
     try {
       renderAt('/patient');
       await userEvent.click(screen.getByRole('button', { name: 'I have a bad headache' }));
-      await userEvent.click(screen.getByRole('button', { name: 'Start questionnaire' }));
-      expect(await screen.findByRole('heading', { name: 'How severe is the pain?' })).toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'See recommendation' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }));
+      expect(await screen.findByText('How severe is the pain?')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: '8' }));
 
-      expect(await screen.findByText('Ranked by distance from your location.')).toBeInTheDocument();
-      const nearCard = (await screen.findByText('Near Hospital')).closest('article');
+      expect(await screen.findByText('Ranked by distance and queue length from your location.')).toBeInTheDocument();
+      const quietCard = (await screen.findByText('Quiet Hospital')).closest('article');
+      const nearCard = screen.getByText('Near Hospital').closest('article');
       const farCard = screen.getByText('Far Hospital').closest('article');
-      if (!nearCard || !farCard) throw new Error('expected both recommendation cards');
+      if (!quietCard || !nearCard || !farCard) throw new Error('expected all recommendation cards');
+      expect(quietCard.compareDocumentPosition(nearCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(nearCard.compareDocumentPosition(farCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(screen.getAllByText(/km away/).length).toBe(2);
+      expect(screen.getByText(/8 in queue/)).toBeInTheDocument();
+      expect(screen.getAllByText(/km away/).length).toBe(3);
     } finally {
       Reflect.deleteProperty(window.navigator, 'geolocation');
     }
@@ -239,7 +284,7 @@ describe('App', () => {
     }));
     renderAt('/patient');
     await userEvent.selectOptions(screen.getByLabelText('Language'), 'zu');
-    await waitFor(() => expect(document.body.textContent).toContain('translated:AI health questionnaire'), { timeout: 3000 });
+    await waitFor(() => expect(document.body.textContent).toContain('translated:AI triage chat'), { timeout: 3000 });
     expect(document.body.textContent).toContain('translated:Welcome back, Thandi');
     expect(document.body.textContent).toContain('isiZulu');
     expect(document.body.textContent).not.toContain('translated:isiZulu');
@@ -290,6 +335,80 @@ describe('App', () => {
     stubAdminData({ userType: 'admin', staffRole: 'administrator' });
     renderAt('/staff');
     expect(await screen.findByRole('heading', { name: 'Welcome back, Amina Dlamini' })).toBeInTheDocument();
+  });
+
+  it('shows the nurse triage worklist with the AI summary and confirms routing', async () => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole: 'nurse' }, [
+      {
+        id: 'q1',
+        patientName: 'Thandi Mokoena',
+        patientEmail: 'thandi@example.com',
+        source: 'walk_in',
+        serviceId: 's1',
+        serviceName: 'General Medicine',
+        appointmentTime: null,
+        joinedAt: '2026-09-26T08:00:00.000Z',
+        critical: true,
+        triageSummary: { urgency: 'emergency', pathwayName: 'Chest & breathing', department: 'Emergency Department', summary: 'Severe chest pain reported at rest.', redFlags: ['Chest pain at rest'] },
+      },
+    ]);
+    renderAt('/staff');
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 emergency case needs immediate review.');
+    expect(screen.getByText('Thandi Mokoena')).toBeInTheDocument();
+    expect(screen.getByText('Chest pain at rest')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm triage — send to Emergency Department' }));
+    const confirmPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/staff/triage/q1/confirm') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(confirmPost).toBeDefined();
+    expect(JSON.parse(String((confirmPost?.[1] as RequestInit).body))).toMatchObject({ category: 'emergency', serviceId: 's2' });
+  });
+
+  it('lets staff call a waiting patient from the live queue', async () => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole: 'nurse' }, [], [
+      { id: 'q2', patientName: 'Pieter van der Merwe', serviceId: 's1', serviceName: 'General Medicine', status: 'waiting', category: 'routine', position: 1, joinedAt: '2026-09-26T08:05:00.000Z', triagedAt: '2026-09-26T08:06:00.000Z', calledAt: null },
+    ]);
+    renderAt('/staff');
+    await userEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    expect(await screen.findByText('Pieter van der Merwe')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Call' }));
+    const callPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/staff/queue/q2/call') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(callPost).toBeDefined();
+  });
+
+  it('lets a patient check in on the day of their appointment', async () => {
+    auth.state.isAuthenticated = true;
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    stubPatientData([
+      { id: 'a1', hospitalId: 'h1', serviceId: 's1', date: today, time: '09:30', status: 'booked', hospitalName: 'Helen Joseph Hospital', serviceName: 'General Consultation', address: 'Perth Road' },
+    ]);
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Appointments' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Check in' }));
+    const checkInPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/appointments/a1/check-in') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(checkInPost).toBeDefined();
+  });
+
+  it('renders the anonymized public waiting room display', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        data: {
+          hospitalName: 'Charlotte Maxeke Johannesburg Academic Hospital',
+          generatedAt: '2026-09-26T08:10:00.000Z',
+          services: [
+            { serviceName: 'General Medicine', nowServing: 4, awaitingTriage: 1, waiting: [{ ticket: 5, category: 'urgent' }, { ticket: 6, category: 'routine' }] },
+          ],
+        },
+      }),
+    })));
+    renderAt('/display/displaytoken123');
+    expect(await screen.findByText('Charlotte Maxeke Johannesburg Academic Hospital')).toBeInTheDocument();
+    expect(screen.getByText('#4')).toBeInTheDocument();
+    expect(screen.getByText('#5')).toBeInTheDocument();
+    expect(screen.getByText('1 patient awaiting nurse review')).toBeInTheDocument();
+    expect(screen.getByText(/no patient names or details/i)).toBeInTheDocument();
   });
 
   it('renders the admin portal for an assigned administrator with the invite form', async () => {

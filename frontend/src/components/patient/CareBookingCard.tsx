@@ -1,14 +1,14 @@
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import type { Appointment, AppointmentTriageSummary, Hospital } from '../../api.ts';
 import { HospitalMap } from './HospitalMap.tsx';
 import { BOOKING_END, BOOKING_START, distanceInKm, formatDate, type Coordinates } from './careMath.ts';
 
 const copy = {
   locateFailed: 'Could not get your location. Distance sorting is off.',
-  rebookedOk: 'Appointment rebooked.',
-  updatedOk: 'Appointment updated.',
-  bookedOk: 'Appointment booked.',
-  queueJoined: 'You joined the queue.',
+  rebookedOk: 'Appointment rebooked',
+  updatedOk: 'Appointment updated',
+  bookedOk: 'Appointment booked',
+  queueJoined: 'You’re in the queue',
   actionFailed: 'Something went wrong. Please try again.',
   findHospital: 'Find a hospital',
   findSub: 'Search by name, area or service. Allow location to sort by distance and see the closest hospitals on the map.',
@@ -29,6 +29,9 @@ const copy = {
   joinQueue: 'Join today’s queue',
   rebook: 'Rebook',
   reschedule: 'Reschedule',
+  backToDashboard: 'Back to dashboard',
+  autoReturn: 'Taking you back automatically…',
+  queueJoinedDetail: 'A nurse will review your details shortly. You can follow today’s queue from your dashboard.',
 };
 
 interface CareBookingCardProps {
@@ -37,13 +40,14 @@ interface CareBookingCardProps {
   editingAppointment: Appointment | null;
   bookingSuggestion: { hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary } | null;
   onFinishEdit: () => void;
+  onComplete: () => void;
   onCreate: (input: { hospitalId: string; serviceId: string; date: string; time: string; triageSummary?: AppointmentTriageSummary | null }) => Promise<void>;
   onUpdate: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
   onRebook: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
-  onJoinQueue: (input: { hospitalId: string; serviceId: string }) => Promise<void>;
+  onJoinQueue: (input: { hospitalId: string; serviceId: string; triageSummary?: AppointmentTriageSummary | null }) => Promise<void>;
 }
 
-export function CareBookingCard({ hospitals, loading, editingAppointment, bookingSuggestion, onFinishEdit, onCreate, onUpdate, onRebook, onJoinQueue }: CareBookingCardProps) {
+export function CareBookingCard({ hospitals, loading, editingAppointment, bookingSuggestion, onFinishEdit, onComplete, onCreate, onUpdate, onRebook, onJoinQueue }: CareBookingCardProps) {
   const [hospitalName, setHospitalName] = useState('');
   const [area, setArea] = useState('');
   const [service, setService] = useState('');
@@ -56,8 +60,22 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState(BOOKING_START);
   const [submitting, setSubmitting] = useState<'book' | 'queue'>();
-  const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string>();
+  const [confirmation, setConfirmation] = useState<{ title: string; detail: string }>();
+  const cardRef = useRef<HTMLElement>(null);
+  const returnTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(returnTimer.current), []);
+
+  function showConfirmation(title: string, detail: string) {
+    setConfirmation({ title, detail });
+    returnTimer.current = window.setTimeout(() => onComplete(), 2800);
+  }
+
+  function returnNow() {
+    window.clearTimeout(returnTimer.current);
+    onComplete();
+  }
 
   const deferredName = useDeferredValue(hospitalName);
   const deferredArea = useDeferredValue(area);
@@ -83,14 +101,13 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
     setHospitalName(hospital.name);
     setService(hospital.services.find((item) => item.id === bookingSuggestion.serviceId)?.name ?? '');
     setError(undefined);
-    setNotice(undefined);
+    cardRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   }, [bookingSuggestion, editingAppointment, hospitals]);
 
   function selectHospital(hospital: Hospital) {
     setSelectedHospital(hospital);
     setServiceId(hospital.services[0]?.id ?? '');
     setError(undefined);
-    setNotice(undefined);
   }
 
   function useMyLocation() {
@@ -118,21 +135,22 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
     if (!selectedHospital || !serviceId) return;
     setSubmitting('book');
     setError(undefined);
-    setNotice(undefined);
     try {
+      const serviceName = selectedHospital.services.find((item) => item.id === serviceId)?.name ?? '';
+      const detail = `${selectedHospital.name} · ${serviceName} · ${formatDate(date)} ${time}`;
       if (editingAppointment) {
         const input = { serviceId, date, time };
         if (editingAppointment.status === 'cancelled') {
           await onRebook(editingAppointment.id, input);
-          setNotice(copy.rebookedOk);
+          showConfirmation(copy.rebookedOk, detail);
         } else {
           await onUpdate(editingAppointment.id, input);
-          setNotice(copy.updatedOk);
+          showConfirmation(copy.updatedOk, detail);
         }
         onFinishEdit();
       } else {
         await onCreate({ hospitalId: selectedHospital.id, serviceId, date, time, triageSummary: bookingSuggestion?.triageSummary ?? null });
-        setNotice(copy.bookedOk);
+        showConfirmation(copy.bookedOk, detail);
       }
     } catch (bookingError) {
       setError(bookingError instanceof Error ? bookingError.message : copy.actionFailed);
@@ -145,10 +163,10 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
     if (!selectedHospital || !serviceId) return;
     setSubmitting('queue');
     setError(undefined);
-    setNotice(undefined);
     try {
-      await onJoinQueue({ hospitalId: selectedHospital.id, serviceId });
-      setNotice(copy.queueJoined);
+      await onJoinQueue({ hospitalId: selectedHospital.id, serviceId, triageSummary: bookingSuggestion?.triageSummary ?? null });
+      const serviceName = selectedHospital.services.find((item) => item.id === serviceId)?.name ?? '';
+      showConfirmation(copy.queueJoined, `${selectedHospital.name} · ${serviceName}. ${copy.queueJoinedDetail}`);
     } catch (queueError) {
       setError(queueError instanceof Error ? queueError.message : copy.actionFailed);
     } finally {
@@ -176,11 +194,24 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
     : undefined;
 
   return (
-    <section className="card nv-care-card" aria-label={copy.findHospital}>
+    <section className="card nv-care-card" aria-label={copy.findHospital} ref={cardRef}>
       <header className="nv-care-card-head">
         <h2 className="section-title">{copy.findHospital}</h2>
         <p className="muted small">{copy.findSub}</p>
       </header>
+      {confirmation ? (
+        <div className="nv-booking-success" role="status">
+          <span className="nv-success-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          </span>
+          <h3>{confirmation.title}</h3>
+          <p className="muted">{confirmation.detail}</p>
+          <div className="nv-success-actions">
+            <button type="button" className="primary-btn" onClick={returnNow}>{copy.backToDashboard}</button>
+            <span className="muted small">{copy.autoReturn}</span>
+          </div>
+        </div>
+      ) : (
       <div className="nv-finder-grid">
         <div className="nv-finder-controls">
           <label className="nv-field">{copy.searchName}
@@ -273,7 +304,6 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
                   <input type="time" value={time} min={BOOKING_START} max={BOOKING_END} step={1800} onChange={(event) => setTime(event.target.value)} required />
                 </label>
                 {error ? <p className="nv-error" role="alert">{error}</p> : null}
-                {notice ? <p className="nv-notice" role="status">{notice}</p> : null}
                 <div className="nv-book-actions">
                   <button type="submit" className="primary-btn" disabled={submitting !== undefined || !serviceId}>
                     {submitting === 'book' ? '…' : copy.confirmBooking}
@@ -287,6 +317,7 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
           )}
         </div>
       </div>
+      )}
     </section>
   );
 }

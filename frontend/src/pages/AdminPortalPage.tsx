@@ -26,6 +26,7 @@ export function AdminPortalPage() {
   const [inviteMessage, setInviteMessage] = useState<string>();
   const [inviteClaimUrl, setInviteClaimUrl] = useState<string>();
   const [copied, setCopied] = useState(false);
+  const [displayCopied, setDisplayCopied] = useState(false);
   const [inviteError, setInviteError] = useState<string>();
   const [inviting, setInviting] = useState(false);
 
@@ -88,6 +89,19 @@ export function AdminPortalPage() {
       window.setTimeout(() => setCopied(false), 2500);
     } catch {
       setCopied(false);
+    }
+  }
+
+  const displayUrl = team?.displayPath ? `${window.location.origin}${team.displayPath}` : undefined;
+
+  async function copyDisplayLink() {
+    if (!displayUrl) return;
+    try {
+      await navigator.clipboard.writeText(displayUrl);
+      setDisplayCopied(true);
+      window.setTimeout(() => setDisplayCopied(false), 2500);
+    } catch {
+      setDisplayCopied(false);
     }
   }
 
@@ -209,6 +223,23 @@ export function AdminPortalPage() {
             </div>
           </div>
         </section>
+
+        {team?.displayPath ? (
+          <section className="card nv-care-card" aria-label="Waiting room display" style={{ marginTop: 18 }}>
+            <header className="nv-care-card-head">
+              <h2 className="section-title">Waiting room display</h2>
+              <p className="muted small">Show this on a screen in your waiting area. It lists anonymous ticket numbers only — never patient names or clinical details.</p>
+            </header>
+            <div className="nv-claim-box">
+              <strong className="small">Public display link</strong>
+              <code>{displayUrl}</code>
+              <div className="nv-claim-copy">
+                <span className="muted small">Open it on any TV or tablet browser in the waiting room. It refreshes itself every few seconds.</span>
+                <button type="button" className="ghost-btn" onClick={() => void copyDisplayLink()}>{displayCopied ? 'Copied' : 'Copy link'}</button>
+              </div>
+            </div>
+          </section>
+        ) : null}
       </section>
     </div>
   );

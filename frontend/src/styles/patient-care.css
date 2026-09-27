@@ -126,6 +126,21 @@
 .nv-scale-value { color: var(--text); font-size: 42px; font-weight: 900; letter-spacing: -.06em; }
 .nv-scale-value span { color: var(--muted); font-size: 18px; letter-spacing: 0; }
 .nv-scale-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; font-weight: 800; }
+.nv-chat { display: grid; gap: 14px; padding: clamp(22px, 3vw, 32px); }
+.nv-chat-messages { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; padding: 4px; }
+.nv-chat-bubble { max-width: 85%; padding: 11px 15px; border-radius: 16px; line-height: 1.45; font-weight: 600; }
+.nv-chat-bubble.ai { align-self: flex-start; background: #eef6ff; border: 1px solid #d9e8f7; color: var(--text); border-bottom-left-radius: 5px; }
+.nv-chat-bubble.patient { align-self: flex-end; background: var(--blue); color: #fff; border-bottom-right-radius: 5px; }
+.nv-chat-typing { color: var(--muted); font-style: italic; }
+.nv-chat-reply { display: grid; gap: 8px; }
+.nv-chat-scale { display: grid; gap: 8px; padding: 14px; border: 1px solid #dbeafa; border-radius: 18px; background: #f7fbff; }
+.nv-chat-scale-options { display: flex; gap: 6px; flex-wrap: wrap; }
+.nv-chat-scale-chip { width: 38px; height: 38px; border-radius: 12px; border: 1.5px solid #d9e8f7; background: #fff; color: var(--text); font: inherit; font-weight: 800; }
+.nv-chat-scale-chip:hover { border-color: var(--blue); background: var(--blue-soft); }
+.nv-chat-text-row { display: flex; gap: 10px; }
+.nv-chat-text-row input { flex: 1; padding: 13px 15px; border: 1px solid #d0e1f2; border-radius: 14px; background: #f6fbff; color: var(--text); font: inherit; font-weight: 600; outline: none; }
+.nv-chat-text-row input:focus { border-color: var(--blue); background: #fff; }
+
 .nv-urgency-card { display: grid; gap: 4px; padding: 16px 18px; border-radius: 18px; border: 1px solid #dbeafa; background: #f7fbff; }
 .nv-urgency-card strong { color: var(--text); font-size: 18px; }
 .nv-urgency-card span { color: var(--muted); }
@@ -167,3 +182,10 @@
 .nv-claim-box code { font-size: 12px; word-break: break-all; color: var(--text); font-weight: 600; }
 .nv-claim-copy { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .nv-claim-copy .ghost-btn { padding: 9px 14px; border-radius: 12px; }
+
+.nv-booking-success { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 44px 20px 36px; }
+.nv-success-icon { display: grid; place-items: center; width: 66px; height: 66px; border-radius: 50%; background: #e8f7ee; color: var(--green, #1a9e54); border: 1px solid #c8ecd6; }
+.nv-success-icon svg { width: 30px; height: 30px; }
+.nv-booking-success h3 { margin: 4px 0 0; font-size: 22px; }
+.nv-booking-success p { max-width: 460px; margin: 0; }
+.nv-success-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
