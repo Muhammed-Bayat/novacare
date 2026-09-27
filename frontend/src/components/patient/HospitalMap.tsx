@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Hospital } from '../../api.ts';
-import type { Coordinates } from './careMath.ts';
+import { distanceInKm, type Coordinates } from './careMath.ts';
 
 interface HospitalMapProps {
   hospitals: Hospital[];
@@ -10,6 +10,10 @@ interface HospitalMapProps {
   selectedId: string | undefined;
   onSelect: (hospital: Hospital) => void;
 }
+
+const NEARBY_RADIUS_KM = 50;
+const NEARBY_MAX_ZOOM = 15;
+const NO_NEARBY_ZOOM = 11;
 
 const HTML_ESCAPE_MAP: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -49,7 +53,6 @@ export function HospitalMap({ hospitals, userLocation, selectedId, onSelect }: H
       L.marker([userLocation.latitude, userLocation.longitude], { icon: userIcon, zIndexOffset: 1000 })
         .addTo(layer)
         .bindPopup('You are here');
-      bounds.push([userLocation.latitude, userLocation.longitude]);
     }
     hospitals.forEach((hospital) => {
       const isSelected = hospital.id === selectedId;
@@ -60,7 +63,21 @@ export function HospitalMap({ hospitals, userLocation, selectedId, onSelect }: H
       if (isSelected) marker.openPopup();
       bounds.push([hospital.latitude, hospital.longitude]);
     });
-    if (bounds.length === 1) {
+    if (userLocation) {
+      const focus: L.LatLngTuple[] = [[userLocation.latitude, userLocation.longitude]];
+      hospitals
+        .filter((hospital) => distanceInKm(userLocation, hospital) <= NEARBY_RADIUS_KM)
+        .forEach((hospital) => focus.push([hospital.latitude, hospital.longitude]));
+      const selected = selectedId ? hospitals.find((hospital) => hospital.id === selectedId) : undefined;
+      if (selected && !focus.some(([latitude, longitude]) => latitude === selected.latitude && longitude === selected.longitude)) {
+        focus.push([selected.latitude, selected.longitude]);
+      }
+      if (focus.length > 1) {
+        map.fitBounds(L.latLngBounds(focus), { padding: [42, 42], maxZoom: NEARBY_MAX_ZOOM });
+      } else {
+        map.setView([userLocation.latitude, userLocation.longitude], NO_NEARBY_ZOOM);
+      }
+    } else if (bounds.length === 1) {
       map.setView(bounds[0], 13);
     } else if (bounds.length > 1) {
       map.fitBounds(L.latLngBounds(bounds), { padding: [42, 42] });

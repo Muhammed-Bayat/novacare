@@ -1,10 +1,11 @@
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useCallback, useEffect, useRef, useState } from 'react';
 import type { Appointment, AppointmentTriageSummary, Hospital } from '../../api.ts';
 import { HospitalMap } from './HospitalMap.tsx';
 import { BOOKING_END, BOOKING_START, distanceInKm, formatDate, type Coordinates } from './careMath.ts';
 
 const copy = {
   locateFailed: 'Could not get your location. Distance sorting is off.',
+  locationBlocked: 'Location access is blocked. Allow location for this site in your browser settings to see hospitals near you.',
   rebookedOk: 'Appointment rebooked',
   updatedOk: 'Appointment updated',
   bookedOk: 'Appointment booked',
@@ -110,7 +111,7 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
     setError(undefined);
   }
 
-  function useMyLocation() {
+  const locate = useCallback(() => {
     if (!navigator.geolocation) {
       setLocationError(copy.locateFailed);
       return;
@@ -128,7 +129,30 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     );
-  }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!navigator.geolocation) return;
+    if (!navigator.permissions?.query) {
+      locate();
+      return;
+    }
+    navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((status) => {
+        if (cancelled) return;
+        if (status.state === 'denied') {
+          setLocationError(copy.locationBlocked);
+        } else {
+          locate();
+        }
+      })
+      .catch(() => locate());
+    return () => {
+      cancelled = true;
+    };
+  }, [locate]);
 
   async function submitBooking(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -225,7 +249,7 @@ export function CareBookingCard({ hospitals, loading, editingAppointment, bookin
             <datalist id="nv-service-options">{serviceOptions.map((option) => <option key={option} value={option} />)}</datalist>
           </label>
           <div className="nv-locate-row">
-            <button type="button" className="secondary-btn" onClick={useMyLocation} disabled={locating}>{locating ? copy.locating : copy.nearMe}</button>
+            <button type="button" className="secondary-btn" onClick={locate} disabled={locating}>{locating ? copy.locating : copy.nearMe}</button>
             {userLocation ? (
               <label className="nv-field nv-radius">{copy.radius}
                 <select value={radius} onChange={(event) => setRadius(event.target.value)}>

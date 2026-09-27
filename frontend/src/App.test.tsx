@@ -232,6 +232,55 @@ describe('App', () => {
     expect(screen.queryByText(/T00:00:00\.000Z/)).not.toBeInTheDocument();
   });
 
+  it('requests the patient location on the appointments map so the browser can prompt', async () => {
+    auth.state.isAuthenticated = true;
+    stubPatientData([], [], [
+      {
+        id: 'h1',
+        name: 'Helen Joseph Hospital',
+        province: 'Gauteng',
+        address: 'Perth Road, Johannesburg',
+        latitude: -26.18,
+        longitude: 28.01,
+        facilityType: 'Academic hospital',
+        services: [{ id: 's1', name: 'Orthopaedics' }],
+      },
+    ]);
+    const query = vi.fn(async () => ({ state: 'prompt' }));
+    const getCurrentPosition = vi.fn((success: PositionCallback) => success({ coords: { latitude: -26.181, longitude: 28.028 } } as GeolocationPosition));
+    Object.defineProperty(window.navigator, 'permissions', { configurable: true, value: { query } });
+    Object.defineProperty(window.navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } });
+    try {
+      renderAt('/patient');
+      await userEvent.click(screen.getByRole('button', { name: 'Appointments' }));
+      await waitFor(() => expect(query).toHaveBeenCalledWith({ name: 'geolocation' }));
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalled());
+      expect(await screen.findByLabelText(/Within/)).toBeInTheDocument();
+      await waitFor(() => expect(document.querySelector('.nv-marker-user')).not.toBeNull());
+    } finally {
+      Reflect.deleteProperty(window.navigator, 'permissions');
+      Reflect.deleteProperty(window.navigator, 'geolocation');
+    }
+  });
+
+  it('does not request location when permission is already blocked', async () => {
+    auth.state.isAuthenticated = true;
+    stubPatientData([], [], []);
+    const query = vi.fn(async () => ({ state: 'denied' }));
+    const getCurrentPosition = vi.fn();
+    Object.defineProperty(window.navigator, 'permissions', { configurable: true, value: { query } });
+    Object.defineProperty(window.navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } });
+    try {
+      renderAt('/patient');
+      await userEvent.click(screen.getByRole('button', { name: 'Appointments' }));
+      expect(await screen.findByText(/Location access is blocked/)).toBeInTheDocument();
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(window.navigator, 'permissions');
+      Reflect.deleteProperty(window.navigator, 'geolocation');
+    }
+  });
+
   it('lets patients chat with the AI intake and open recommended booking', async () => {
     auth.state.isAuthenticated = true;
     stubChatFlow([
