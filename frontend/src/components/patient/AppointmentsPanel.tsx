@@ -1,10 +1,23 @@
 import { useState } from 'react';
 import type { Appointment, QueueEntry } from '../../api.ts';
-import type { PatientStrings } from '../../i18n/patientTranslations.ts';
 import { dateParts, formatDate } from './careMath.ts';
 
+const copy = {
+  actionFailed: 'Something went wrong. Please try again.',
+  upcomingList: 'Upcoming appointments',
+  noUpcoming: 'No upcoming appointments. Find a hospital below to book your next visit.',
+  queueToday: 'Today’s queue',
+  queuePosition: 'Your position',
+  estWait: 'Est. wait',
+  leaveQueue: 'Leave queue',
+  cancelledList: 'Cancelled appointments',
+  rebook: 'Rebook',
+  cancel: 'Cancel',
+  statusWaiting: 'In queue',
+  statusCalled: 'Please proceed',
+};
+
 interface AppointmentsPanelProps {
-  t: PatientStrings;
   appointments: Appointment[];
   queueEntries: QueueEntry[];
   onCancel: (id: string) => Promise<void>;
@@ -28,8 +41,7 @@ function urgencyLabel(value: NonNullable<Appointment['triageSummary']>['urgency'
   }
 }
 
-export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onLeaveQueue, onEdit }: AppointmentsPanelProps) {
-  const care = t.care;
+export function AppointmentsPanel({ appointments, queueEntries, onCancel, onLeaveQueue, onEdit }: AppointmentsPanelProps) {
   const [busyKey, setBusyKey] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const upcoming = appointments.filter((appointment) => appointment.status === 'booked');
@@ -41,7 +53,7 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
     try {
       await action();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : care.actionFailed);
+      setActionError(error instanceof Error ? error.message : copy.actionFailed);
     } finally {
       setBusyKey(undefined);
     }
@@ -49,9 +61,9 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
 
   return (
     <div className="nv-care-stack">
-      <section className="nv-care-block" aria-label={care.upcomingList}>
-        <h2 className="section-title">{care.upcomingList}</h2>
-        {upcoming.length === 0 ? <div className="card nv-empty">{care.noUpcoming}</div> : (
+      <section className="nv-care-block" aria-label={copy.upcomingList}>
+        <h2 className="section-title">{copy.upcomingList}</h2>
+        {upcoming.length === 0 ? <div className="card nv-empty">{copy.noUpcoming}</div> : (
           <ul className="nv-appt-list">
             {upcoming.map((appointment) => {
               const { weekday, day, month } = dateParts(appointment.date);
@@ -74,14 +86,14 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
                     ) : null}
                   </div>
                   <div className="nv-appt-actions">
-                    <button type="button" className="secondary-btn" onClick={() => onEdit(appointment)}>{t.reschedule}</button>
+                    <button type="button" className="secondary-btn" onClick={() => onEdit(appointment)}>Reschedule</button>
                     <button
                       type="button"
                       className="ghost-btn nv-danger"
                       disabled={busyKey === `cancel:${appointment.id}`}
                       onClick={() => void run(`cancel:${appointment.id}`, () => onCancel(appointment.id))}
                     >
-                      {care.cancel}
+                      {copy.cancel}
                     </button>
                   </div>
                 </li>
@@ -92,26 +104,26 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
       </section>
 
       {queueEntries.length > 0 ? (
-        <section className="nv-care-block" aria-label={care.queueToday}>
-          <h2 className="section-title">{care.queueToday}</h2>
+        <section className="nv-care-block" aria-label={copy.queueToday}>
+          <h2 className="section-title">{copy.queueToday}</h2>
           <ul className="nv-appt-list">
             {queueEntries.map((entry) => (
               <li className="card nv-appt" key={entry.id}>
-                <div className="nv-appt-date nv-queue-pos" aria-hidden="true"><strong>{entry.position}</strong><span>{care.queuePosition}</span></div>
+                <div className="nv-appt-date nv-queue-pos" aria-hidden="true"><strong>{entry.position}</strong><span>{copy.queuePosition}</span></div>
                 <div className="nv-appt-body">
                   <h3>{entry.hospitalName}</h3>
-                  <p className="muted small">{entry.serviceName} · {care.estWait} ±{entry.estimatedWaitMinutes} min · {joinedTime(entry.joinedAt)}</p>
+                  <p className="muted small">{entry.serviceName} · {copy.estWait} ±{entry.estimatedWaitMinutes} min · {joinedTime(entry.joinedAt)}</p>
                   <p className="muted small">{entry.address}</p>
                 </div>
                 <div className="nv-appt-actions">
-                  <span className={`badge ${entry.status === 'called' ? 'green' : 'blue'}`}>{entry.status === 'called' ? care.statusCalled : care.statusWaiting}</span>
+                  <span className={`badge ${entry.status === 'called' ? 'green' : 'blue'}`}>{entry.status === 'called' ? copy.statusCalled : copy.statusWaiting}</span>
                   <button
                     type="button"
                     className="ghost-btn nv-danger"
                     disabled={busyKey === `queue:${entry.id}`}
                     onClick={() => void run(`queue:${entry.id}`, () => onLeaveQueue(entry.id))}
                   >
-                    {care.leaveQueue}
+                    {copy.leaveQueue}
                   </button>
                 </div>
               </li>
@@ -121,8 +133,8 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
       ) : null}
 
       {cancelled.length > 0 ? (
-        <section className="nv-care-block" aria-label={care.cancelledList}>
-          <h2 className="section-title">{care.cancelledList}</h2>
+        <section className="nv-care-block" aria-label={copy.cancelledList}>
+          <h2 className="section-title">{copy.cancelledList}</h2>
           <ul className="nv-appt-list">
             {cancelled.map((appointment) => (
               <li className="card nv-appt nv-appt-cancelled" key={appointment.id}>
@@ -131,7 +143,7 @@ export function AppointmentsPanel({ t, appointments, queueEntries, onCancel, onL
                   <p className="muted small">{appointment.serviceName} · {formatDate(appointment.date)} · {appointment.time}</p>
                 </div>
                 <div className="nv-appt-actions">
-                  <button type="button" className="secondary-btn" onClick={() => onEdit(appointment)}>{care.rebook}</button>
+                  <button type="button" className="secondary-btn" onClick={() => onEdit(appointment)}>{copy.rebook}</button>
                 </div>
               </li>
             ))}

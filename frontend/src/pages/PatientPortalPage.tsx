@@ -1,17 +1,17 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type QuestionnaireIntake } from '../api.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
 import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
 import { PatientQuestionnaire } from '../components/patient/PatientQuestionnaire.tsx';
 import { dateParts } from '../components/patient/careMath.ts';
+import { useLiveTranslation } from '../components/patient/useLiveTranslation.ts';
 import { usePatientCare } from '../components/patient/usePatientCare.ts';
 import {
   patientLanguages,
-  patientTranslations,
   type PatientLanguage,
-} from '../i18n/patientTranslations.ts';
+} from '../i18n/patientLanguages.ts';
 import '../styles/patient-portal.css';
 import '../styles/patient-care.css';
 
@@ -45,7 +45,8 @@ function SouthAfricanFlag() {
 
 export function PatientPortalPage() {
   const [language, setLanguage] = useState<PatientLanguage>(readStoredLanguage);
-  const t = patientTranslations[language];
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLiveTranslation(rootRef, language);
   const { isAuthenticated, loginWithRedirect, logout, user, getAccessTokenSilently } = useAuth0();
   const careData = usePatientCare();
   const authDisplayName = user?.given_name ?? user?.nickname ?? user?.name ?? 'Thandi';
@@ -96,21 +97,21 @@ export function PatientPortalPage() {
   const nextAppointment = careData.appointments.find((appointment) => appointment.status === 'booked');
   const nextDate = nextAppointment ? dateParts(nextAppointment.date) : undefined;
   const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'T';
-  const welcomeText = t.welcome.replace('Thandi', displayName);
+  const welcomeText = `Welcome back, ${displayName}`;
   const showRealUpcoming = isAuthenticated && nextAppointment && nextDate;
 
   const navItems = [
-    { label: t.dashboard, active: view === 'dashboard', onClick: () => setView('dashboard') },
-    { label: t.appointments, active: view === 'appointments', onClick: () => setView('appointments') },
+    { label: 'Dashboard', active: view === 'dashboard', onClick: () => setView('dashboard') },
+    { label: 'Appointments', active: view === 'appointments', onClick: () => setView('appointments') },
   ];
 
   return (
-    <div className="app nv-patient">
+    <div className="app nv-patient" ref={rootRef}>
       <TopBar>
         <Brand />
         <TopNav items={navItems} />
         <div className="actions">
-          <label className="nv-language-select">
+          <label className="nv-language-select" data-no-translate>
             <span>Language</span>
             <select value={language} onChange={(event) => setLanguage(event.target.value as PatientLanguage)}>
               {patientLanguages.map((option) => (
@@ -152,14 +153,14 @@ export function PatientPortalPage() {
       {view === 'appointments' ? (
         <section className="nv-care-view">
           <header className="nv-care-view-head">
-            <h1 className="section-title">{t.care.appointmentsTitle}</h1>
-            <p className="muted">{t.care.appointmentsSub}</p>
+            <h1 className="section-title">Appointments</h1>
+            <p className="muted">Book visits, manage your schedule and follow today’s queue.</p>
           </header>
           {!isAuthenticated ? (
             <div className="card nv-care-signin">
-              <h3>{t.care.signInTitle}</h3>
-              <p className="muted">{t.care.signInSub}</p>
-              <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>{t.care.signInButton}</button>
+              <h3>Sign in to manage your appointments</h3>
+              <p className="muted">Use your Nova Care account to book visits, find nearby hospitals and join queues.</p>
+              <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign In</button>
             </div>
           ) : careData.error && careData.hospitals.length === 0 ? (
             <div className="card nv-empty">
@@ -168,7 +169,6 @@ export function PatientPortalPage() {
           ) : (
             <>
               <AppointmentsPanel
-                t={t}
                 appointments={careData.appointments}
                 queueEntries={careData.queueEntries}
                 onCancel={careData.cancelAppointment}
@@ -176,7 +176,6 @@ export function PatientPortalPage() {
                 onEdit={setEditingAppointment}
               />
               <CareBookingCard
-                t={t}
                 hospitals={careData.hospitals}
                 loading={careData.loading}
                 editingAppointment={editingAppointment}
@@ -202,14 +201,14 @@ export function PatientPortalPage() {
               <div className="hero-copy">
                 <p className="eyebrow">Nova Care Patient Portal</p>
                 <h1>{welcomeText}</h1>
-                <p className="muted">{t.welcomeSub}</p>
+                <p className="muted">Your health matters. We’re here for a healthier, brighter tomorrow.</p>
               </div>
               <div className="hero-booking-card">
                 <div>
-                  <h2>{t.book}</h2>
-                  <p className="muted">{t.bookSub}</p>
+                  <h2>Book an Appointment</h2>
+                  <p className="muted">Find a doctor and book your next visit.</p>
                 </div>
-                <button type="button" className="primary-btn" onClick={() => setView('appointments')}>{t.book}</button>
+                <button type="button" className="primary-btn" onClick={() => setView('appointments')}>Book an Appointment</button>
               </div>
             </div>
           </section>
@@ -225,8 +224,8 @@ export function PatientPortalPage() {
 
             <article className="card widget nv-upcoming-widget">
               <h3>
-                <span>{t.upcoming}</span>{' '}
-                <button type="button" className="muted small nv-viewall" onClick={() => setView('appointments')}>{t.viewAll}</button>
+                <span>Upcoming Appointment</span>{' '}
+                <button type="button" className="muted small nv-viewall" onClick={() => setView('appointments')}>View all</button>
               </h3>
               {showRealUpcoming && nextAppointment && nextDate ? (
                 <>
@@ -244,13 +243,13 @@ export function PatientPortalPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                    <button type="button" className="primary-btn" onClick={() => setView('appointments')}>{t.details}</button>
+                    <button type="button" className="primary-btn" onClick={() => setView('appointments')}>View Details</button>
                     <button
                       type="button"
                       className="secondary-btn"
                       onClick={() => { setEditingAppointment(nextAppointment); setView('appointments'); }}
                     >
-                      {t.reschedule}
+                      Reschedule
                     </button>
                   </div>
                 </>
