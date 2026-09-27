@@ -8,6 +8,7 @@ import { loadMembership, requireHospital, requireRole } from './authorization.js
 import { getPool } from './db.js';
 import { buildInvitationUrl, sendInvitationEmail } from './email.js';
 import { ussdCallbackHandler } from './ussd.controller.js';
+import { smsIncomingHandler } from './sms.controller.js';
 
 type UserRow = { id: string; auth0_subject: string; email: string | null; display_name: string | null };
 type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
@@ -2074,6 +2075,10 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
   // Public USSD channel for Africa's Talking sandbox callbacks. Unauthenticated by design
   // (Africa's Talking calls it externally); add callback validation/security before production.
   app.post('/api/v1/channels/ussd', express.urlencoded({ extended: false }), ussdCallbackHandler);
+
+  // Public inbound SMS channel for Africa's Talking sandbox two-way SMS. Unauthenticated by
+  // design (Africa's Talking calls it externally); add callback validation/security before production.
+  app.post('/api/v1/channels/sms/incoming', express.urlencoded({ extended: false }), smsIncomingHandler);
 
   app.use((_req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } }));
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
