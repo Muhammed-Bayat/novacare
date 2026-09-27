@@ -10,6 +10,7 @@
     "migrate": "tsx src/migrations/run.ts",
     "migrate:prod": "node dist/migrations/run.js",
     "seed": "tsx src/data/seed.ts",
+    "seed:dispatch": "tsx src/data/seed-dispatch.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

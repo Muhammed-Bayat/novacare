@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { authenticatedRequest, type Appointment, type ClinicalDiagnosis, type CurrentUser, type Hospital, type HospitalAccess, type PatientProfile, type QueueEntry } from './api.ts';
 import { Brand, TopBar, TopNav } from './components/TopBar.tsx';
 import { AdminPortalPage } from './pages/AdminPortalPage.tsx';
+import { DispatcherPortalPage } from './pages/DispatcherPortalPage.tsx';
 import { DisplayPage } from './pages/DisplayPage.tsx';
 import { LandingPage } from './pages/LandingPage.tsx';
 import { PatientPortalPage } from './pages/PatientPortalPage.tsx';
@@ -674,6 +675,7 @@ function App() {
     <Route path="/staff" element={<StaffPortalPage role="nurse" />} />
     <Route path="/doctor" element={<StaffPortalPage role="doctor" />} />
     <Route path="/admin" element={<AdminPortalPage />} />
+    <Route path="/dispatcher" element={<DispatcherPortalPage />} />
     <Route path="/display/:token" element={<DisplayPage />} />
     <Route path="/invitations/claim" element={<InvitationClaimPage />} />
     <Route path="/care" element={<ProtectedPage><Dashboard /></ProtectedPage>} />

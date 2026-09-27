@@ -10,6 +10,15 @@ export function SignInPage() {
   const [portalPath, setPortalPath] = useState<string>();
   const [requestError, setRequestError] = useState<string>();
 
+  function restartSignIn() {
+    const url = new URL(window.location.href);
+    for (const parameter of ['code', 'error', 'error_description', 'state']) {
+      url.searchParams.delete(parameter);
+    }
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    void loginWithRedirect();
+  }
+
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -41,6 +50,9 @@ export function SignInPage() {
           <>
             <h1>Sign-in could not be completed</h1>
             <p className="muted">{error.message}</p>
+            <button type="button" className="primary-btn" onClick={restartSignIn}>
+              Try signing in again
+            </button>
           </>
         ) : requestError ? (
           <>

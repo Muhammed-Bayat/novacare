@@ -20,10 +20,11 @@ createRoot(rootElement).render(
     <Auth0Provider
       domain={domain}
       clientId={clientId}
+      useCookiesForTransactions
       authorizationParams={{
         audience,
         redirect_uri: window.location.origin,
-        scope: 'openid profile email read:me',
+        scope: 'openid profile email',
       }}
       onRedirectCallback={(appState) => {
         window.history.replaceState({}, document.title, appState?.returnTo ?? window.location.pathname);

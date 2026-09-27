@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { getPool } from './db.js';
 
-export type StaffRole = 'administrator' | 'nurse' | 'doctor';
+export type StaffRole = 'administrator' | 'nurse' | 'doctor' | 'dispatcher';
 
 export interface Membership {
   hospitalId: string;
@@ -93,7 +93,12 @@ export type ResourceName =
   | 'hospital.departments.read'
   | 'staff.triage.read'
   | 'staff.queue.read'
-  | 'patient.record.read';
+  | 'patient.record.read'
+  | 'patient.request.read'
+  | 'patient.request.create'
+  | 'dispatcher.queue.read'
+  | 'dispatcher.request.read'
+  | 'dispatcher.request.operate';
 
 interface ResourcePolicy {
   roles: readonly StaffRole[] | 'authenticated';
@@ -117,6 +122,13 @@ export const resourcePolicies: Record<ResourceName, ResourcePolicy> = {
   'staff.triage.read': { roles: ['nurse'], hospitalScoped: true },
   'staff.queue.read': { roles: ['nurse', 'doctor'], hospitalScoped: true },
   'patient.record.read': { roles: 'authenticated', hospitalScoped: false, ownershipScoped: true },
+  // Dispatch Core: patients raise and follow their own requests; the dispatcher
+  // operates the cross-hospital queue (dispatch coordination is not hospital-scoped).
+  'patient.request.read': { roles: 'authenticated', hospitalScoped: false, ownershipScoped: true },
+  'patient.request.create': { roles: 'authenticated', hospitalScoped: false },
+  'dispatcher.queue.read': { roles: ['dispatcher', 'administrator'], hospitalScoped: false },
+  'dispatcher.request.read': { roles: ['dispatcher', 'administrator'], hospitalScoped: false },
+  'dispatcher.request.operate': { roles: ['dispatcher'], hospitalScoped: false },
 };
 
 export interface ResourceAccessInput {

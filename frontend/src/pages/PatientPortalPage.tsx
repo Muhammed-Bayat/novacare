@@ -5,15 +5,18 @@ import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
 import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
 import { IntakeChat } from '../components/patient/IntakeChat.tsx';
+import { ServiceRequestPanel } from '../components/patient/ServiceRequestPanel.tsx';
 import { dateParts } from '../components/patient/careMath.ts';
 import { useLiveTranslation } from '../components/patient/useLiveTranslation.ts';
 import { usePatientCare } from '../components/patient/usePatientCare.ts';
+import { useServiceRequests } from '../components/patient/useServiceRequests.ts';
 import {
   patientLanguages,
   type PatientLanguage,
 } from '../i18n/patientLanguages.ts';
 import '../styles/patient-portal.css';
 import '../styles/patient-care.css';
+import '../styles/service-request.css';
 
 const languageStorageKey = 'novaCareLanguage';
 const displayNameStorageKey = 'novaCareDisplayName';
@@ -49,8 +52,9 @@ export function PatientPortalPage() {
   useLiveTranslation(rootRef, language);
   const { isAuthenticated, loginWithRedirect, logout, user, getAccessTokenSilently } = useAuth0();
   const careData = usePatientCare();
+  const serviceRequests = useServiceRequests();
   const authDisplayName = user?.given_name ?? user?.nickname ?? user?.name ?? 'Thandi';
-  const [view, setView] = useState<'dashboard' | 'appointments'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'appointments' | 'help'>('dashboard');
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [displayName, setDisplayName] = useState(() => readStoredDisplayName() ?? authDisplayName);
   const [draftDisplayName, setDraftDisplayName] = useState(displayName);
@@ -103,6 +107,7 @@ export function PatientPortalPage() {
   const navItems = [
     { label: 'Dashboard', active: view === 'dashboard', onClick: () => setView('dashboard') },
     { label: 'Appointments', active: view === 'appointments', onClick: () => setView('appointments') },
+    { label: 'Emergency', active: view === 'help', onClick: () => setView('help') },
   ];
 
   return (
@@ -195,6 +200,25 @@ export function PatientPortalPage() {
             </>
           )}
         </section>
+      ) : null}
+
+      {view === 'help' ? (
+        !isAuthenticated ? (
+          <section className="nv-care-view">
+            <div className="card nv-care-signin">
+              <h3>Sign in to send a test request</h3>
+              <p className="muted">Use your Nova Care account to send a development ambulance or home-visit test request and track its simulated status.</p>
+              <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign In</button>
+            </div>
+          </section>
+        ) : (
+          <ServiceRequestPanel
+            requests={serviceRequests.requests}
+            loading={serviceRequests.loading}
+            error={serviceRequests.error}
+            onCreate={serviceRequests.createServiceRequest}
+          />
+        )
       ) : null}
 
       {view === 'dashboard' ? (
