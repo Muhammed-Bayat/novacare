@@ -255,6 +255,9 @@ const translationLanguageNames: Record<string, string> = {
 
 const translationCache = new Map<string, string>();
 
+let geminiQuestionnaireCooldownUntil = 0;
+const geminiQuestionnaireCooldownMs = 60_000;
+
 async function translateOneWithGoogle(text: string, targetCode: string): Promise<string> {
   const url = new URL('https://translate.googleapis.com/translate_a/single');
   url.searchParams.set('client', 'gtx');
@@ -431,13 +434,21 @@ export function createApp() {
         res.status(400).json({ error: { code: 'INVALID_QUESTIONNAIRE', message: 'Describe your main symptom in 4 to 300 characters.' } });
         return;
       }
-      const questionnaire = await buildQuestionnaireWithGemini(complaint.trim());
+      const trimmed = complaint.trim();
+      let questionnaire: QuestionnaireIntake;
+      if (Date.now() >= geminiQuestionnaireCooldownUntil) {
+        try {
+          questionnaire = await buildQuestionnaireWithGemini(trimmed);
+        } catch (error) {
+          geminiQuestionnaireCooldownUntil = Date.now() + geminiQuestionnaireCooldownMs;
+          console.error('[questionnaire] Gemini unavailable, serving local fallback:', error instanceof Error ? error.message : error);
+          questionnaire = fallbackQuestionnaire(trimmed);
+        }
+      } else {
+        questionnaire = fallbackQuestionnaire(trimmed);
+      }
       res.json({ data: questionnaire });
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('Gemini questionnaire')) {
-        res.status(502).json({ error: { code: 'QUESTIONNAIRE_AI_UNAVAILABLE', message: 'The AI questionnaire service is unavailable. Please try again shortly.' } });
-        return;
-      }
       next(error);
     }
   });
