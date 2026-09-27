@@ -22,7 +22,7 @@ export interface Hospital {
   latitude: number;
   longitude: number;
   facilityType: string | null;
-  services: { id: string; name: string }[];
+  services: { id: string; name: string; waitingCount?: number }[];
 }
 
 export interface Appointment {
@@ -38,15 +38,57 @@ export interface Appointment {
   triageSummary: AppointmentTriageSummary | null;
 }
 
+export type QueueEntryStatus = 'awaiting_triage' | 'waiting' | 'called' | 'in_consultation';
+
 export interface QueueEntry {
   id: string;
-  status: 'waiting' | 'called';
+  status: QueueEntryStatus;
   hospitalName: string;
   serviceName: string;
   address: string;
   joinedAt: string;
-  position: number;
-  estimatedWaitMinutes: number;
+  position: number | null;
+  estimatedWaitMinutes: number | null;
+  category: QuestionnaireUrgency | null;
+  triageSummary: AppointmentTriageSummary | null;
+}
+
+export interface StaffTriageEntry {
+  id: string;
+  patientName: string;
+  patientEmail: string | null;
+  source: 'booking' | 'walk_in';
+  serviceId: string;
+  serviceName: string;
+  appointmentTime: string | null;
+  joinedAt: string;
+  critical: boolean;
+  intakeNote: string | null;
+  triageSummary: AppointmentTriageSummary | null;
+}
+
+export interface StaffQueueEntry {
+  id: string;
+  patientName: string;
+  serviceId: string;
+  serviceName: string;
+  status: 'waiting' | 'called' | 'in_consultation';
+  category: QuestionnaireUrgency | null;
+  position: number | null;
+  joinedAt: string;
+  triagedAt: string | null;
+  calledAt: string | null;
+}
+
+export interface DisplayData {
+  hospitalName: string;
+  generatedAt: string;
+  services: {
+    serviceName: string;
+    nowServing: number | null;
+    awaitingTriage: number;
+    waiting: { ticket: number; category: QuestionnaireUrgency | null }[];
+  }[];
 }
 
 export type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
@@ -84,6 +126,38 @@ export interface AppointmentTriageSummary {
   department: string;
   summary: string;
   redFlags: string[];
+}
+
+export type IntakeChatQuestionType = 'yes_no' | 'single' | 'scale' | 'text';
+
+export interface IntakeChatOption {
+  id: string;
+  label: string;
+}
+
+export interface IntakeChatQuestion {
+  id: string;
+  text: string;
+  type: IntakeChatQuestionType;
+  options?: IntakeChatOption[];
+}
+
+export interface IntakeChatConclusion {
+  pathwayId: string;
+  pathwayName: string;
+  summary: string;
+  department: string;
+  urgency: QuestionnaireUrgency;
+  redFlags: string[];
+}
+
+export type IntakeChatTurn =
+  | { action: 'question'; question: IntakeChatQuestion }
+  | { action: 'complete'; source: 'gemini' | 'local'; intake: IntakeChatConclusion };
+
+export interface IntakeChatAnswer {
+  question: string;
+  answer: string;
 }
 
 export interface PatientProfile {
@@ -142,6 +216,7 @@ export interface PendingInvitation {
 export interface HospitalTeam {
   hospitalId: string;
   hospitalName: string;
+  displayPath?: string | null;
   members: HospitalTeamMember[];
   pendingInvitations: PendingInvitation[];
 }
@@ -227,6 +302,16 @@ export interface SlotCreateResult {
   departmentId: string;
   departmentName: string;
   date: string;
+}
+
+export async function publicGet<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`);
+  const payload: unknown = await response.json();
+  if (!response.ok) {
+    const message = isErrorPayload(payload) ? payload.error.message : 'Request failed';
+    throw new Error(message);
+  }
+  return payload as T;
 }
 
 export async function authenticatedRequest<T>(

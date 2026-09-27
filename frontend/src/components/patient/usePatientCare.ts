@@ -13,8 +13,9 @@ export interface PatientCareData {
   createAppointment: (input: { hospitalId: string; serviceId: string; date: string; time: string; triageSummary?: AppointmentTriageSummary | null }) => Promise<void>;
   updateAppointment: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
   rebookAppointment: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
-  joinQueue: (input: { hospitalId: string; serviceId: string }) => Promise<void>;
+  joinQueue: (input: { hospitalId: string; serviceId: string; triageSummary?: AppointmentTriageSummary | null }) => Promise<void>;
   leaveQueue: (id: string) => Promise<void>;
+  checkIn: (id: string) => Promise<void>;
 }
 
 export function usePatientCare(): PatientCareData {
@@ -74,7 +75,7 @@ export function usePatientCare(): PatientCareData {
     await refresh();
   }, [getAccessTokenSilently, refresh]);
 
-  const joinQueue = useCallback(async (input: { hospitalId: string; serviceId: string }) => {
+  const joinQueue = useCallback(async (input: { hospitalId: string; serviceId: string; triageSummary?: AppointmentTriageSummary | null }) => {
     const token = await getAccessTokenSilently();
     await authenticatedRequest('/api/v1/queue', token, { method: 'POST', body: input });
     await refresh();
@@ -83,6 +84,12 @@ export function usePatientCare(): PatientCareData {
   const leaveQueue = useCallback(async (id: string) => {
     const token = await getAccessTokenSilently();
     await authenticatedRequest(`/api/v1/queue/${id}`, token, { method: 'DELETE' });
+    await refresh();
+  }, [getAccessTokenSilently, refresh]);
+
+  const checkIn = useCallback(async (id: string) => {
+    const token = await getAccessTokenSilently();
+    await authenticatedRequest(`/api/v1/appointments/${id}/check-in`, token, { method: 'POST' });
     await refresh();
   }, [getAccessTokenSilently, refresh]);
 
@@ -99,5 +106,6 @@ export function usePatientCare(): PatientCareData {
     rebookAppointment,
     joinQueue,
     leaveQueue,
+    checkIn,
   };
 }

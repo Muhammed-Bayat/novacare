@@ -1,10 +1,10 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type QuestionnaireIntake } from '../api.ts';
+import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type IntakeChatAnswer, type IntakeChatTurn } from '../api.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
 import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
-import { PatientQuestionnaire } from '../components/patient/PatientQuestionnaire.tsx';
+import { IntakeChat } from '../components/patient/IntakeChat.tsx';
 import { dateParts } from '../components/patient/careMath.ts';
 import { useLiveTranslation } from '../components/patient/useLiveTranslation.ts';
 import { usePatientCare } from '../components/patient/usePatientCare.ts';
@@ -77,9 +77,9 @@ export function PatientPortalPage() {
     setProfileMenuOpen(false);
   }
 
-  async function createQuestionnaireIntake(complaint: string): Promise<QuestionnaireIntake> {
+  async function createIntakeChatTurn(complaint: string, answers: IntakeChatAnswer[]): Promise<IntakeChatTurn> {
     const token = await getAccessTokenSilently();
-    const response = await authenticatedRequest<{ data: QuestionnaireIntake }>('/api/v1/questionnaire/intake', token, { method: 'POST', body: { complaint } });
+    const response = await authenticatedRequest<{ data: IntakeChatTurn }>('/api/v1/intake/chat', token, { method: 'POST', body: { complaint, answers } });
     return response.data;
   }
 
@@ -174,6 +174,7 @@ export function PatientPortalPage() {
                 onCancel={careData.cancelAppointment}
                 onLeaveQueue={careData.leaveQueue}
                 onEdit={setEditingAppointment}
+                onCheckIn={careData.checkIn}
               />
               <CareBookingCard
                 hospitals={careData.hospitals}
@@ -181,6 +182,11 @@ export function PatientPortalPage() {
                 editingAppointment={editingAppointment}
                 bookingSuggestion={bookingSuggestion}
                 onFinishEdit={() => setEditingAppointment(null)}
+                onComplete={() => {
+                  setBookingSuggestion(null);
+                  setEditingAppointment(null);
+                  setView('dashboard');
+                }}
                 onCreate={createAppointment}
                 onUpdate={careData.updateAppointment}
                 onRebook={careData.rebookAppointment}
@@ -214,11 +220,11 @@ export function PatientPortalPage() {
           </section>
 
           <section className="widgets nv-dashboard-widgets">
-            <PatientQuestionnaire
+            <IntakeChat
               isAuthenticated={isAuthenticated}
               hospitals={careData.hospitals}
               onSignIn={() => void loginWithRedirect()}
-              onCreateIntake={createQuestionnaireIntake}
+              onChatTurn={createIntakeChatTurn}
               onBookAppointment={bookFromQuestionnaire}
             />
 

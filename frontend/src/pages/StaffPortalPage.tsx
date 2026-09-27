@@ -1,15 +1,50 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { authenticatedRequest, type CurrentUser } from '../api.ts';
+import {
+  authenticatedRequest,
+  type CurrentUser,
+  type Hospital,
+  type QuestionnaireUrgency,
+  type StaffQueueEntry,
+  type StaffTriageEntry,
+} from '../api.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
+import '../styles/patient-portal.css';
+import '../styles/patient-care.css';
+import '../styles/staff-workspace.css';
 
 type StaffRole = 'nurse' | 'doctor';
 
-const roleCopy: Record<StaffRole, { portal: string; label: string }> = {
-  nurse: { portal: 'Staff', label: 'Nurse' },
-  doctor: { portal: 'Doctor', label: 'Doctor' },
+const roleCopy: Record<StaffRole, { portal: string; mockName: string; mockChip: string; tagline: string }> = {
+  nurse: {
+    portal: 'Staff',
+    mockName: 'Sarah Mitchell',
+    mockChip: 'Sarah Mitchell · Staff',
+    tagline: 'Review AI intake, confirm triage, and keep every queue moving. Emergency flags always come first.',
+  },
+  doctor: {
+    portal: 'Doctor',
+    mockName: 'Dr. Mitchell',
+    mockChip: 'Dr. Sarah Mitchell',
+    tagline: 'See your live hospital queue, call the next patient, complete consultations and refer between departments.',
+  },
 };
+
+const categoryLabels: Record<QuestionnaireUrgency, string> = {
+  emergency: 'Emergency',
+  urgent: 'Urgent',
+  priority: 'Priority',
+  routine: 'Routine',
+};
+
+const statusLabels: Record<StaffQueueEntry['status'], string> = {
+  waiting: 'Waiting',
+  called: 'Called',
+  in_consultation: 'In consultation',
+};
+
+const urgencyOptions: QuestionnaireUrgency[] = ['emergency', 'urgent', 'priority', 'routine'];
 
 function greetingFor(hour: number) {
   if (hour < 12) return 'Good morning';
@@ -17,42 +52,310 @@ function greetingFor(hour: number) {
   return 'Good evening';
 }
 
-export function StaffPortalPage({ role }: { role: StaffRole }) {
-  const { isAuthenticated, loginWithRedirect, logout, getAccessTokenSilently } = useAuth0();
+function joinedTime(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf())
+    ? value
+    : new Intl.DateTimeFormat('en-ZA', { hour: '2-digit', minute: '2-digit' }).format(parsed);
+}
+
+interface StaffData {
+  access: CurrentUser | undefined;
+  services: { id: string; name: string }[];
+  triage: StaffTriageEntry[];
+  queue: StaffQueueEntry[];
+  loading: boolean;
+  error: string | undefined;
+  refresh: () => Promise<void>;
+}
+
+function useStaffData(isAuthenticated: boolean, getToken: () => Promise<string>): StaffData {
   const [access, setAccess] = useState<CurrentUser>();
+  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
+  const [triage, setTriage] = useState<StaffTriageEntry[]>([]);
+  const [queue, setQueue] = useState<StaffQueueEntry[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const copy = roleCopy[role];
+
+  const load = useCallback(async (silent: boolean) => {
+    if (!isAuthenticated) return;
+    if (!silent) setLoading(true);
+    try {
+      const token = await getToken();
+      const [me, hospitals, triageResult, queueResult] = await Promise.all([
+        authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token),
+        authenticatedRequest<{ data: Hospital[] }>('/api/v1/hospitals', token),
+        authenticatedRequest<{ data: StaffTriageEntry[] }>('/api/v1/staff/triage', token).catch(() => ({ data: [] as StaffTriageEntry[] })),
+        authenticatedRequest<{ data: StaffQueueEntry[] }>('/api/v1/staff/queue', token).catch(() => ({ data: [] as StaffQueueEntry[] })),
+      ]);
+      setAccess(me.data);
+      const mine = (Array.isArray(hospitals.data) ? hospitals.data : []).find((hospital) => hospital.id === me.data.hospitalId);
+      setServices(mine?.services ?? []);
+      setTriage(Array.isArray(triageResult.data) ? triageResult.data : []);
+      setQueue(Array.isArray(queueResult.data) ? queueResult.data : []);
+      setError(undefined);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load your hospital workspace.');
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, getToken]);
 
   useEffect(() => {
-    if (!isAuthenticated) { setAccess(undefined); setError(undefined); return; }
-    let cancelled = false;
-    async function load() {
-      try {
-        const token = await getAccessTokenSilently();
-        const result = await authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token);
-        if (!cancelled) setAccess(result.data);
-      } catch (loadError) {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Could not load your hospital access.');
-      }
+    if (isAuthenticated) void load(false);
+  }, [isAuthenticated, load]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const timer = window.setInterval(() => void load(true), 15000);
+    return () => window.clearInterval(timer);
+  }, [isAuthenticated, load]);
+
+  const refresh = useCallback(async () => {
+    await load(true);
+  }, [load]);
+
+  return { access, services, triage, queue, loading, error, refresh };
+}
+
+function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; services: { id: string; name: string }[]; onChanged: () => Promise<void> }) {
+  const { getAccessTokenSilently } = useAuth0();
+  const suggestedServiceId = services.find((service) => service.name === entry.triageSummary?.department)?.id ?? entry.serviceId;
+  const [serviceId, setServiceId] = useState(suggestedServiceId);
+  const [category, setCategory] = useState<QuestionnaireUrgency>(entry.triageSummary?.urgency ?? 'routine');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function confirm(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError(undefined);
+    try {
+      const token = await getAccessTokenSilently();
+      await authenticatedRequest(`/api/v1/staff/triage/${entry.id}/confirm`, token, { method: 'POST', body: { category, serviceId, reason: reason.trim() || undefined } });
+      await onChanged();
+    } catch (confirmError) {
+      setError(confirmError instanceof Error ? confirmError.message : 'Could not confirm triage.');
+    } finally {
+      setBusy(false);
     }
-    void load();
-    return () => { cancelled = true; };
-  }, [isAuthenticated, getAccessTokenSilently]);
+  }
 
-  if (isAuthenticated && access && access.staffRole !== role) return <Navigate to="/" replace />;
+  const targetService = services.find((service) => service.id === serviceId);
 
-  const displayName = access?.displayName ?? copy.portal;
-  const hospitalName = access?.hospitalName;
+  return (
+    <li className={`card nv-sw-triage ${entry.critical ? 'critical' : ''}`}>
+      <div className="nv-sw-triage-head">
+        <div>
+          <h3>{entry.patientName}</h3>
+          <p className="muted small">
+            {entry.source === 'booking' ? `Booking${entry.appointmentTime ? ` · ${entry.appointmentTime}` : ''}` : 'Walk-in'}
+            {' '}· joined {joinedTime(entry.joinedAt)} · arrived at {entry.serviceName}
+          </p>
+        </div>
+        <div className="nv-sw-badges">
+          {entry.critical ? <span className="badge red">Emergency flag</span> : null}
+          {entry.triageSummary ? (
+            <span className={`badge urgency-${entry.triageSummary.urgency}`}>AI suggests {categoryLabels[entry.triageSummary.urgency]}</span>
+          ) : (
+            <span className="badge yellow">No AI intake</span>
+          )}
+        </div>
+      </div>
+      {entry.triageSummary ? (
+        <div className="nv-sw-summary">
+          <strong>{entry.triageSummary.pathwayName} assessment — suggests {entry.triageSummary.department}</strong>
+          <p className="muted small">{entry.triageSummary.summary}</p>
+          {entry.triageSummary.redFlags.length > 0 ? (
+            <div className="nv-service-tags">
+              {entry.triageSummary.redFlags.map((flag) => <span key={flag} className="nv-tag nv-sw-redflag">{flag}</span>)}
+            </div>
+          ) : null}
+          <p className="muted small">AI-assisted routing suggestion — not a diagnosis. Confirm it or change it below.</p>
+        </div>
+      ) : entry.intakeNote ? (
+        <div className="nv-sw-summary">
+          <strong>Clinical referral</strong>
+          <p className="muted small">{entry.intakeNote}</p>
+          <p className="muted small">Confirm the receiving queue below.</p>
+        </div>
+      ) : (
+        <p className="muted small nv-sw-summary">No AI intake for this patient. Ask about their symptoms and choose a queue manually.</p>
+      )}
+      <form className="nv-book-form nv-sw-confirm" onSubmit={(event) => void confirm(event)}>
+        <label className="nv-field">Department
+          <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} disabled={services.length === 0}>
+            {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+          </select>
+        </label>
+        <label className="nv-field">Urgency
+          <select value={category} onChange={(event) => setCategory(event.target.value as QuestionnaireUrgency)}>
+            {urgencyOptions.map((option) => <option key={option} value={option}>{categoryLabels[option]}</option>)}
+          </select>
+        </label>
+        <label className="nv-field">Reason for change (optional)
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Only if you changed the AI suggestion" />
+        </label>
+        {error ? <p className="nv-error" role="alert">{error}</p> : null}
+        <div className="nv-book-actions">
+          <button type="submit" className="primary-btn" disabled={busy || services.length === 0}>
+            {busy ? 'Confirming…' : `Confirm triage — send to ${targetService?.name ?? 'queue'}`}
+          </button>
+        </div>
+      </form>
+    </li>
+  );
+}
+
+function TriageBoard({ entries, services, loading, onChanged }: { entries: StaffTriageEntry[]; services: { id: string; name: string }[]; loading: boolean; onChanged: () => Promise<void> }) {
+  const criticalCount = entries.filter((entry) => entry.critical).length;
+  return (
+    <section className="nv-care-view">
+      <header className="nv-care-view-head">
+        <h1 className="section-title">Triage review</h1>
+        <p className="muted">Booked and walk-in patients land here first. Confirm or change the suggested department and urgency — the queue only updates after your confirmation.</p>
+      </header>
+      {criticalCount > 0 ? (
+        <div className="nv-sw-alert" role="alert">
+          <strong>{criticalCount} emergency case{criticalCount === 1 ? ' needs' : 's need'} immediate review.</strong>
+          <span>Red-flag patients bypass the normal queue — confirm them first.</span>
+        </div>
+      ) : null}
+      {entries.length === 0 ? (
+        <div className="card nv-empty">
+          <p className="muted">{loading ? 'Loading the triage worklist…' : 'No patients are waiting for triage right now.'}</p>
+        </div>
+      ) : (
+        <ul className="nv-sw-triage-list">
+          {entries.map((entry) => <TriageCard key={entry.id} entry={entry} services={services} onChanged={onChanged} />)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function QueueBoard({ entries, services, onChanged }: { entries: StaffQueueEntry[]; services: { id: string; name: string }[]; onChanged: () => Promise<void> }) {
+  const { getAccessTokenSilently } = useAuth0();
+  const [busyKey, setBusyKey] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [referFor, setReferFor] = useState<string>();
+  const [referService, setReferService] = useState('');
+  const [referReason, setReferReason] = useState('');
+
+  async function act(key: string, path: string, body?: unknown) {
+    setBusyKey(key);
+    setError(undefined);
+    try {
+      const token = await getAccessTokenSilently();
+      await authenticatedRequest(path, token, { method: 'POST', body });
+      setReferFor(undefined);
+      await onChanged();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'That action failed. Please try again.');
+    } finally {
+      setBusyKey(undefined);
+    }
+  }
+
+  function openRefer(entry: StaffQueueEntry) {
+    setReferFor(entry.id);
+    setReferService(services.find((service) => service.id !== entry.serviceId)?.id ?? '');
+    setReferReason('');
+    setError(undefined);
+  }
+
+  return (
+    <section className="nv-care-view">
+      <header className="nv-care-view-head">
+        <h1 className="section-title">Live queue</h1>
+        <p className="muted">Ordered by confirmed urgency, then time waiting. Call patients in, run consultations, and refer between departments.</p>
+      </header>
+      {error ? <p className="nv-error" role="alert">{error}</p> : null}
+      {entries.length === 0 ? (
+        <div className="card nv-empty"><p className="muted">The queue is empty. Triaged patients will appear here.</p></div>
+      ) : (
+        <ul className="nv-sw-queue">
+          {entries.map((entry) => (
+            <li className="card nv-sw-queue-row" key={entry.id}>
+              <div className="nv-sw-queue-pos" aria-hidden="true">
+                <strong>{entry.position ?? '–'}</strong>
+                <span>{entry.status === 'waiting' ? 'in line' : 'room'}</span>
+              </div>
+              <div className="nv-sw-queue-main">
+                <h3>{entry.patientName}</h3>
+                <p className="muted small">
+                  {entry.serviceName} · {statusLabels[entry.status]}
+                  {entry.status !== 'waiting' && entry.calledAt ? ` · called ${joinedTime(entry.calledAt)}` : ` · waiting since ${joinedTime(entry.triagedAt ?? entry.joinedAt)}`}
+                </p>
+                {entry.category ? <span className={`badge urgency-${entry.category}`}>{categoryLabels[entry.category]}</span> : null}
+              </div>
+              <div className="nv-sw-queue-actions">
+                {entry.status === 'waiting' ? (
+                  <button type="button" className="primary-btn" disabled={busyKey !== undefined} onClick={() => void act(`call:${entry.id}`, `/api/v1/staff/queue/${entry.id}/call`)}>Call</button>
+                ) : null}
+                {entry.status === 'called' ? (
+                  <button type="button" className="primary-btn" disabled={busyKey !== undefined} onClick={() => void act(`start:${entry.id}`, `/api/v1/staff/queue/${entry.id}/start-consultation`)}>Start consultation</button>
+                ) : null}
+                {entry.status === 'in_consultation' ? (
+                  <button type="button" className="primary-btn" disabled={busyKey !== undefined} onClick={() => void act(`complete:${entry.id}`, `/api/v1/staff/queue/${entry.id}/complete`)}>Complete</button>
+                ) : null}
+                {entry.status !== 'waiting' ? (
+                  <button type="button" className="secondary-btn" disabled={busyKey !== undefined} onClick={() => openRefer(entry)}>Refer</button>
+                ) : null}
+              </div>
+              {referFor === entry.id ? (
+                <form className="nv-sw-refer" onSubmit={(event) => { event.preventDefault(); void act(`refer:${entry.id}`, `/api/v1/staff/queue/${entry.id}/refer`, { serviceId: referService, reason: referReason }); }}>
+                  <label className="nv-field">Refer to department
+                    <select value={referService} onChange={(event) => setReferService(event.target.value)}>
+                      {services.filter((service) => service.id !== entry.serviceId).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="nv-field">Referral reason
+                    <input value={referReason} onChange={(event) => setReferReason(event.target.value)} placeholder="e.g. Needs an X-ray before review" required />
+                  </label>
+                  <div className="nv-book-actions">
+                    <button type="submit" className="primary-btn" disabled={busyKey !== undefined || !referService || !referReason.trim()}>Send referral</button>
+                    <button type="button" className="ghost-btn" onClick={() => setReferFor(undefined)}>Cancel</button>
+                  </div>
+                </form>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function StaffPortalPage({ role }: { role: StaffRole }) {
+  const { isAuthenticated, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0();
+  const data = useStaffData(isAuthenticated, getAccessTokenSilently);
+  const [view, setView] = useState<'triage' | 'queue'>(role === 'nurse' ? 'triage' : 'queue');
+  const copy = roleCopy[role];
+
+  if (isAuthenticated && data.access && data.access.staffRole !== role) return <Navigate to="/" replace />;
+
+  const displayName = data.access?.displayName ?? user?.given_name ?? user?.name ?? copy.mockName;
   const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'N';
+  const hospitalName = data.access?.hospitalName;
+  const greeting = `${greetingFor(new Date().getHours())}, ${displayName}`;
+
+  const navItems = role === 'nurse'
+    ? [
+        { label: 'Triage', active: view === 'triage', onClick: () => setView('triage') },
+        { label: 'Queue', active: view === 'queue', onClick: () => setView('queue') },
+      ]
+    : [{ label: 'Queue', active: view === 'queue', onClick: () => setView('queue') }];
 
   return (
     <div className="app nv-patient">
       <TopBar>
         <Brand />
-        <TopNav items={[{ label: `${copy.portal} workspace`, active: true }]} />
+        <TopNav items={navItems} />
         <div className="actions">
           <button type="button" className="user-chip">
-            <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>Hi, {displayName}</span>
+            <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>{data.access ? `Hi, ${displayName}` : copy.mockChip}</span>
           </button>
           {isAuthenticated ? (
             <button type="button" className="ghost-btn" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Logout</button>
@@ -65,56 +368,33 @@ export function StaffPortalPage({ role }: { role: StaffRole }) {
       <section className="hero-card hero nv-patient-hero">
         <div className="hero-left">
           <div className="hero-copy">
-            <p className="eyebrow">{hospitalName ? `${hospitalName} · ` : ''}{copy.portal} portal</p>
-            <h1>{greetingFor(new Date().getHours())}, {displayName}</h1>
-            <p className="muted">
-              {role === 'nurse'
-                ? `You are assigned to ${hospitalName ?? 'your hospital'} across all specialties. Patient queues and appointments will appear here as NovaCare rolls out hospital workflows.`
-                : `You are the on-duty medical officer at ${hospitalName ?? 'your hospital'} across all specialties. Patient queues and referrals will appear here as NovaCare rolls out hospital workflows.`}
-            </p>
+            <p className="eyebrow">{hospitalName ? `${hospitalName} · ` : ''}{copy.portal.toLowerCase()} portal</p>
+            <h1>{greeting}</h1>
+            <p className="muted">{copy.tagline}</p>
           </div>
         </div>
       </section>
 
       {!isAuthenticated ? (
-        <section className="card nv-care-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <h3 style={{ margin: 0, color: 'var(--text)' }}>{copy.portal} sign-in required</h3>
-            <div className="muted small" style={{ marginTop: 4 }}>Sign in with your invited hospital email to open your {copy.portal.toLowerCase()} workspace.</div>
-          </div>
-          <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
-        </section>
-      ) : null}
-      {error ? <p className="nv-error" role="alert" style={{ margin: '12px 4px 0' }}>{error}</p> : null}
-
-      {isAuthenticated && access ? (
         <section className="nv-care-view">
-          <section className="card nv-care-card" aria-label="Your assignment">
-            <header className="nv-care-card-head">
-              <h2 className="section-title">Your assignment</h2>
-              <p className="muted small">How NovaCare routes patients to you once hospital workflows go live.</p>
-            </header>
-            <div className="nv-access-list" style={{ borderTop: 'none', paddingTop: 0 }}>
-              <p className="nv-access-row">
-                <span>Role<small className="muted"> · how you appear to the hospital team</small></span>
-                <span className="badge blue">{copy.label}</span>
-              </p>
-              <p className="nv-access-row">
-                <span>Hospital<small className="muted"> · where you see patients</small></span>
-                <span>{hospitalName ?? '—'}</span>
-              </p>
-              <p className="nv-access-row">
-                <span>Specialties<small className="muted"> · cases routed to you</small></span>
-                <span className="badge green">All specialties</span>
-              </p>
-              <p className="nv-access-row">
-                <span>Status</span>
-                <span className="badge green">Active</span>
-              </p>
+          <div className="card card-pad" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ margin: 0, color: 'var(--text)' }}>{copy.portal} sign-in required</h3>
+              <div className="muted small" style={{ marginTop: 4 }}>Sign in with your invited hospital email to open your {copy.portal.toLowerCase()} workspace.</div>
             </div>
-          </section>
+            <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
+          </div>
         </section>
-      ) : null}
+      ) : (
+        <>
+          {data.error ? <p className="nv-error" role="alert" style={{ margin: '0 24px' }}>{data.error}</p> : null}
+          {role === 'nurse' && view === 'triage' ? (
+            <TriageBoard entries={data.triage} services={data.services} loading={data.loading} onChanged={data.refresh} />
+          ) : (
+            <QueueBoard entries={data.queue} services={data.services} onChanged={data.refresh} />
+          )}
+        </>
+      )}
     </div>
   );
 }

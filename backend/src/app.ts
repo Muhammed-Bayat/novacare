@@ -379,6 +379,22 @@ function allowedOrigins(): string[] {
     .filter(Boolean);
 }
 
+type StaffRole = 'administrator' | 'nurse' | 'doctor';
+type StaffMembership = { userId: string; hospitalId: string; role: StaffRole };
+
+async function staffMembership(subject: string, roles: StaffRole[]): Promise<StaffMembership | undefined> {
+  const result = await getPool().query<{ user_id: string; hospital_id: string; role: StaffRole }>(
+    `SELECT hm.user_id, hm.hospital_id, hm.role
+     FROM hospital_memberships hm JOIN users u ON u.id = hm.user_id
+     WHERE u.auth0_subject = $1 AND hm.active AND hm.role = ANY($2)`,
+    [subject, roles],
+  );
+  const row = result.rows[0];
+  return row ? { userId: row.user_id, hospitalId: row.hospital_id, role: row.role } : undefined;
+}
+
+const CATEGORY_RANK_SQL = `CASE category WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 WHEN 'priority' THEN 2 ELSE 3 END`;
+
 export function createApp() {
   const app = express();
   const origins = allowedOrigins();
@@ -448,11 +464,23 @@ export function createApp() {
          ORDER BY h.name, hs.name`,
         [name, area, service],
       );
-      const hospitals = new Map<string, { id: string; name: string; province: string; address: string; latitude: number; longitude: number; facilityType: string | null; services: { id: string; name: string }[] }>();
+      const hospitals = new Map<string, { id: string; name: string; province: string; address: string; latitude: number; longitude: number; facilityType: string | null; services: { id: string; name: string; waitingCount: number }[] }>();
       for (const row of result.rows) {
         const hospital = hospitals.get(row.id) ?? { id: row.id, name: row.name, province: row.province, address: row.address, latitude: row.latitude, longitude: row.longitude, facilityType: row.facility_type, services: [] };
-        hospital.services.push({ id: row.service_id, name: row.service_name });
+        hospital.services.push({ id: row.service_id, name: row.service_name, waitingCount: 0 });
         hospitals.set(row.id, hospital);
+      }
+      const queueCounts = await getPool().query<{ service_id: string; waiting_count: number | string }>(
+        `SELECT hospital_service_id AS service_id, COUNT(*) AS waiting_count
+         FROM queue_entries
+         WHERE queue_date = CURRENT_DATE AND status IN ('waiting', 'called', 'in_consultation')
+         GROUP BY hospital_service_id`,
+      );
+      const waitingByService = new Map(queueCounts.rows.map((row) => [row.service_id, Number(row.waiting_count)]));
+      for (const hospital of hospitals.values()) {
+        for (const service of hospital.services) {
+          service.waitingCount = waitingByService.get(service.id) ?? 0;
+        }
       }
       res.json({ data: [...hospitals.values()] });
     } catch (error) {
@@ -481,6 +509,166 @@ export function createApp() {
         questionnaire = fallbackQuestionnaire(trimmed);
       }
       res.json({ data: questionnaire });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  const intakeChatMaxTurns = 4;
+
+  interface IntakeChatAnswer { question: string; answer: string }
+
+  interface IntakeChatQuestion { id: string; text: string; type: 'yes_no' | 'single' | 'scale' | 'text'; options?: { id: string; label: string }[] }
+
+  interface IntakeChatConclusion {
+    pathwayId: string;
+    pathwayName: string;
+    summary: string;
+    department: string;
+    urgency: QuestionnaireUrgency;
+    redFlags: string[];
+  }
+
+  type IntakeChatTurn =
+    | { action: 'question'; question: IntakeChatQuestion }
+    | { action: 'complete'; source: 'gemini' | 'local'; intake: IntakeChatConclusion };
+
+  function fallbackChatConclusion(complaint: string, answers: IntakeChatAnswer[]): IntakeChatConclusion {
+    const text = `${complaint} ${answers.map((entry) => `${entry.question} ${entry.answer}`).join(' ')}`.toLowerCase();
+    const emergencyPattern = /chest pain|heart attack|c(an't|annot) breathe|short(ness)? of breath|unconscious|passed out|faint(ed)?|severe bleed|heavy bleed|vomit(ing)? blood|stroke|seizure|overdose|suicidal|allergic reaction|swollen face|blue lips/;
+    const urgentPattern = /blood|pee|urinat|burning|fever|worsening|severe|c(an't|annot) walk|dizzy|vomit|persistent|infection|pain/;
+    const urgency: QuestionnaireUrgency = emergencyPattern.test(text) ? 'emergency' : urgentPattern.test(text) ? 'urgent' : 'priority';
+    const urinaryPattern = /pee|urinat|bladder|kidney|urine/;
+    const department = urgency === 'emergency' ? 'Emergency Department' : urinaryPattern.test(text) ? 'Urology' : 'General consultation';
+    return {
+      pathwayId: 'chat-intake',
+      pathwayName: 'Chat intake assessment',
+      summary: answers.length > 0 ? `${complaint} (assessed from the chat conversation)` : `${complaint} (assessed from your message — the AI assistant was briefly unavailable)`,
+      department,
+      urgency,
+      redFlags: [],
+    };
+  }
+
+  function normalizeIntakeChatTurn(value: unknown, complaint: string, answers: IntakeChatAnswer[], forceComplete: boolean): IntakeChatTurn {
+    const object = asObject(value);
+    if (!object) throw new Error('Gemini intake chat response was invalid');
+    if (object.action === 'question' && !forceComplete) {
+      const questionObject = asObject(object.question);
+      const text = boundedText(questionObject?.text, '', 240);
+      const type = questionObject?.type;
+      if (!text || (type !== 'yes_no' && type !== 'single' && type !== 'scale' && type !== 'text')) throw new Error('Gemini intake chat response was invalid');
+      const rawOptions = Array.isArray(questionObject?.options) ? questionObject.options : [];
+      const options = rawOptions.flatMap((option) => {
+        const optionObject = asObject(option);
+        const optionId = boundedText(optionObject?.id, '', 40).replace(/[^a-z0-9_-]/gi, '_');
+        const label = boundedText(optionObject?.label, '', 80);
+        return optionId && label ? [{ id: optionId, label }] : [];
+      });
+      if (type === 'single' && options.length < 2) throw new Error('Gemini intake chat response was invalid');
+      const id = boundedText(questionObject?.id, '', 40).replace(/[^a-z0-9_-]/gi, '_') || `q${answers.length + 1}`;
+      return { action: 'question', question: { id, text, type, ...(type === 'single' ? { options } : {}) } };
+    }
+    if (object.action === 'complete' || (object.action === 'question' && forceComplete)) {
+      const intakeObject = asObject(object.intake) ?? {};
+      const local = fallbackChatConclusion(complaint, answers);
+      const urgency: QuestionnaireUrgency = intakeObject.urgency === 'emergency' || intakeObject.urgency === 'urgent' || intakeObject.urgency === 'priority' || intakeObject.urgency === 'routine'
+        ? intakeObject.urgency
+        : local.urgency;
+      const redFlags = (Array.isArray(intakeObject.redFlags) ? intakeObject.redFlags : []).flatMap((flag) => {
+        const text = boundedText(flag, '', 80);
+        return text ? [text] : [];
+      }).slice(0, 6);
+      return {
+        action: 'complete',
+        source: 'gemini',
+        intake: {
+          pathwayId: boundedText(intakeObject.pathwayId, local.pathwayId, 80),
+          pathwayName: boundedText(intakeObject.pathwayName, local.pathwayName, 120),
+          summary: boundedText(intakeObject.summary, local.summary, 260),
+          department: boundedText(intakeObject.department, local.department, 120),
+          urgency,
+          redFlags,
+        },
+      };
+    }
+    throw new Error('Gemini intake chat response was invalid');
+  }
+
+  function buildIntakeChatPrompt(complaint: string, answers: IntakeChatAnswer[], forceComplete: boolean): string {
+    const lines = [`Patient: ${complaint}`];
+    answers.forEach((entry) => {
+      lines.push(`Assistant: ${entry.question}`);
+      lines.push(`Patient: ${entry.answer}`);
+    });
+    return `You are a triage intake assistant in a South African public hospital patient portal. Your goal is the FEWEST questions possible — no more than 4 in total — but you MUST ask at least 2 questions before responding with action "complete", unless the patient clearly reported emergency warning signs or the case is obviously minor. Vague or common complaints (pain, fever, headache, urinary symptoms, nausea, dizziness, rash) always need 2-3 questions covering severity, duration, and key warning signs. Ask one short, plain-language question at a time; prefer questions answerable with Yes/No or by picking one of 2-4 options.
+
+Conversation so far:
+${lines.join('\n')}
+${forceComplete ? '\nYou have asked enough questions. You MUST respond with action "complete" now.\n' : ''}
+Return only JSON, exactly one of:
+{"action":"question","question":{"id":"short_snake_case_id","text":"the question","type":"yes_no"}} — type must be yes_no, single, scale, or text. For "single" include "options":[{"id":"yes","label":"Yes"},{"id":"no","label":"No"}] with 2 to 4 choices. For "scale" the patient rates 0-10.
+{"action":"complete","intake":{"pathwayId":"short-id","pathwayName":"short pathway title","summary":"one sentence of what the patient reported","department":"best matching hospital service name","urgency":"emergency|urgent|priority|routine","redFlags":["warning signs if any"]}}
+
+Never diagnose, prescribe, or give treatment advice. If the patient reports emergency warning signs — chest pain, trouble breathing, severe bleeding, fainting, signs of stroke, severe allergic reaction — reply with action "complete" and urgency "emergency" immediately. Choose urgency conservatively.`;
+  }
+
+  async function buildIntakeChatTurn(complaint: string, answers: IntakeChatAnswer[]): Promise<IntakeChatTurn> {
+    const local: IntakeChatTurn = { action: 'complete', source: 'local', intake: fallbackChatConclusion(complaint, answers) };
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!apiKey) return local;
+    if (Date.now() < geminiQuestionnaireCooldownUntil) return local;
+    const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
+    const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`);
+    url.searchParams.set('key', apiKey);
+    const forceComplete = answers.length >= intakeChatMaxTurns;
+    const prompt = buildIntakeChatPrompt(complaint, answers, forceComplete);
+    const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } });
+    let text: string | undefined;
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt < 2 && text === undefined; attempt += 1) {
+      try {
+        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+        const payload: unknown = await response.json();
+        if (!response.ok) {
+          lastError = new Error(`Gemini intake chat request failed: ${response.status}`);
+          if (response.status !== 429 && response.status < 500) break;
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          continue;
+        }
+        const extracted = geminiText(payload);
+        if (!extracted) throw new Error('Gemini intake chat response was empty');
+        text = extracted;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    }
+    if (text === undefined) {
+      geminiQuestionnaireCooldownUntil = Date.now() + geminiQuestionnaireCooldownMs;
+      console.error('[intake-chat] Gemini unavailable, concluding locally:', lastError?.message ?? lastError);
+      return local;
+    }
+    return normalizeIntakeChatTurn(parseGeminiJson(text), complaint, answers, forceComplete);
+  }
+
+  app.post('/api/v1/intake/chat', requireAuth, async (req, res, next) => {
+    try {
+      const body = asObject(req.body);
+      const complaint = boundedText(body?.complaint, '', 300);
+      if (complaint.trim().length < 4) {
+        res.status(400).json({ error: { code: 'INVALID_INTAKE_CHAT', message: 'Describe your main symptom in 4 to 300 characters.' } });
+        return;
+      }
+      const rawAnswers = Array.isArray(body?.answers) ? body.answers.slice(0, intakeChatMaxTurns + 1) : [];
+      const answers: IntakeChatAnswer[] = rawAnswers.flatMap((entry) => {
+        const entryObject = asObject(entry);
+        const question = boundedText(entryObject?.question, '', 300);
+        const answer = boundedText(entryObject?.answer, '', 300);
+        return question && answer ? [{ question, answer }] : [];
+      });
+      const turn = await buildIntakeChatTurn(complaint.trim(), answers);
+      res.json({ data: turn });
     } catch (error) {
       next(error);
     }
@@ -626,10 +814,15 @@ export function createApp() {
          ORDER BY created_at DESC`,
         [hospital.hospitalId],
       );
+      const display = await getPool().query<{ display_token: string | null; display_active: boolean }>(
+        'SELECT display_token, display_active FROM hospitals WHERE id = $1',
+        [hospital.hospitalId],
+      );
       res.json({
         data: {
           hospitalId: hospital.hospitalId,
           hospitalName: hospital.hospitalName,
+          displayPath: display.rows[0]?.display_active && display.rows[0]?.display_token ? `/display/${display.rows[0].display_token}` : null,
           members: members.rows.map((row) => ({ membershipId: row.membership_id, email: row.email, displayName: row.display_name, role: row.role, active: row.active, since: row.created_at, departments: row.departments })),
           pendingInvitations: invitations.rows.map((row) => ({ email: row.email, role: row.role, departmentIds: row.department_ids, expiresAt: row.expires_at, sentAt: row.sent_at })),
         },
@@ -1254,7 +1447,7 @@ export function createApp() {
          JOIN users u ON u.id = a.user_id
          JOIN hospitals h ON h.id = a.hospital_id
          JOIN departments hs ON hs.id = a.hospital_service_id
-         WHERE u.auth0_subject = $1 AND (a.status = 'cancelled' OR (a.status = 'booked' AND a.appointment_date >= CURRENT_DATE))
+         WHERE u.auth0_subject = $1 AND (a.status IN ('cancelled', 'checked_in') OR (a.status = 'booked' AND a.appointment_date >= CURRENT_DATE))
          ORDER BY a.status, a.appointment_date, a.appointment_time`,
         [req.auth!.subject],
       );
@@ -1362,24 +1555,94 @@ export function createApp() {
     }
   });
 
+  app.post('/api/v1/appointments/:id/check-in', requireAuth, async (req, res, next) => {
+    try {
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      const found = await getPool().query<{ id: string; status: string; is_today: boolean; hospital_id: string; hospital_service_id: string; triage_urgency: QuestionnaireUrgency | null; triage_pathway: string | null; triage_department: string | null; triage_summary: string | null; triage_red_flags: string[] }>(
+        `SELECT id, status, appointment_date = CURRENT_DATE AS is_today, hospital_id, hospital_service_id,
+                triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags
+         FROM appointments WHERE id = $1 AND user_id = $2`,
+        [req.params.id, user.id],
+      );
+      const appointment = found.rows[0];
+      if (!appointment) {
+        res.status(404).json({ error: { code: 'APPOINTMENT_NOT_FOUND', message: 'That appointment was not found.' } });
+        return;
+      }
+      if (appointment.status !== 'booked') {
+        res.status(409).json({ error: { code: 'ALREADY_CHECKED_IN', message: 'This appointment was already checked in or is no longer active.' } });
+        return;
+      }
+      if (!appointment.is_today) {
+        res.status(400).json({ error: { code: 'CHECK_IN_NOT_OPEN', message: 'Check-in opens on the day of your appointment.' } });
+        return;
+      }
+      await getPool().query(`UPDATE appointments SET status = 'checked_in' WHERE id = $1`, [appointment.id]);
+      const linked = await getPool().query<{ id: string }>(
+        `UPDATE queue_entries SET appointment_id = $1
+         WHERE user_id = $2 AND hospital_service_id = $3 AND queue_date = CURRENT_DATE
+           AND status = 'awaiting_triage' AND appointment_id IS NULL
+         RETURNING id`,
+        [appointment.id, user.id, appointment.hospital_service_id],
+      );
+      if (linked.rowCount) {
+        res.status(201).json({ data: { id: linked.rows[0]!.id } });
+        return;
+      }
+      const entry = await getPool().query<{ id: string }>(
+        `INSERT INTO queue_entries (user_id, hospital_id, hospital_service_id, appointment_id, status, triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags)
+         VALUES ($1, $2, $3, $4, 'awaiting_triage', $5, $6, $7, $8, $9) RETURNING id`,
+        [user.id, appointment.hospital_id, appointment.hospital_service_id, appointment.id, appointment.triage_urgency, appointment.triage_pathway, appointment.triage_department, appointment.triage_summary, appointment.triage_red_flags],
+      );
+      res.status(201).json({ data: { id: entry.rows[0]!.id } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/v1/queue', requireAuth, async (req, res, next) => {
     try {
       const result = await getPool().query<{
-        id: string; status: string; hospital_name: string; service_name: string; address: string; joined_at: string; position: string;
+        id: string; status: string; hospital_name: string; service_name: string; address: string; joined_at: string; position: number | null;
+        category: QuestionnaireUrgency | null; triage_urgency: QuestionnaireUrgency | null; triage_pathway: string | null; triage_department: string | null; triage_summary: string | null; triage_red_flags: string[];
       }>(
-        `SELECT q.id, q.status, h.name AS hospital_name, hs.name AS service_name, h.address, q.joined_at,
-                (SELECT count(*) FROM queue_entries ahead
-                 WHERE ahead.hospital_service_id = q.hospital_service_id AND ahead.queue_date = q.queue_date
-                   AND ahead.status = 'waiting' AND ahead.joined_at <= q.joined_at) AS position
+        `WITH ordered AS (
+           SELECT q.id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY q.hospital_service_id
+                    ORDER BY ${CATEGORY_RANK_SQL}, q.triaged_at ASC NULLS LAST, q.joined_at
+                  ) AS position
+           FROM queue_entries q
+           WHERE q.queue_date = CURRENT_DATE AND q.status = 'waiting'
+         )
+         SELECT q.id, q.status, h.name AS hospital_name, hs.name AS service_name, h.address, q.joined_at, q.category,
+                q.triage_urgency, q.triage_pathway, q.triage_department, q.triage_summary, q.triage_red_flags,
+                o.position
          FROM queue_entries q
          JOIN users u ON u.id = q.user_id
          JOIN hospitals h ON h.id = q.hospital_id
          JOIN departments hs ON hs.id = q.hospital_service_id
-         WHERE u.auth0_subject = $1 AND q.queue_date = CURRENT_DATE AND q.status IN ('waiting', 'called')
+         LEFT JOIN ordered o ON o.id = q.id
+         WHERE u.auth0_subject = $1 AND q.queue_date = CURRENT_DATE AND q.status IN ('awaiting_triage', 'waiting', 'called', 'in_consultation')
          ORDER BY q.joined_at`,
         [req.auth!.subject],
       );
-      res.json({ data: result.rows.map((row) => ({ id: row.id, status: row.status, hospitalName: row.hospital_name, serviceName: row.service_name, address: row.address, joinedAt: row.joined_at, position: Number(row.position), estimatedWaitMinutes: Math.max(0, Number(row.position) - 1) * 15 })) });
+      res.json({
+        data: result.rows.map((row) => ({
+          id: row.id,
+          status: row.status,
+          hospitalName: row.hospital_name,
+          serviceName: row.service_name,
+          address: row.address,
+          joinedAt: row.joined_at,
+          position: row.position === null ? null : Number(row.position),
+          estimatedWaitMinutes: row.position !== null && row.category !== 'emergency' ? Math.max(0, Number(row.position) - 1) * 15 : null,
+          category: row.category,
+          triageSummary: row.triage_urgency && row.triage_pathway && row.triage_department && row.triage_summary
+            ? { urgency: row.triage_urgency, pathwayName: row.triage_pathway, department: row.triage_department, summary: row.triage_summary, redFlags: row.triage_red_flags }
+            : null,
+        })),
+      });
     } catch (error) {
       next(error);
     }
@@ -1440,9 +1703,14 @@ export function createApp() {
 
   app.post('/api/v1/queue', requireAuth, async (req, res, next) => {
     try {
-      const { hospitalId, serviceId } = req.body as { hospitalId?: unknown; serviceId?: unknown };
+      const { hospitalId, serviceId, triageSummary: rawTriageSummary } = req.body as { hospitalId?: unknown; serviceId?: unknown; triageSummary?: unknown };
       if (typeof hospitalId !== 'string' || typeof serviceId !== 'string') {
         res.status(400).json({ error: { code: 'INVALID_QUEUE', message: 'Choose a hospital and service to join the queue.' } });
+        return;
+      }
+      const summary = triageSummary(rawTriageSummary);
+      if (summary === undefined) {
+        res.status(400).json({ error: { code: 'INVALID_TRIAGE_SUMMARY', message: 'The intake summary is not valid. Please try again.' } });
         return;
       }
       const service = await getPool().query('SELECT 1 FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, hospitalId]);
@@ -1452,9 +1720,9 @@ export function createApp() {
       }
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
       const result = await getPool().query<{ id: string }>(
-        `INSERT INTO queue_entries (user_id, hospital_id, hospital_service_id)
-         VALUES ($1, $2, $3) RETURNING id`,
-        [user.id, hospitalId, serviceId],
+        `INSERT INTO queue_entries (user_id, hospital_id, hospital_service_id, status, triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags)
+         VALUES ($1, $2, $3, 'awaiting_triage', $4, $5, $6, $7, $8) RETURNING id`,
+        [user.id, hospitalId, serviceId, summary?.urgency ?? null, summary?.pathwayName ?? null, summary?.department ?? null, summary?.summary ?? null, summary?.redFlags ?? []],
       );
       res.status(201).json({ data: { id: result.rows[0]!.id } });
     } catch (error) {
@@ -1468,7 +1736,7 @@ export function createApp() {
         `UPDATE queue_entries q SET status = 'cancelled', updated_at = now()
          FROM users u
          WHERE q.id = $1 AND q.user_id = u.id AND u.auth0_subject = $2
-           AND q.queue_date = CURRENT_DATE AND q.status = 'waiting'
+           AND q.queue_date = CURRENT_DATE AND q.status IN ('waiting', 'awaiting_triage')
          RETURNING q.id`,
         [req.params.id, req.auth!.subject],
       );
@@ -1477,6 +1745,313 @@ export function createApp() {
         return;
       }
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/staff/triage', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'administrator']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Nurse access is required to review triage.' } });
+        return;
+      }
+      const result = await getPool().query<{
+        id: string; joined_at: string; appointment_time: string | null; from_booking: boolean; service_id: string; service_name: string;
+        patient_name: string | null; patient_email: string | null; triage_urgency: QuestionnaireUrgency | null; triage_pathway: string | null;
+        triage_department: string | null; triage_summary: string | null; triage_red_flags: string[];
+      }>(
+        `SELECT q.id, q.joined_at, a.appointment_time, q.appointment_id IS NOT NULL AS from_booking,
+                q.hospital_service_id AS service_id, hs.name AS service_name,
+                u.display_name AS patient_name, u.email AS patient_email,
+                q.triage_urgency, q.triage_pathway, q.triage_department, q.triage_summary, q.triage_red_flags
+         FROM queue_entries q
+         JOIN users u ON u.id = q.user_id
+         JOIN departments hs ON hs.id = q.hospital_service_id
+         LEFT JOIN appointments a ON a.id = q.appointment_id
+         WHERE q.hospital_id = $1 AND q.queue_date = CURRENT_DATE AND q.status = 'awaiting_triage'
+         ORDER BY CASE WHEN q.triage_urgency = 'emergency' OR cardinality(q.triage_red_flags) > 0 THEN 0 ELSE 1 END,
+                  CASE q.triage_urgency WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 WHEN 'priority' THEN 2 ELSE 3 END,
+                  q.joined_at`,
+        [membership.hospitalId],
+      );
+      res.json({
+        data: result.rows.map((row) => ({
+          id: row.id,
+          patientName: row.patient_name ?? 'Unknown patient',
+          patientEmail: row.patient_email,
+          source: row.from_booking ? 'booking' : 'walk_in',
+          serviceId: row.service_id,
+          serviceName: row.service_name,
+          appointmentTime: row.appointment_time ? row.appointment_time.slice(0, 5) : null,
+          joinedAt: row.joined_at,
+          critical: row.triage_urgency === 'emergency' || row.triage_red_flags.length > 0,
+          intakeNote: row.triage_summary,
+          triageSummary: row.triage_urgency && row.triage_pathway && row.triage_department && row.triage_summary
+            ? { urgency: row.triage_urgency, pathwayName: row.triage_pathway, department: row.triage_department, summary: row.triage_summary, redFlags: row.triage_red_flags }
+            : null,
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/staff/triage/:id/confirm', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'administrator']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Nurse access is required to confirm triage.' } });
+        return;
+      }
+      const { category, serviceId, reason } = req.body as { category?: unknown; serviceId?: unknown; reason?: unknown };
+      if (category !== 'emergency' && category !== 'urgent' && category !== 'priority' && category !== 'routine') {
+        res.status(400).json({ error: { code: 'INVALID_TRIAGE', message: 'Choose a valid urgency category.' } });
+        return;
+      }
+      if (serviceId !== undefined && typeof serviceId !== 'string') {
+        res.status(400).json({ error: { code: 'INVALID_TRIAGE', message: 'Choose a valid department.' } });
+        return;
+      }
+      const entry = await getPool().query<{ id: string; hospital_service_id: string }>(
+        `SELECT id, hospital_service_id FROM queue_entries
+         WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status = 'awaiting_triage'`,
+        [req.params.id, membership.hospitalId],
+      );
+      if (!entry.rowCount) {
+        res.status(404).json({ error: { code: 'ENTRY_NOT_FOUND', message: 'That patient is no longer awaiting triage.' } });
+        return;
+      }
+      let targetServiceId = entry.rows[0]!.hospital_service_id;
+      if (serviceId) {
+        const service = await getPool().query('SELECT 1 FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, membership.hospitalId]);
+        if (!service.rowCount) {
+          res.status(400).json({ error: { code: 'INVALID_SERVICE', message: 'That department is not available at your hospital.' } });
+          return;
+        }
+        targetServiceId = serviceId;
+      }
+      const reasonText = boundedText(reason, '', 300);
+      const updated = await getPool().query<{ id: string }>(
+        `UPDATE queue_entries
+         SET category = $2, hospital_service_id = $3, override_reason = NULLIF($4, ''),
+             status = 'waiting', triaged_at = now(), triaged_by = $5, updated_at = now(),
+             acknowledged_at = CASE WHEN $2 = 'emergency' THEN now() ELSE acknowledged_at END,
+             acknowledged_by = CASE WHEN $2 = 'emergency' THEN $5 ELSE acknowledged_by END
+         WHERE id = $1
+         RETURNING id`,
+        [req.params.id, category, targetServiceId, reasonText, membership.userId],
+      );
+      res.json({ data: { id: updated.rows[0]!.id, category, serviceId: targetServiceId } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/staff/queue', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required to view the queue.' } });
+        return;
+      }
+      const result = await getPool().query<{
+        id: string; status: string; category: QuestionnaireUrgency | null; service_id: string; service_name: string;
+        patient_name: string | null; joined_at: string; triaged_at: string | null; called_at: string | null; position: number | null;
+      }>(
+        `WITH ordered AS (
+           SELECT q.id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY q.hospital_service_id
+                    ORDER BY ${CATEGORY_RANK_SQL}, q.triaged_at ASC NULLS LAST, q.joined_at
+                  ) AS position
+           FROM queue_entries q
+           WHERE q.hospital_id = $1 AND q.queue_date = CURRENT_DATE AND q.status = 'waiting'
+         )
+         SELECT q.id, q.status, q.category, q.hospital_service_id AS service_id, hs.name AS service_name,
+                u.display_name AS patient_name, q.joined_at, q.triaged_at, q.called_at, o.position
+         FROM queue_entries q
+         JOIN users u ON u.id = q.user_id
+         JOIN departments hs ON hs.id = q.hospital_service_id
+         LEFT JOIN ordered o ON o.id = q.id
+         WHERE q.hospital_id = $1 AND q.queue_date = CURRENT_DATE AND q.status IN ('waiting', 'called', 'in_consultation')
+         ORDER BY hs.name, ${CATEGORY_RANK_SQL.replaceAll('category', 'q.category')}, q.triaged_at ASC NULLS LAST, q.joined_at`,
+        [membership.hospitalId],
+      );
+      res.json({
+        data: result.rows.map((row) => ({
+          id: row.id,
+          patientName: row.patient_name ?? 'Unknown patient',
+          serviceId: row.service_id,
+          serviceName: row.service_name,
+          status: row.status,
+          category: row.category,
+          position: row.position === null ? null : Number(row.position),
+          joinedAt: row.joined_at,
+          triagedAt: row.triaged_at,
+          calledAt: row.called_at,
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/staff/queue/:id/call', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
+        return;
+      }
+      const result = await getPool().query<{ id: string }>(
+        `UPDATE queue_entries SET status = 'called', called_at = now(), updated_at = now()
+         WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status = 'waiting'
+         RETURNING id`,
+        [req.params.id, membership.hospitalId],
+      );
+      if (!result.rowCount) {
+        res.status(409).json({ error: { code: 'ENTRY_NOT_WAITING', message: 'That patient is no longer waiting in the queue.' } });
+        return;
+      }
+      res.json({ data: { id: result.rows[0]!.id, status: 'called' } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/staff/queue/:id/start-consultation', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
+        return;
+      }
+      const result = await getPool().query<{ id: string }>(
+        `UPDATE queue_entries SET status = 'in_consultation', updated_at = now()
+         WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status = 'called'
+         RETURNING id`,
+        [req.params.id, membership.hospitalId],
+      );
+      if (!result.rowCount) {
+        res.status(409).json({ error: { code: 'ENTRY_NOT_CALLED', message: 'That patient has not been called yet.' } });
+        return;
+      }
+      res.json({ data: { id: result.rows[0]!.id, status: 'in_consultation' } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/staff/queue/:id/complete', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
+        return;
+      }
+      const result = await getPool().query<{ id: string }>(
+        `UPDATE queue_entries SET status = 'completed', completed_at = now(), updated_at = now()
+         WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status = 'in_consultation'
+         RETURNING id`,
+        [req.params.id, membership.hospitalId],
+      );
+      if (!result.rowCount) {
+        res.status(409).json({ error: { code: 'ENTRY_NOT_IN_CONSULTATION', message: 'That consultation has not started.' } });
+        return;
+      }
+      res.json({ data: { id: result.rows[0]!.id, status: 'completed' } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/staff/queue/:id/refer', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
+        return;
+      }
+      const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
+      const { serviceId, reason } = req.body as { serviceId?: unknown; reason?: unknown };
+      const reasonText = boundedText(reason, '', 300);
+      if (typeof serviceId !== 'string' || !reasonText || reasonText.length < 4) {
+        res.status(400).json({ error: { code: 'INVALID_REFERRAL', message: 'Choose a receiving department and describe the referral reason.' } });
+        return;
+      }
+      const entry = await getPool().query<{ id: string; user_id: string; hospital_service_id: string }>(
+        `SELECT id, user_id, hospital_service_id FROM queue_entries
+         WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status IN ('called', 'in_consultation')`,
+        [req.params.id, membership.hospitalId],
+      );
+      if (!entry.rowCount) {
+        res.status(409).json({ error: { code: 'ENTRY_NOT_ACTIVE', message: 'Only a called or consulting patient can be referred.' } });
+        return;
+      }
+      if (serviceId === entry.rows[0]!.hospital_service_id) {
+        res.status(400).json({ error: { code: 'INVALID_REFERRAL', message: 'Choose a different department than the current queue.' } });
+        return;
+      }
+      const service = await getPool().query<{ name: string }>('SELECT name FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, membership.hospitalId]);
+      if (!service.rowCount) {
+        res.status(400).json({ error: { code: 'INVALID_SERVICE', message: 'That department is not available at your hospital.' } });
+        return;
+      }
+      const clinicianName = user.display_name ?? 'Clinical staff';
+      const referral = await getPool().query<{ id: string }>(
+        `INSERT INTO queue_entries (user_id, hospital_id, hospital_service_id, status, triage_pathway, triage_department, triage_summary)
+         VALUES ($1, $2, $3, 'awaiting_triage', 'Clinical referral', $4, $5) RETURNING id`,
+        [entry.rows[0]!.user_id, membership.hospitalId, serviceId, service.rows[0]!.name, `Referred by ${clinicianName}: ${reasonText}`],
+      );
+      await getPool().query(
+        `UPDATE queue_entries SET status = 'referred', completed_at = now(), updated_at = now() WHERE id = $1`,
+        [req.params.id],
+      );
+      res.status(201).json({ data: { id: referral.rows[0]!.id, status: 'awaiting_triage' } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/display/:token', async (req, res, next) => {
+    try {
+      const token = req.params.token;
+      if (!/^[A-Za-z0-9_-]{10,120}$/.test(token)) {
+        res.status(404).json({ error: { code: 'DISPLAY_NOT_FOUND', message: 'That display was not found.' } });
+        return;
+      }
+      const hospital = await getPool().query<{ id: string; name: string }>(
+        `SELECT id, name FROM hospitals
+         WHERE display_token = $1 AND display_active AND active`,
+        [token],
+      );
+      if (!hospital.rowCount) {
+        res.status(404).json({ error: { code: 'DISPLAY_NOT_FOUND', message: 'That display was not found.' } });
+        return;
+      }
+      const rows = await getPool().query<{ service_id: string; service_name: string; status: string; category: QuestionnaireUrgency | null; ticket: number }>(
+        `WITH tickets AS (
+           SELECT q.hospital_service_id, q.status, q.category,
+                  ROW_NUMBER() OVER (PARTITION BY q.hospital_service_id ORDER BY q.joined_at) AS ticket
+           FROM queue_entries q
+           WHERE q.hospital_id = $1 AND q.queue_date = CURRENT_DATE AND q.status NOT IN ('cancelled', 'referred')
+         )
+         SELECT t.hospital_service_id AS service_id, hs.name AS service_name, t.status, t.category, t.ticket
+         FROM tickets t JOIN departments hs ON hs.id = t.hospital_service_id
+         ORDER BY hs.name, t.ticket`,
+        [hospital.rows[0]!.id],
+      );
+      const services = new Map<string, { serviceName: string; nowServing: number | null; awaitingTriage: number; waiting: { ticket: number; category: QuestionnaireUrgency | null }[] }>();
+      for (const row of rows.rows) {
+        const service = services.get(row.service_id) ?? { serviceName: row.service_name, nowServing: null, awaitingTriage: 0, waiting: [] };
+        if (row.status === 'awaiting_triage') service.awaitingTriage += 1;
+        if (row.status === 'waiting') service.waiting.push({ ticket: Number(row.ticket), category: row.category });
+        if ((row.status === 'called' || row.status === 'in_consultation') && service.nowServing === null) service.nowServing = Number(row.ticket);
+        services.set(row.service_id, service);
+      }
+      res.json({ data: { hospitalName: hospital.rows[0]!.name, generatedAt: new Date().toISOString(), services: [...services.values()] } });
     } catch (error) {
       next(error);
     }
@@ -1499,12 +2074,16 @@ export function createApp() {
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     void _next;
     console.error(error);
+    if (error instanceof Error && error.message.startsWith('Gemini intake chat')) {
+      res.status(502).json({ error: { code: 'INTAKE_CHAT_UNAVAILABLE', message: 'The AI intake service returned an invalid response. Please try again.' } });
+      return;
+    }
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505' && 'constraint' in error && error.constraint === 'appointments_booked_service_slot_key') {
       res.status(409).json({ error: { code: 'SLOT_UNAVAILABLE', message: 'This appointment slot is no longer available. Please choose another time.' } });
       return;
     }
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505' && 'constraint' in error && error.constraint === 'queue_entries_one_active_service_per_day') {
-      res.status(409).json({ error: { code: 'ALREADY_IN_QUEUE', message: 'You are already in this service queue today.' } });
+      res.status(409).json({ error: { code: 'ALREADY_IN_QUEUE', message: 'This patient is already active in that service queue today.' } });
       return;
     }
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505' && 'constraint' in error && String(error.constraint).startsWith('appointment_slots_')) {

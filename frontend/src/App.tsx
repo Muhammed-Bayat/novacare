@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { authenticatedRequest, type Appointment, type ClinicalDiagnosis, type CurrentUser, type Hospital, type HospitalAccess, type PatientProfile, type QueueEntry } from './api.ts';
 import { Brand, TopBar, TopNav } from './components/TopBar.tsx';
 import { AdminPortalPage } from './pages/AdminPortalPage.tsx';
+import { DisplayPage } from './pages/DisplayPage.tsx';
 import { LandingPage } from './pages/LandingPage.tsx';
 import { PatientPortalPage } from './pages/PatientPortalPage.tsx';
 import { getPortalPath } from './portal.ts';
@@ -208,7 +209,7 @@ function Dashboard() {
       <div className="section-heading"><div><p className="eyebrow">Virtual queue</p><h2 id="queue-title">Need care today?</h2></div><button type="button" onClick={() => navigate('/queue')}>Join today&apos;s queue</button></div>
       <p>Join a same-day service queue from home. Queue order is first in, first out for this demo.</p>
       {!queueEntries ? <p>Loading today&apos;s queue status...</p> : null}
-      {queueEntries?.map((entry) => <article className="queue-card" key={entry.id}><div className="queue-position"><span>Position</span><strong>{entry.status === 'called' ? 'Called' : entry.position}</strong></div><div><h3>{entry.serviceName}</h3><p>{entry.hospitalName}</p><small>{entry.estimatedWaitMinutes > 0 ? `Estimated wait: about ${entry.estimatedWaitMinutes} minutes` : 'You are next in line.'}</small></div><button type="button" className="text-button danger-button" onClick={() => void leaveQueue(entry)}>Leave queue</button></article>)}
+      {queueEntries?.map((entry) => <article className="queue-card" key={entry.id}><div className="queue-position"><span>Position</span><strong>{entry.status === 'called' ? 'Called' : entry.position}</strong></div><div><h3>{entry.serviceName}</h3><p>{entry.hospitalName}</p><small>{entry.estimatedWaitMinutes !== null && entry.estimatedWaitMinutes > 0 ? `Estimated wait: about ${entry.estimatedWaitMinutes} minutes` : 'You are next in line.'}</small></div><button type="button" className="text-button danger-button" onClick={() => void leaveQueue(entry)}>Leave queue</button></article>)}
     </section>
     <section className="health-home"><div className="section-heading"><div><p className="eyebrow">Your health record</p><h2>Personal and medical information</h2></div><button type="button" onClick={() => navigate('/profile')}>{healthRecord?.profile ? 'Update profile' : 'Complete profile'}</button></div>{!healthRecord ? <p>Loading your private health record...</p> : <><p>{healthRecord.profile ? 'Keep your contact details, allergies, medications and care needs up to date.' : 'Add your details so care teams can support you safely.'}</p><div className="health-summary"><div><strong>Conditions</strong><span>{healthRecord.profile?.chronicConditions.length ?? 0} recorded</span></div><div><strong>Allergies</strong><span>{healthRecord.profile?.allergies.length ?? 0} recorded</span></div><div><strong>Clinician diagnoses</strong><span>{healthRecord.diagnoses.length} recorded</span></div></div>{healthRecord.diagnoses.length > 0 ? <div className="diagnosis-preview"><strong>Latest clinician diagnosis</strong><span>{healthRecord.diagnoses[0]?.diagnosis}</span></div> : <p className="health-note">Clinician diagnoses will appear here after a care team records them.</p>}</>}</section>
     <section className="upcoming" aria-labelledby="upcoming-title">
@@ -673,6 +674,7 @@ function App() {
     <Route path="/staff" element={<StaffPortalPage role="nurse" />} />
     <Route path="/doctor" element={<StaffPortalPage role="doctor" />} />
     <Route path="/admin" element={<AdminPortalPage />} />
+    <Route path="/display/:token" element={<DisplayPage />} />
     <Route path="/invitations/claim" element={<InvitationClaimPage />} />
     <Route path="/care" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
     <Route path="/care/book" element={<ProtectedPage><BookingPage /></ProtectedPage>} />
