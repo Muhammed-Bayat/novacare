@@ -128,9 +128,15 @@
 
 .nv-patient .widgets.nv-dashboard-widgets {
   display: grid;
-  grid-template-columns: minmax(0, 760px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: start;
   gap: 18px;
   margin-top: 18px;
+}
+
+.nv-patient .nv-upcoming-widget {
+  position: sticky;
+  top: 18px;
 }
 
 .nv-patient .widget {
@@ -187,6 +193,16 @@
 
   .nv-patient .hero-booking-card {
     max-width: 620px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .nv-patient .widgets.nv-dashboard-widgets {
+    grid-template-columns: 1fr;
+  }
+
+  .nv-patient .nv-upcoming-widget {
+    position: static;
   }
 }
 

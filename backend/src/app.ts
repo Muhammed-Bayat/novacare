@@ -239,6 +239,63 @@ async function buildQuestionnaireWithGemini(complaint: string): Promise<Question
   }
 }
 
+const translationLanguageNames: Record<string, string> = {
+  en: 'English',
+  zu: 'isiZulu',
+  xh: 'isiXhosa',
+  af: 'Afrikaans',
+  nso: 'Sepedi',
+  st: 'Sesotho',
+  tn: 'Setswana',
+  ss: 'siSwati',
+  ve: 'Tshivenda',
+  ts: 'Xitsonga',
+  nr: 'isiNdebele',
+};
+
+const translationCache = new Map<string, string>();
+
+async function translateOneWithGoogle(text: string, targetCode: string): Promise<string> {
+  const url = new URL('https://translate.googleapis.com/translate_a/single');
+  url.searchParams.set('client', 'gtx');
+  url.searchParams.set('sl', 'en');
+  url.searchParams.set('tl', targetCode);
+  url.searchParams.set('dt', 't');
+  url.searchParams.set('q', text);
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(url);
+    const payload: unknown = await response.json();
+    if (!response.ok) {
+      lastError = new Error(`Translation request failed: ${response.status}`);
+      if (response.status !== 429 && response.status !== 503) break;
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      continue;
+    }
+    const segments = (payload as [unknown, ...unknown[]])[0];
+    const translated = Array.isArray(segments)
+      ? segments.map((segment) => (Array.isArray(segment) ? segment[0] : undefined)).filter((part): part is string => typeof part === 'string').join('')
+      : '';
+    if (!translated.trim()) { lastError = new Error('Translation response was empty'); break; }
+    return translated;
+  }
+  throw lastError ?? new Error('Translation request failed');
+}
+
+async function translateTexts(texts: string[], targetCode: string): Promise<string[]> {
+  const results: string[] = new Array(texts.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < texts.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await translateOneWithGoogle(texts[index], targetCode);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(5, texts.length) }, worker));
+  return results;
+}
+
 async function createAndSendInvitation(input: { hospitalId: string; hospitalName: string; email: string; role: 'administrator' | 'nurse' | 'doctor'; invitedBy: string; baseUrl: string }): Promise<{ claimUrl: string }> {
   const token = invitationToken();
   const claimUrl = buildInvitationUrl(token, input.baseUrl);
@@ -379,6 +436,48 @@ export function createApp() {
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('Gemini questionnaire')) {
         res.status(502).json({ error: { code: 'QUESTIONNAIRE_AI_UNAVAILABLE', message: 'The AI questionnaire service is unavailable. Please try again shortly.' } });
+        return;
+      }
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/translate', async (req, res, next) => {
+    try {
+      const { texts, target } = req.body as { texts?: unknown; target?: unknown };
+      if (!Array.isArray(texts) || texts.length === 0 || texts.length > 60 || typeof target !== 'string' || !(target in translationLanguageNames)) {
+        res.status(400).json({ error: { code: 'INVALID_TRANSLATION_REQUEST', message: 'Provide 1 to 60 texts and a supported target language.' } });
+        return;
+      }
+      const requested = texts.map((text) => (typeof text === 'string' ? text.slice(0, 500) : ''));
+      if (target === 'en') {
+        res.json({ data: { translations: requested } });
+        return;
+      }
+      const translations: string[] = new Array(requested.length);
+      const missing: string[] = [];
+      const missingIndexes: number[] = [];
+      requested.forEach((text, index) => {
+        const cached = translationCache.get(`${target}:${text}`);
+        if (cached !== undefined) {
+          translations[index] = cached;
+        } else {
+          missing.push(text);
+          missingIndexes.push(index);
+        }
+      });
+      if (missing.length > 0) {
+        const translated = await translateTexts(missing, target);
+        missing.forEach((text, index) => {
+          translationCache.set(`${target}:${text}`, translated[index]);
+          translations[missingIndexes[index]] = translated[index];
+        });
+      }
+      res.json({ data: { translations } });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Translation')) {
+        console.error('[translate] failure:', error.message);
+        res.status(502).json({ error: { code: 'TRANSLATION_UNAVAILABLE', message: 'The translation service is unavailable. Please try again shortly.' } });
         return;
       }
       next(error);

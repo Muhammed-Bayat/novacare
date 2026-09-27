@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -226,6 +226,23 @@ describe('App', () => {
     } finally {
       Reflect.deleteProperty(window.navigator, 'geolocation');
     }
+  });
+
+  it('translates the patient dashboard live when switching languages', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/v1/translate')) {
+        const body = JSON.parse(String(init?.body)) as { texts: string[] };
+        return { ok: true, json: async () => ({ data: { translations: body.texts.map((text) => `translated:${text}`) } }) };
+      }
+      return { ok: true, json: async () => ({ data: { userType: 'patient' } }) };
+    }));
+    renderAt('/patient');
+    await userEvent.selectOptions(screen.getByLabelText('Language'), 'zu');
+    await waitFor(() => expect(document.body.textContent).toContain('translated:AI health questionnaire'), { timeout: 3000 });
+    expect(document.body.textContent).toContain('translated:Welcome back, Thandi');
+    expect(document.body.textContent).toContain('isiZulu');
+    expect(document.body.textContent).not.toContain('translated:isiZulu');
   });
 
   it('lets patients change their display name from the user menu', async () => {

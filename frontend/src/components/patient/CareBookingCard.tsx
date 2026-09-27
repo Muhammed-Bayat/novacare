@@ -1,11 +1,37 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import type { Appointment, AppointmentTriageSummary, Hospital } from '../../api.ts';
-import type { PatientStrings } from '../../i18n/patientTranslations.ts';
 import { HospitalMap } from './HospitalMap.tsx';
 import { BOOKING_END, BOOKING_START, distanceInKm, formatDate, type Coordinates } from './careMath.ts';
 
+const copy = {
+  locateFailed: 'Could not get your location. Distance sorting is off.',
+  rebookedOk: 'Appointment rebooked.',
+  updatedOk: 'Appointment updated.',
+  bookedOk: 'Appointment booked.',
+  queueJoined: 'You joined the queue.',
+  actionFailed: 'Something went wrong. Please try again.',
+  findHospital: 'Find a hospital',
+  findSub: 'Search by name, area or service. Allow location to sort by distance and see the closest hospitals on the map.',
+  searchName: 'Hospital name',
+  searchArea: 'Area or city',
+  searchService: 'Service',
+  nearMe: 'Near me',
+  locating: 'Locating…',
+  radius: 'Within',
+  hospitalsFound: 'hospitals found',
+  noResults: 'No hospitals match your search.',
+  distanceAway: 'km away',
+  selectPrompt: 'Select a hospital from the map or list to view details and book.',
+  addressLabel: 'Address',
+  dateLabel: 'Date',
+  timeLabel: 'Time (07:00–19:00)',
+  confirmBooking: 'Confirm booking',
+  joinQueue: 'Join today’s queue',
+  rebook: 'Rebook',
+  reschedule: 'Reschedule',
+};
+
 interface CareBookingCardProps {
-  t: PatientStrings;
   hospitals: Hospital[];
   loading: boolean;
   editingAppointment: Appointment | null;
@@ -17,8 +43,7 @@ interface CareBookingCardProps {
   onJoinQueue: (input: { hospitalId: string; serviceId: string }) => Promise<void>;
 }
 
-export function CareBookingCard({ t, hospitals, loading, editingAppointment, bookingSuggestion, onFinishEdit, onCreate, onUpdate, onRebook, onJoinQueue }: CareBookingCardProps) {
-  const care = t.care;
+export function CareBookingCard({ hospitals, loading, editingAppointment, bookingSuggestion, onFinishEdit, onCreate, onUpdate, onRebook, onJoinQueue }: CareBookingCardProps) {
   const [hospitalName, setHospitalName] = useState('');
   const [area, setArea] = useState('');
   const [service, setService] = useState('');
@@ -70,7 +95,7 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
 
   function useMyLocation() {
     if (!navigator.geolocation) {
-      setLocationError(care.locateFailed);
+      setLocationError(copy.locateFailed);
       return;
     }
     setLocating(true);
@@ -81,7 +106,7 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
         setLocating(false);
       },
       () => {
-        setLocationError(care.locateFailed);
+        setLocationError(copy.locateFailed);
         setLocating(false);
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
@@ -99,18 +124,18 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
         const input = { serviceId, date, time };
         if (editingAppointment.status === 'cancelled') {
           await onRebook(editingAppointment.id, input);
-          setNotice(care.rebookedOk);
+          setNotice(copy.rebookedOk);
         } else {
           await onUpdate(editingAppointment.id, input);
-          setNotice(care.updatedOk);
+          setNotice(copy.updatedOk);
         }
         onFinishEdit();
       } else {
         await onCreate({ hospitalId: selectedHospital.id, serviceId, date, time, triageSummary: bookingSuggestion?.triageSummary ?? null });
-        setNotice(care.bookedOk);
+        setNotice(copy.bookedOk);
       }
     } catch (bookingError) {
-      setError(bookingError instanceof Error ? bookingError.message : care.actionFailed);
+      setError(bookingError instanceof Error ? bookingError.message : copy.actionFailed);
     } finally {
       setSubmitting(undefined);
     }
@@ -123,9 +148,9 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
     setNotice(undefined);
     try {
       await onJoinQueue({ hospitalId: selectedHospital.id, serviceId });
-      setNotice(care.queueJoined);
+      setNotice(copy.queueJoined);
     } catch (queueError) {
-      setError(queueError instanceof Error ? queueError.message : care.actionFailed);
+      setError(queueError instanceof Error ? queueError.message : copy.actionFailed);
     } finally {
       setSubmitting(undefined);
     }
@@ -147,31 +172,31 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
   const closest = userLocation ? results.slice(0, 3) : [];
   const selectedDistance = selectedHospital && userLocation ? distanceInKm(userLocation, selectedHospital) : undefined;
   const editingLabel = editingAppointment
-    ? `${editingAppointment.status === 'cancelled' ? care.rebook : t.reschedule} — ${editingAppointment.hospitalName}, ${formatDate(editingAppointment.date)} ${editingAppointment.time}`
+    ? `${editingAppointment.status === 'cancelled' ? copy.rebook : copy.reschedule} — ${editingAppointment.hospitalName}, ${formatDate(editingAppointment.date)} ${editingAppointment.time}`
     : undefined;
 
   return (
-    <section className="card nv-care-card" aria-label={care.findHospital}>
+    <section className="card nv-care-card" aria-label={copy.findHospital}>
       <header className="nv-care-card-head">
-        <h2 className="section-title">{care.findHospital}</h2>
-        <p className="muted small">{care.findSub}</p>
+        <h2 className="section-title">{copy.findHospital}</h2>
+        <p className="muted small">{copy.findSub}</p>
       </header>
       <div className="nv-finder-grid">
         <div className="nv-finder-controls">
-          <label className="nv-field">{care.searchName}
+          <label className="nv-field">{copy.searchName}
             <input value={hospitalName} onChange={(event) => setHospitalName(event.target.value)} placeholder="Groote Schuur" autoComplete="off" />
           </label>
-          <label className="nv-field">{care.searchArea}
+          <label className="nv-field">{copy.searchArea}
             <input value={area} onChange={(event) => setArea(event.target.value)} placeholder="Soweto, Gauteng" autoComplete="off" />
           </label>
-          <label className="nv-field">{care.searchService}
+          <label className="nv-field">{copy.searchService}
             <input list="nv-service-options" value={service} onChange={(event) => setService(event.target.value)} autoComplete="off" />
             <datalist id="nv-service-options">{serviceOptions.map((option) => <option key={option} value={option} />)}</datalist>
           </label>
           <div className="nv-locate-row">
-            <button type="button" className="secondary-btn" onClick={useMyLocation} disabled={locating}>{locating ? care.locating : care.nearMe}</button>
+            <button type="button" className="secondary-btn" onClick={useMyLocation} disabled={locating}>{locating ? copy.locating : copy.nearMe}</button>
             {userLocation ? (
-              <label className="nv-field nv-radius">{care.radius}
+              <label className="nv-field nv-radius">{copy.radius}
                 <select value={radius} onChange={(event) => setRadius(event.target.value)}>
                   <option value="any">—</option>
                   <option value="10">10 km</option>
@@ -184,9 +209,9 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
           </div>
           {locationError ? <p className="nv-error" role="alert">{locationError}</p> : null}
           <div className="nv-results" aria-live="polite">
-            {!loading ? <p className="muted small">{results.length} {care.hospitalsFound}</p> : null}
+            {!loading ? <p className="muted small">{results.length} {copy.hospitalsFound}</p> : null}
             {loading ? <p className="muted small">…</p> : null}
-            {!loading && results.length === 0 ? <p className="muted small">{care.noResults}</p> : null}
+            {!loading && results.length === 0 ? <p className="muted small">{copy.noResults}</p> : null}
             {closest.length > 0 ? (
               <div className="nv-closest">
                 {closest.map(({ hospital, distance }) => (
@@ -202,7 +227,7 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
                 <li key={hospital.id}>
                   <button type="button" className={`nv-result ${selectedHospital?.id === hospital.id ? 'selected' : ''}`} onClick={() => selectHospital(hospital)}>
                     <span><strong>{hospital.name}</strong><small className="muted">{hospital.address}</small></span>
-                    {distance !== undefined ? <b>{distance.toFixed(1)} {care.distanceAway}</b> : null}
+                    {distance !== undefined ? <b>{distance.toFixed(1)} {copy.distanceAway}</b> : null}
                   </button>
                 </li>
               ))}
@@ -212,7 +237,7 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
         <div className="nv-finder-detail">
           <HospitalMap hospitals={results.map((result) => result.hospital)} userLocation={userLocation} selectedId={selectedHospital?.id} onSelect={selectHospital} />
           {!selectedHospital ? (
-            <div className="nv-select-prompt"><p className="muted small">{care.selectPrompt}</p></div>
+            <div className="nv-select-prompt"><p className="muted small">{copy.selectPrompt}</p></div>
           ) : (
             <div className="nv-detail-card">
               {editingAppointment ? (
@@ -228,7 +253,7 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
                 </div>
                 {selectedDistance !== undefined ? <span className="badge blue">{selectedDistance.toFixed(1)} km</span> : null}
               </div>
-              <p className="muted small">{care.addressLabel}: {selectedHospital.address}</p>
+              <p className="muted small">{copy.addressLabel}: {selectedHospital.address}</p>
               <div className="nv-service-tags">
                 {selectedHospital.services.map((item) => (
                   <button key={item.id} type="button" className={`nv-tag ${serviceId === item.id ? 'active' : ''}`} onClick={() => setServiceId(item.id)}>{item.name}</button>
@@ -241,20 +266,20 @@ export function CareBookingCard({ t, hospitals, loading, editingAppointment, boo
                     <span>{bookingSuggestion.triageSummary.summary}</span>
                   </div>
                 ) : null}
-                <label className="nv-field">{care.dateLabel}
+                <label className="nv-field">{copy.dateLabel}
                   <input type="date" value={date} min={today} onChange={(event) => setDate(event.target.value)} required />
                 </label>
-                <label className="nv-field">{care.timeLabel}
+                <label className="nv-field">{copy.timeLabel}
                   <input type="time" value={time} min={BOOKING_START} max={BOOKING_END} step={1800} onChange={(event) => setTime(event.target.value)} required />
                 </label>
                 {error ? <p className="nv-error" role="alert">{error}</p> : null}
                 {notice ? <p className="nv-notice" role="status">{notice}</p> : null}
                 <div className="nv-book-actions">
                   <button type="submit" className="primary-btn" disabled={submitting !== undefined || !serviceId}>
-                    {submitting === 'book' ? '…' : care.confirmBooking}
+                    {submitting === 'book' ? '…' : copy.confirmBooking}
                   </button>
                   <button type="button" className="secondary-btn" disabled={submitting !== undefined || !serviceId} onClick={() => void submitQueueJoin()}>
-                    {submitting === 'queue' ? '…' : care.joinQueue}
+                    {submitting === 'queue' ? '…' : copy.joinQueue}
                   </button>
                 </div>
               </form>
