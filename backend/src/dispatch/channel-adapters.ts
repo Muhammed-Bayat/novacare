@@ -4,9 +4,8 @@ import type { ServiceRequestTriage } from './domain.js';
 /**
  * Channel adapter boundary (Dispatch Core §19): Web, USSD and SMS each adapt
  * their own payload shape onto the shared CreateServiceRequestInput, and every
- * channel calls the same createServiceRequest(). These adapters are deliberately
- * not wired into the working USSD/SMS sandbox controllers — the existing demo
- * flows stay untouched until the real channel integration ships.
+ * channel calls the same createServiceRequest(). Channel controllers gather and
+ * normalize only their own conversational inputs before crossing this boundary.
  */
 
 export const AMBULANCE_REASONS = [
@@ -76,6 +75,8 @@ export function adaptUssdRequest(input: {
   latitude?: number | null;
   longitude?: number | null;
   conscious?: 'YES' | 'NO' | 'UNKNOWN';
+  preferredResponder?: 'DOCTOR' | 'NURSE' | 'EITHER';
+  requesterUserId?: string | null;
 }): CreateServiceRequestInput {
   const type = input.type === 'HOME_VISIT' ? 'HOME_VISIT' : 'AMBULANCE';
   return {
@@ -85,32 +86,50 @@ export function adaptUssdRequest(input: {
     reason: input.reason,
     triage: {
       ...(type === 'AMBULANCE' && input.conscious ? { conscious: input.conscious } : {}),
+      ...(type === 'HOME_VISIT'
+        ? { homeVisitReason: 'other-visit', ...(input.preferredResponder ? { preferredResponder: input.preferredResponder } : {}) }
+        : {}),
     },
     address: input.address,
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
-    requesterUserId: null,
+    requesterUserId: input.requesterUserId ?? null,
     requesterPhone: input.phoneNumber,
   };
 }
 
 export function adaptSmsRequest(input: {
   phoneNumber: string;
-  text: string;
+  text?: string;
+  type?: ServiceRequestTriageInput['type'];
+  reason?: string;
+  address?: string;
   latitude?: number | null;
   longitude?: number | null;
+  conscious?: 'YES' | 'NO' | 'UNKNOWN';
+  preferredResponder?: 'DOCTOR' | 'NURSE' | 'EITHER';
+  requesterUserId?: string | null;
 }): CreateServiceRequestInput {
-  const keyword = input.text.trim().split(/\s+/)[0]?.toUpperCase();
-  const type = keyword === 'HOME' || keyword === 'VISIT' || keyword === 'HOME_VISIT' ? 'HOME_VISIT' : 'AMBULANCE';
+  const text = input.text?.trim() ?? input.reason?.trim() ?? '';
+  const keyword = text.split(/\s+/)[0]?.toUpperCase();
+  const type = input.type === 'HOME_VISIT' || input.type === 'AMBULANCE'
+    ? input.type
+    : keyword === 'HOME' || keyword === 'VISIT' || keyword === 'HOME_VISIT' ? 'HOME_VISIT' : 'AMBULANCE';
   return {
     channel: 'SMS',
     type,
     urgency: type === 'AMBULANCE' ? 'URGENT' : 'STANDARD',
-    reason: input.text.trim(),
-    address: undefined,
+    reason: input.reason?.trim() || text || undefined,
+    triage: {
+      ...(type === 'AMBULANCE' && input.conscious ? { conscious: input.conscious } : {}),
+      ...(type === 'HOME_VISIT'
+        ? { homeVisitReason: 'other-visit', ...(input.preferredResponder ? { preferredResponder: input.preferredResponder } : {}) }
+        : {}),
+    },
+    address: input.address?.trim() || undefined,
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
-    requesterUserId: null,
+    requesterUserId: input.requesterUserId ?? null,
     requesterPhone: input.phoneNumber,
   };
 }

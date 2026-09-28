@@ -25,8 +25,9 @@ import { migration as dispatchUnitsMigration } from './018_dispatch_units.js';
 import { migration as dispatcherInvitationsMigration } from './019_dispatcher_invitations.js';
 import { migration as responseUnitStatusesMigration } from './020_response_unit_statuses.js';
 import { migration as dispatchStatusTimestampsMigration } from './021_dispatch_status_timestamps.js';
+import { migration as channelConversationsMigration } from './022_channel_conversations.js';
 
-const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration, secureStaffInvitationsMigration, appointmentTriageSummaryMigration, queueTriageWorkflowMigration, appointmentCheckedInStatusMigration, adminDomainMigration, adminSettingsMigration, dispatcherRoleMigration, dispatchSchemaMigration, dispatchUnitsMigration, dispatcherInvitationsMigration, responseUnitStatusesMigration, dispatchStatusTimestampsMigration];
+const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration, secureStaffInvitationsMigration, appointmentTriageSummaryMigration, queueTriageWorkflowMigration, appointmentCheckedInStatusMigration, adminDomainMigration, adminSettingsMigration, dispatcherRoleMigration, dispatchSchemaMigration, dispatchUnitsMigration, dispatcherInvitationsMigration, responseUnitStatusesMigration, dispatchStatusTimestampsMigration, channelConversationsMigration];
 
 export async function runMigrations(): Promise<void> {
   const pool = getPool();

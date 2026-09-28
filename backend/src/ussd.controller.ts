@@ -1,37 +1,42 @@
 import type { RequestHandler } from 'express';
-import { responseForText, USSD_INVALID_REQUEST_MESSAGE } from './ussd.service.js';
-
-type UssdLogFields = Record<string, unknown>;
-
-// TEMPORARY: phoneNumber is included for sandbox debugging only. Mask or drop it
-// (remove the phoneNumber key here) before this channel is used with real patients.
-function logUssd(event: string, fields: UssdLogFields): void {
-  console.log(JSON.stringify({ channel: 'ussd', event, ...fields }));
-}
+import type { ChannelConversationStore } from './channels/conversation.store.js';
+import type { ChannelRequestContext } from './channels/request-context.service.js';
+import { normalizePhoneNumber } from './channels/request-context.service.js';
+import { USSD_INVALID_REQUEST_MESSAGE, processUssdRequest, type ChannelDispatchService } from './ussd.service.js';
 
 function asText(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-export const ussdCallbackHandler: RequestHandler = (req, res) => {
-  try {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const sessionId = asText(body.sessionId);
-    const serviceCode = asText(body.serviceCode);
-    const phoneNumber = asText(body.phoneNumber);
-    const text = asText(body.text);
+function maskPhone(phone: string): string {
+  return phone.replace(/^(\+\d{3})\d+(\d{2})$/, '$1....$2');
+}
 
-    if (!sessionId || !serviceCode || !phoneNumber) {
-      logUssd('callback.rejected', { sessionId, serviceCode, phoneNumber });
+export function createUssdCallbackHandler(deps: {
+  dispatch: ChannelDispatchService;
+  store: ChannelConversationStore;
+  context: ChannelRequestContext;
+}): RequestHandler {
+  return async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const sessionId = asText(body.sessionId);
+      const serviceCode = asText(body.serviceCode);
+      const phoneNumber = asText(body.phoneNumber);
+      const text = asText(body.text);
+
+      if (!sessionId || !serviceCode || !phoneNumber) {
+        console.log(JSON.stringify({ channel: 'ussd', event: 'callback.rejected', sessionId, serviceCode, phoneNumber: maskPhone(phoneNumber) }));
+        res.status(200).type('text/plain').send(USSD_INVALID_REQUEST_MESSAGE);
+        return;
+      }
+
+      const result = await processUssdRequest({ sessionId, phoneNumber: normalizePhoneNumber(phoneNumber), text }, deps);
+      console.log(JSON.stringify({ channel: 'ussd', event: 'callback.received', sessionId, serviceCode, phoneNumber: maskPhone(phoneNumber), step: result.step }));
+      res.status(200).type('text/plain').send(result.message);
+    } catch (error) {
+      console.error('[ussd] callback failed:', error);
       res.status(200).type('text/plain').send(USSD_INVALID_REQUEST_MESSAGE);
-      return;
     }
-
-    const { step, message } = responseForText(text);
-    logUssd('callback.received', { sessionId, serviceCode, phoneNumber, step, text });
-    res.status(200).type('text/plain').send(message);
-  } catch (error) {
-    console.error('[ussd] callback failed:', error);
-    res.status(200).type('text/plain').send(USSD_INVALID_REQUEST_MESSAGE);
-  }
-};
+  };
+}

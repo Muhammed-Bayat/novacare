@@ -410,6 +410,30 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     return result.rows[0] ?? null;
   }
 
+  async function getRequestByReferenceForPhone(referenceCode: string, phoneNumber: string): Promise<ServiceRequestRow | null> {
+    const digits = phoneNumber.replace(/\D/g, '');
+    if (!/^NC-\d{4}-\d{6}$/.test(referenceCode.trim().toUpperCase()) || !digits) return null;
+    const result = await query<ServiceRequestRow>(
+      `SELECT * FROM service_requests
+       WHERE reference_code = $1
+         AND regexp_replace(COALESCE(requester_phone, ''), '\\D', '', 'g') = $2
+       LIMIT 1`,
+      [referenceCode.trim().toUpperCase(), digits],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function cancelRequestByReferenceForPhone(
+    referenceCode: string,
+    phoneNumber: string,
+    reason = 'Cancelled by requester through a NovaCare channel.',
+  ): Promise<ServiceRequestRow | null> {
+    const request = await getRequestByReferenceForPhone(referenceCode, phoneNumber);
+    if (!request) return null;
+    if (TERMINAL_STATUSES.includes(request.status)) return request;
+    return updateStatus(request.id, 'CANCELLED', null, { note: reason, cancelReason: reason });
+  }
+
   async function listQueue(): Promise<{ live: ServiceRequestRow[]; unresolved: ServiceRequestRow[] }> {
     const live = await query<ServiceRequestRow>(
       `SELECT * FROM service_requests
@@ -675,7 +699,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
   async function updateStatus(
     requestId: string,
     to: ServiceStatus,
-    actorUserId: string,
+    actorUserId: string | null,
     options: { note?: string; cancelReason?: string } = {},
   ): Promise<ServiceRequestRow> {
     if (!SERVICE_STATUSES.includes(to)) {
@@ -706,6 +730,8 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
   return {
     createServiceRequest,
     getRequest,
+    getRequestByReferenceForPhone,
+    cancelRequestByReferenceForPhone,
     listQueue,
     listMetrics,
     listForRequester,

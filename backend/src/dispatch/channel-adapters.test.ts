@@ -83,12 +83,13 @@ describe('USSD channel adapter', () => {
     expect(input.requesterPhone).toBe('+27820000002');
   });
 
-  it('maps HOME_VISIT without the ambulance triage fields', () => {
-    const input = adaptUssdRequest({ phoneNumber: '+27820000002', type: 'HOME_VISIT', address: '2 Demo Avenue' });
+  it('maps HOME_VISIT with channel-safe responder triage and a resolved requester', () => {
+    const input = adaptUssdRequest({ phoneNumber: '+27820000002', type: 'HOME_VISIT', address: '2 Demo Avenue', preferredResponder: 'EITHER', requesterUserId: 'user-2' });
     expect(input.type).toBe('HOME_VISIT');
     expect(input.urgency).toBe('STANDARD');
-    expect(input.triage).toEqual({});
+    expect(input.triage).toEqual({ homeVisitReason: 'other-visit', preferredResponder: 'EITHER' });
     expect(input.address).toBe('2 Demo Avenue');
+    expect(input.requesterUserId).toBe('user-2');
   });
 });
 
@@ -106,5 +107,26 @@ describe('SMS channel adapter', () => {
     expect(input.reason).toBe('AMBULANCE fall');
     expect(input.latitude).toBe(-26.1);
     expect(input.requesterPhone).toBe('+27820000003');
+  });
+
+  it('carries stateful SMS flow details into the shared input', () => {
+    const input = adaptSmsRequest({
+      phoneNumber: '+27820000003',
+      type: 'AMBULANCE',
+      reason: 'Chest pain',
+      address: 'Demo Sandton',
+      latitude: -26.1,
+      longitude: 28.05,
+      conscious: 'YES',
+      requesterUserId: 'user-3',
+    });
+    expect(input).toEqual(expect.objectContaining({
+      channel: 'SMS',
+      type: 'AMBULANCE',
+      reason: 'Chest pain',
+      address: 'Demo Sandton',
+      triage: { conscious: 'YES' },
+      requesterUserId: 'user-3',
+    }));
   });
 });

@@ -5,13 +5,16 @@ import helmet from 'helmet';
 import { requireAuth } from './auth.js';
 import { recordAudit } from './audit.js';
 import { loadMembership, requireHospital, requireRole } from './authorization.js';
+import { createPostgresChannelConversationStore, type ChannelConversationStore } from './channels/conversation.store.js';
+import { createChannelRequestContext, type ChannelRequestContext } from './channels/request-context.service.js';
 import { getPool } from './db.js';
 import { buildInvitationUrl, sendInvitationEmail } from './email.js';
-import { ussdCallbackHandler } from './ussd.controller.js';
-import { smsIncomingHandler } from './sms.controller.js';
+import { createUssdCallbackHandler } from './ussd.controller.js';
+import { createSmsIncomingHandler } from './sms.controller.js';
 import { createDispatchController } from './dispatch/dispatch.controller.js';
 import { createDispatchService } from './dispatch/dispatch.service.js';
 import { createDispatchEventHub } from './dispatch/events.js';
+import type { ChannelDispatchService } from './ussd.service.js';
 
 type UserRow = { id: string; auth0_subject: string; email: string | null; display_name: string | null };
 type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
@@ -400,9 +403,20 @@ async function staffMembership(subject: string, roles: StaffRole[]): Promise<Sta
 
 const CATEGORY_RANK_SQL = `CASE category WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 WHEN 'priority' THEN 2 ELSE 3 END`;
 
-export function createApp() {
+export interface CreateAppOptions {
+  channelDispatch?: ChannelDispatchService;
+  channelStore?: ChannelConversationStore;
+  channelContext?: ChannelRequestContext;
+}
+
+export function createApp(options: CreateAppOptions = {}) {
   const app = express();
   const origins = allowedOrigins();
+  const dispatchHub = createDispatchEventHub();
+  const dispatchService = createDispatchService({ publish: dispatchHub.publish });
+  const channelDispatch = options.channelDispatch ?? dispatchService;
+  const channelStore = options.channelStore ?? createPostgresChannelConversationStore();
+  const channelContext = options.channelContext ?? createChannelRequestContext();
 
   app.use(helmet());
   app.use(cors({
@@ -2080,15 +2094,21 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   // Public USSD channel for Africa's Talking sandbox callbacks. Unauthenticated by design
   // (Africa's Talking calls it externally); add callback validation/security before production.
-  app.post('/api/v1/channels/ussd', express.urlencoded({ extended: false }), ussdCallbackHandler);
+  app.post('/api/v1/channels/ussd', express.urlencoded({ extended: false }), createUssdCallbackHandler({
+    dispatch: channelDispatch,
+    store: channelStore,
+    context: channelContext,
+  }));
 
   // Public inbound SMS channel for Africa's Talking sandbox two-way SMS. Unauthenticated by
   // design (Africa's Talking calls it externally); add callback validation/security before production.
-  app.post('/api/v1/channels/sms/incoming', express.urlencoded({ extended: false }), smsIncomingHandler);
+  app.post('/api/v1/channels/sms/incoming', express.urlencoded({ extended: false }), createSmsIncomingHandler({
+    dispatch: channelDispatch,
+    store: channelStore,
+    context: channelContext,
+  }));
 
   // Dispatch Core: shared service-request domain (all simulated — demo prototype).
-  const dispatchHub = createDispatchEventHub();
-  const dispatchService = createDispatchService({ publish: dispatchHub.publish });
   const dispatch = createDispatchController(dispatchService, dispatchHub);
 
   app.post('/api/v1/service-requests', requireAuth, dispatch.createRequest);

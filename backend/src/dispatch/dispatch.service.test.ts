@@ -86,6 +86,14 @@ class FakeDb {
       const row = this.requests.get(String(params[0]));
       return ok(row ? [structuredClone(row)] : []) as QueryResult<T>;
     }
+    if (text.includes("regexp_replace(COALESCE(requester_phone, ''), '\\D', '', 'g')")) {
+      const referenceCode = String(params[0]);
+      const phoneDigits = String(params[1]);
+      const row = [...this.requests.values()].find((request) =>
+        request.reference_code === referenceCode && request.requester_phone?.replace(/\D/g, '') === phoneDigits,
+      );
+      return ok(row ? [structuredClone(row)] : []) as QueryResult<T>;
+    }
     if (text.includes('SELECT 1 FROM dispatch_notifications')) {
       const note = this.notifications.find((n) =>
         n.request_id === params[0] && n.facility_id === params[1] && ['AVAILABLE', 'ACCEPTED'].includes(n.response_status),
@@ -403,6 +411,20 @@ describe('dispatch service', () => {
     });
   });
 
+  describe('channel reference access', () => {
+    it('only exposes and cancels a request for its normalized requester phone number', async () => {
+      db.facilities = [NEAR, MID, FAR];
+      const request = await service.createServiceRequest(createInput({ channel: 'SMS', requesterPhone: '+27 82 000 0001' }));
+
+      await expect(service.getRequestByReferenceForPhone(request.reference_code, '+27820000001')).resolves.toMatchObject({ id: request.id });
+      await expect(service.getRequestByReferenceForPhone(request.reference_code, '+27820000000')).resolves.toBeNull();
+
+      const cancelled = await service.cancelRequestByReferenceForPhone(request.reference_code, '+27820000001');
+      expect(cancelled).toMatchObject({ id: request.id, status: 'CANCELLED' });
+      expect(events.at(-1)).toMatchObject({ type: 'service-request:status-changed', payload: { status: 'CANCELLED' } });
+    });
+  });
+
   describe('facility matching', () => {
     it('runs the full happy path to NOTIFIED with notifications for capable facilities', async () => {
       db.facilities = [NEAR, MID, FAR];
@@ -434,6 +456,19 @@ describe('dispatch service', () => {
       ]);
       const matched = audits.find((a) => a.action === 'FACILITY_MATCHED');
       expect(matched?.metadata).toMatchObject({ matched: 3, radiusKm: 15, escalation: false });
+    });
+
+    it('uses the identical matching and event pipeline for WEB, USSD, and SMS inputs', async () => {
+      db.facilities = [NEAR, MID, FAR];
+      const requests = await Promise.all(
+        (['WEB', 'USSD', 'SMS'] as const).map((channel) => service.createServiceRequest(createInput({ channel }))),
+      );
+
+      expect(requests.map((request) => request.channel)).toEqual(['WEB', 'USSD', 'SMS']);
+      expect(requests.map((request) => request.status)).toEqual(['NOTIFIED', 'NOTIFIED', 'NOTIFIED']);
+      expect(requests.map((request) => request.facilities_notified)).toEqual([3, 3, 3]);
+      expect(requests.map((request) => request.search_radius_km)).toEqual([15, 15, 15]);
+      expect(events.filter((event) => event.type === 'service-request:created').map((event) => event.payload.channel)).toEqual(['WEB', 'USSD', 'SMS']);
     });
 
     it('filters candidates by request capability', async () => {
