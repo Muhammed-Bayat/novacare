@@ -94,6 +94,13 @@ const forwardActions: Partial<Record<ServiceStatus, { to: ServiceStatus; label: 
 
 const cancellableStatuses: ServiceStatus[] = ['CREATED', 'SEARCHING', 'NOTIFIED', 'ACKNOWLEDGED', 'ACCEPTED', 'ASSIGNED', 'DISPATCHED', 'EN_ROUTE'];
 
+function statusPresentation(request: Pick<ServiceRequestRow, 'status' | 'location_state'>): { label: string; badge: string } {
+  if (request.location_state === 'DISPATCHER_LOCATION_REVIEW') {
+    return { label: 'Location review required', badge: 'yellow' };
+  }
+  return { label: statusLabels[request.status], badge: statusBadge[request.status] };
+}
+
 function greetingFor(hour: number) {
   if (hour < 12) return 'Good morning';
   if (hour < 17) return 'Good afternoon';
@@ -321,12 +328,13 @@ function MetricCard({ label, value }: { label: string; value: number }) {
 }
 
 function RequestCard({ request, selected, onSelect }: { request: ServiceRequestRow; selected: boolean; onSelect: () => void }) {
+  const displayStatus = statusPresentation(request);
   return (
     <li>
       <button type="button" aria-pressed={selected} className={`card nv-dispatch-card${selected ? ' selected' : ''}`} onClick={onSelect}>
         <span className="nv-dispatch-card-head">
           <strong>{request.reference_code}</strong>
-          <span className={`badge ${statusBadge[request.status]}`}>{statusLabels[request.status]}</span>
+          <span className={`badge ${displayStatus.badge}`}>{displayStatus.label}</span>
         </span>
         <span className="nv-dispatch-badges">
           <span className={`badge ${request.type === 'AMBULANCE' ? 'red' : 'blue'}`}>{request.type === 'AMBULANCE' ? 'Ambulance' : 'Home visit'}</span>
@@ -369,12 +377,18 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
   const [assignment, setAssignment] = useState('');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [manualAddress, setManualAddress] = useState('');
+  const [manualLatitude, setManualLatitude] = useState('');
+  const [manualLongitude, setManualLongitude] = useState('');
 
   useEffect(() => {
     setFacilityId('');
     setAssignment('');
     setCancelOpen(false);
     setCancelReason('');
+    setManualAddress('');
+    setManualLatitude('');
+    setManualLongitude('');
     setError(undefined);
   }, [detail?.id, detail?.status]);
 
@@ -436,6 +450,8 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
   const forward = forwardActions[detail.status];
   const cancellable = cancellableStatuses.includes(detail.status);
   const triage = detail.triage ?? {};
+  const canResolveLocation = detail.status === 'CREATED' && detail.location_state === 'DISPATCHER_LOCATION_REVIEW' && canOperate;
+  const displayStatus = statusPresentation(detail);
 
   return (
     <div className="card nv-dispatch-detail">
@@ -451,7 +467,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
         <div className="nv-dispatch-badges">
           <span className={`badge ${detail.type === 'AMBULANCE' ? 'red' : 'blue'}`}>{detail.type === 'AMBULANCE' ? 'Ambulance' : 'Home visit'}</span>
           <span className={`badge ${urgencyBadge[detail.urgency]}`}>{urgencyLabels[detail.urgency]}</span>
-          <span className={`badge ${statusBadge[detail.status]}`}>{statusLabels[detail.status]}</span>
+          <span className={`badge ${displayStatus.badge}`}>{displayStatus.label}</span>
           {detail.escalation_flag ? <span className="badge red">Escalated — widen search</span> : null}
         </div>
       </header>
@@ -491,6 +507,40 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
         <div className="nv-sw-alert" role="alert">
           <strong>No simulated facility accepted this request within the maximum search radius.</strong>
           <span>Review the request details and contact the requester directly. This demo does not send further notifications.</span>
+        </div>
+      ) : null}
+
+      {detail.location_state === 'DISPATCHER_LOCATION_REVIEW' ? (
+        <div className="nv-sw-alert" role="alert">
+          <strong>Location requires manual dispatcher review.</strong>
+          <span>No facility matching or notification has started for this request.</span>
+        </div>
+      ) : null}
+
+      {canResolveLocation ? (
+        <div className="nv-dispatch-block">
+          <strong className="small">Resolve location manually</strong>
+          <p className="muted small">Enter a dispatcher-verified address and coordinates. This starts the normal simulated matching flow.</p>
+          <label className="nv-field">
+            Verified address
+            <input value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="Verified address" />
+          </label>
+          <div className="nv-dispatch-location-fields">
+            <label className="nv-field">Latitude<input value={manualLatitude} onChange={(event) => setManualLatitude(event.target.value)} inputMode="decimal" /></label>
+            <label className="nv-field">Longitude<input value={manualLongitude} onChange={(event) => setManualLongitude(event.target.value)} inputMode="decimal" /></label>
+          </div>
+          <button
+            type="button"
+            className="primary-btn"
+            disabled={busyKey === 'resolve-location' || !manualAddress.trim() || !manualLatitude.trim() || !manualLongitude.trim()}
+            onClick={() => void act('resolve-location', `/api/v1/dispatcher/service-requests/${detail.id}/location`, {
+              address: manualAddress,
+              latitude: Number(manualLatitude),
+              longitude: Number(manualLongitude),
+            })}
+          >
+            {busyKey === 'resolve-location' ? 'Starting matching...' : 'Confirm location and start matching'}
+          </button>
         </div>
       ) : null}
 

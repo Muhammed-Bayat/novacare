@@ -1,10 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import type { ChannelConversationStore } from './channels/conversation.store.js';
 import type { ChannelRequestContext } from './channels/request-context.service.js';
 import { normalizePhoneNumber } from './channels/request-context.service.js';
 import { adaptSmsRequest } from './dispatch/channel-adapters.js';
-import type { ServiceStatus } from './dispatch/domain.js';
+import type { ServiceRequestRow } from './dispatch/domain.js';
 import { sendSms } from './sms.client.js';
 import type { ChannelDispatchService } from './ussd.service.js';
+import {
+  LocationConfirmationError,
+  type LocationResolutionService,
+} from './location/location-resolution.service.js';
 
 export type SmsCommand = 'ambulance' | 'home' | 'unknown';
 
@@ -22,6 +27,7 @@ export interface SmsWorkflowDeps {
   dispatch: ChannelDispatchService;
   store: ChannelConversationStore;
   context: ChannelRequestContext;
+  location: LocationResolutionService;
   now?: () => Date;
 }
 
@@ -32,7 +38,7 @@ export const SMS_REPLY_FALLBACK = 'NovaCare test: Reply AMBULANCE or HOME to 458
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
 type SmsFlow = 'AMBULANCE' | 'HOME_VISIT';
-type SmsStep = 'WAITING_FOR_ADDRESS' | 'WAITING_FOR_CONSCIOUSNESS' | 'WAITING_FOR_PREFERENCE' | 'WAITING_FOR_REASON' | 'WAITING_FOR_CONFIRMATION' | 'COMPLETED';
+type SmsStep = 'WAITING_FOR_ADDRESS' | 'WAITING_FOR_LOCATION_SELECTION' | 'WAITING_FOR_CONSCIOUSNESS' | 'WAITING_FOR_PREFERENCE' | 'WAITING_FOR_REASON' | 'WAITING_FOR_CONFIRMATION' | 'COMPLETED';
 
 type SmsDraft = {
   address?: string;
@@ -40,6 +46,11 @@ type SmsDraft = {
   preferredResponder?: 'DOCTOR' | 'NURSE' | 'EITHER';
   reason?: string;
   referenceCode?: string;
+  pendingCandidateIds?: string[];
+  confirmedCandidateId?: string;
+  locationReview?: boolean;
+  locationFailureCount?: number;
+  submissionKey?: string;
 };
 
 export function maskPhone(phone: string): string {
@@ -92,8 +103,9 @@ function expiry(now: () => Date): string {
   return new Date(now().getTime() + SESSION_TTL_MS).toISOString();
 }
 
-function statusLabel(status: ServiceStatus): string {
-  return status.toLowerCase().replace(/_/g, ' ');
+function statusLabel(request: Pick<ServiceRequestRow, 'status' | 'location_state'>): string {
+  if (request.location_state === 'DISPATCHER_LOCATION_REVIEW') return 'waiting for location review';
+  return request.status.toLowerCase().replace(/_/g, ' ');
 }
 
 async function saveConversation(
@@ -127,22 +139,70 @@ async function completeRequest(
   deps: SmsWorkflowDeps,
 ): Promise<string> {
   const requester = await deps.context.resolveRequester(phoneNumber);
-  const requestedAddress = draft.address?.toUpperCase() === 'SAVED' ? requester.savedAddress : draft.address;
-  if (!requestedAddress) return 'NovaCare could not use a saved address. Reply RESTART to 45854 and send an address.';
-  const location = await deps.context.resolveLocation(requestedAddress);
+  if (!draft.address) return 'NovaCare could not confirm the location. Reply RESTART to 45854 and send an address.';
+  let confirmed: Awaited<ReturnType<LocationResolutionService['getConfirmed']>> | undefined;
+  if (!draft.locationReview) {
+    if (!draft.confirmedCandidateId) return 'NovaCare could not confirm the location. Reply RESTART to 45854 and send an address.';
+    try {
+      confirmed = await deps.location.getConfirmed({
+        channel: 'SMS',
+        ownerKey: phoneNumber,
+        candidateId: draft.confirmedCandidateId,
+      });
+    } catch (error) {
+      if (error instanceof LocationConfirmationError) {
+        return 'That location confirmation expired. Reply RESTART to 45854 and enter the address again.';
+      }
+      throw error;
+    }
+  }
   const request = await deps.dispatch.createServiceRequest(adaptSmsRequest({
     phoneNumber,
     type: flow === 'AMBULANCE' ? 'AMBULANCE' : 'HOME_VISIT',
     reason: draft.reason,
-    address: location.address,
-    latitude: location.latitude,
-    longitude: location.longitude,
+    address: confirmed?.enteredAddress ?? draft.address,
+    latitude: confirmed?.latitude ?? null,
+    longitude: confirmed?.longitude ?? null,
     conscious: draft.conscious,
     preferredResponder: draft.preferredResponder,
     requesterUserId: requester.userId,
+    ...(confirmed
+      ? {
+        locationState: 'LOCATION_CONFIRMED' as const,
+        locationSource: 'GEOCODED_ADDRESS' as const,
+        geocodedFormattedAddress: confirmed.formattedAddress,
+        geocodingPlaceId: confirmed.placeId,
+        geocodingConfidence: confirmed.confidence,
+        idempotencyKey: `location:${confirmed.id}`,
+      }
+      : {
+        locationState: 'DISPATCHER_LOCATION_REVIEW' as const,
+        locationSource: 'UNRESOLVED' as const,
+        idempotencyKey: draft.submissionKey,
+      }),
   }));
+  if (confirmed) await deps.location.linkRequest(confirmed.id, request.id);
   await saveConversation(deps, phoneNumber, flow, 'COMPLETED', { ...draft, referenceCode: request.reference_code }, request.id);
-  return `NovaCare demo request received. Reference: ${request.reference_code}. Reply STATUS ${request.reference_code} to 45854 for updates.`;
+  return draft.locationReview
+    ? `NovaCare demo request received. Reference: ${request.reference_code}. Location needs dispatcher review. Reply STATUS ${request.reference_code} to 45854 for updates.`
+    : `NovaCare demo request received. Reference: ${request.reference_code}. Reply STATUS ${request.reference_code} to 45854 for updates.`;
+}
+
+function locationLabel(candidate: { formattedAddress: string; city?: string; suburb?: string }): string {
+  const locality = [candidate.suburb, candidate.city].filter(Boolean).join(', ');
+  return locality && !candidate.formattedAddress.toLowerCase().includes(locality.toLowerCase())
+    ? `${candidate.formattedAddress}, ${locality}`.slice(0, 130)
+    : candidate.formattedAddress.slice(0, 130);
+}
+
+function nextAfterLocation(flow: SmsFlow): SmsStep {
+  return flow === 'AMBULANCE' ? 'WAITING_FOR_CONSCIOUSNESS' : 'WAITING_FOR_REASON';
+}
+
+function promptAfterLocation(flow: SmsFlow): string {
+  return flow === 'AMBULANCE'
+    ? 'Is the patient conscious? Reply YES or NO to 45854.'
+    : 'Briefly describe the reason for the home visit. Reply CANCEL to stop or RESTART to begin again.';
 }
 
 async function processConversation(phoneNumber: string, text: string, deps: SmsWorkflowDeps): Promise<{ command: SmsCommand; reply: string }> {
@@ -175,7 +235,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
     return {
       command: 'unknown',
       reply: request
-        ? `${request.reference_code} is currently ${statusLabel(request.status)}.`
+        ? `${request.reference_code} is currently ${statusLabel(request)}.`
         : 'NovaCare could not find that request reference for this number.',
     };
   }
@@ -184,7 +244,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
   if (command === 'ambulance' || command === 'home') {
     const flow: SmsFlow = command === 'ambulance' ? 'AMBULANCE' : 'HOME_VISIT';
     const step: SmsStep = flow === 'AMBULANCE' ? 'WAITING_FOR_ADDRESS' : 'WAITING_FOR_PREFERENCE';
-    await saveConversation(deps, phoneNumber, flow, step, {});
+    await saveConversation(deps, phoneNumber, flow, step, { submissionKey: randomUUID() });
     return { command, reply: replyForCommand(command) };
   }
 
@@ -202,11 +262,73 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
   if (session.step === 'WAITING_FOR_ADDRESS') {
     const address = boundedReplyText(text);
     if (!address) return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: 'Please send your address to 45854.' };
-    const next = flow === 'AMBULANCE' ? 'WAITING_FOR_CONSCIOUSNESS' : 'WAITING_FOR_REASON';
-    await saveConversation(deps, phoneNumber, flow, next, { ...draft, address });
-    return flow === 'AMBULANCE'
-      ? { command: 'ambulance', reply: 'Is the patient conscious? Reply YES or NO to 45854.' }
-      : { command: 'home', reply: 'Briefly describe the reason for the home visit. Reply CANCEL to stop or RESTART to begin again.' };
+    if (upper === 'REVIEW' && draft.address && (draft.locationFailureCount ?? 0) >= 2) {
+      await saveConversation(deps, phoneNumber, flow, nextAfterLocation(flow), { ...draft, locationReview: true });
+      return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: promptAfterLocation(flow) };
+    }
+    const requester = address.toUpperCase() === 'SAVED' ? await deps.context.resolveRequester(phoneNumber) : null;
+    const requestedAddress = address.toUpperCase() === 'SAVED' ? requester?.savedAddress : address;
+    if (!requestedAddress) {
+      return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: 'No consented saved address is available. Please send an address to 45854.' };
+    }
+    const outcome = await deps.location.resolve({ channel: 'SMS', ownerKey: phoneNumber, address: requestedAddress });
+    if (outcome.status === 'unresolved') {
+      const failures = (draft.locationFailureCount ?? 0) + 1;
+      await saveConversation(deps, phoneNumber, flow, 'WAITING_FOR_ADDRESS', { ...draft, address: requestedAddress, locationFailureCount: failures });
+      return {
+        command: flow === 'AMBULANCE' ? 'ambulance' : 'home',
+        reply: failures >= 2
+          ? 'We could not confirm that location. Send a more complete address to 45854, or reply REVIEW to send it for dispatcher review.'
+          : 'We could not confirm that location. Please send a more complete address to 45854, for example 12 Main Road, Sandton, Johannesburg.',
+      };
+    }
+    const candidateIds = outcome.candidates.map((candidate) => candidate.id);
+    await saveConversation(deps, phoneNumber, flow, 'WAITING_FOR_LOCATION_SELECTION', {
+      ...draft,
+      address: requestedAddress,
+      pendingCandidateIds: candidateIds,
+      confirmedCandidateId: undefined,
+      locationReview: false,
+    });
+    if (outcome.candidates.length === 1) {
+      return {
+        command: flow === 'AMBULANCE' ? 'ambulance' : 'home',
+        reply: `We found: ${locationLabel(outcome.candidates[0])}. Send YES to 45854 to confirm, or NO to enter the address again.`,
+      };
+    }
+    return {
+      command: flow === 'AMBULANCE' ? 'ambulance' : 'home',
+      reply: `We found:\n${outcome.candidates.map((candidate, index) => `${index + 1}. ${locationLabel(candidate)}`).join('\n')}\nSend 1-${outcome.candidates.length} to 45854. Send 0 to enter the address again.`,
+    };
+  }
+
+  if (session.step === 'WAITING_FOR_LOCATION_SELECTION') {
+    const candidateIds = Array.isArray(draft.pendingCandidateIds) ? draft.pendingCandidateIds : [];
+    const selectedIndex = candidateIds.length === 1
+      ? upper === 'YES' ? 0 : -1
+      : /^\d+$/.test(upper) ? Number(upper) - 1 : -1;
+    if ((candidateIds.length === 1 && upper === 'NO') || (candidateIds.length > 1 && upper === '0')) {
+      await saveConversation(deps, phoneNumber, flow, 'WAITING_FOR_ADDRESS', { ...draft, pendingCandidateIds: undefined, confirmedCandidateId: undefined });
+      return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: 'Please send the address again to 45854.' };
+    }
+    if (selectedIndex < 0 || selectedIndex >= candidateIds.length) {
+      return {
+        command: flow === 'AMBULANCE' ? 'ambulance' : 'home',
+        reply: candidateIds.length === 1 ? 'Reply YES to confirm or NO to enter the address again.' : `Reply 1-${candidateIds.length} to 45854, or 0 to enter the address again.`,
+      };
+    }
+    const candidateId = candidateIds[selectedIndex];
+    try {
+      await deps.location.confirm({ channel: 'SMS', ownerKey: phoneNumber, candidateId });
+    } catch (error) {
+      if (error instanceof LocationConfirmationError) {
+        await saveConversation(deps, phoneNumber, flow, 'WAITING_FOR_ADDRESS', { ...draft, pendingCandidateIds: undefined, confirmedCandidateId: undefined });
+        return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: 'That location selection expired. Please send the address again to 45854.' };
+      }
+      throw error;
+    }
+    await saveConversation(deps, phoneNumber, flow, nextAfterLocation(flow), { ...draft, confirmedCandidateId: candidateId });
+    return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: promptAfterLocation(flow) };
   }
 
   if (session.step === 'WAITING_FOR_CONSCIOUSNESS') {

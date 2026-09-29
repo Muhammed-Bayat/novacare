@@ -1,5 +1,5 @@
 import { DispatchValidationError, type CreateServiceRequestInput } from './dispatch.service.js';
-import type { ServiceRequestTriage } from './domain.js';
+import type { LocationSource, LocationState, ServiceRequestTriage } from './domain.js';
 
 /**
  * Channel adapter boundary (Dispatch Core §19): Web, USSD and SMS each adapt
@@ -34,11 +34,22 @@ export function adaptWebRequest(
 ): CreateServiceRequestInput {
   const type = body.type === 'AMBULANCE' || body.type === 'HOME_VISIT' ? body.type : null;
   if (!type) throw new DispatchValidationError('type must be AMBULANCE or HOME_VISIT.');
-  const latitude = parseCoordinate(body.latitude);
-  const longitude = parseCoordinate(body.longitude);
+  const candidateId = boundedText(body.locationCandidateId, 80);
+  const locationReview = body.locationReview === true;
+  const latitude = candidateId ? null : parseCoordinate(body.latitude);
+  const longitude = candidateId ? null : parseCoordinate(body.longitude);
   const address = boundedText(body.address, MAX_ADDRESS_LENGTH);
-  if ((latitude == null || longitude == null) && !address) {
+  if (!candidateId && (latitude == null || longitude == null) && !address) {
     throw new DispatchValidationError('Provide browser location (latitude/longitude) or a manual address.');
+  }
+  if (candidateId && (body.latitude != null || body.longitude != null)) {
+    throw new DispatchValidationError('Confirmed address locations cannot include client coordinates.');
+  }
+  if (locationReview && (candidateId || latitude != null || longitude != null || !address)) {
+    throw new DispatchValidationError('Location review requires an address without a candidate or coordinates.');
+  }
+  if (!candidateId && address && latitude == null && longitude == null && !locationReview) {
+    throw new DispatchValidationError('Confirm an address match before sending this request.');
   }
   const urgency = body.urgency === 'EMERGENCY' || body.urgency === 'URGENT' ? body.urgency : 'STANDARD';
   const triage = adaptTriage(body.triage, type);
@@ -64,6 +75,10 @@ export function adaptWebRequest(
     longitude,
     requesterUserId: requester.userId,
     requesterPhone: requester.phone ?? null,
+    ...(candidateId ? { locationCandidateId: candidateId } : {}),
+    ...(candidateId ? { locationState: 'LOCATION_CONFIRMED' as const, locationSource: 'GEOCODED_ADDRESS' as const } : {}),
+    ...(!candidateId && latitude != null && longitude != null ? { locationState: 'LOCATION_CONFIRMED' as const, locationSource: 'GPS' as const } : {}),
+    ...(locationReview ? { locationState: 'DISPATCHER_LOCATION_REVIEW' as const, locationSource: 'UNRESOLVED' as const } : {}),
   };
 }
 
@@ -77,6 +92,12 @@ export function adaptUssdRequest(input: {
   conscious?: 'YES' | 'NO' | 'UNKNOWN';
   preferredResponder?: 'DOCTOR' | 'NURSE' | 'EITHER';
   requesterUserId?: string | null;
+  locationState?: LocationState;
+  locationSource?: LocationSource;
+  geocodedFormattedAddress?: string;
+  geocodingPlaceId?: string;
+  geocodingConfidence?: number;
+  idempotencyKey?: string;
 }): CreateServiceRequestInput {
   const type = input.type === 'HOME_VISIT' ? 'HOME_VISIT' : 'AMBULANCE';
   return {
@@ -95,6 +116,12 @@ export function adaptUssdRequest(input: {
     longitude: input.longitude ?? null,
     requesterUserId: input.requesterUserId ?? null,
     requesterPhone: input.phoneNumber,
+    locationState: input.locationState,
+    locationSource: input.locationSource,
+    geocodedFormattedAddress: input.geocodedFormattedAddress,
+    geocodingPlaceId: input.geocodingPlaceId,
+    geocodingConfidence: input.geocodingConfidence,
+    idempotencyKey: input.idempotencyKey,
   };
 }
 
@@ -109,6 +136,12 @@ export function adaptSmsRequest(input: {
   conscious?: 'YES' | 'NO' | 'UNKNOWN';
   preferredResponder?: 'DOCTOR' | 'NURSE' | 'EITHER';
   requesterUserId?: string | null;
+  locationState?: LocationState;
+  locationSource?: LocationSource;
+  geocodedFormattedAddress?: string;
+  geocodingPlaceId?: string;
+  geocodingConfidence?: number;
+  idempotencyKey?: string;
 }): CreateServiceRequestInput {
   const text = input.text?.trim() ?? input.reason?.trim() ?? '';
   const keyword = text.split(/\s+/)[0]?.toUpperCase();
@@ -131,6 +164,12 @@ export function adaptSmsRequest(input: {
     longitude: input.longitude ?? null,
     requesterUserId: input.requesterUserId ?? null,
     requesterPhone: input.phoneNumber,
+    locationState: input.locationState,
+    locationSource: input.locationSource,
+    geocodedFormattedAddress: input.geocodedFormattedAddress,
+    geocodingPlaceId: input.geocodingPlaceId,
+    geocodingConfidence: input.geocodingConfidence,
+    idempotencyKey: input.idempotencyKey,
   };
 }
 

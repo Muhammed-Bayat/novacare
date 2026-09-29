@@ -31,6 +31,7 @@ describe('NovaCare API', () => {
       { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/acknowledge' },
       { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/respond' },
       { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/assign-facility' },
+      { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/location' },
       { method: 'post', path: '/api/v1/dispatcher/service-requests/some-id/assign-responder' },
       { method: 'get', path: '/api/v1/dispatcher/available-responders' },
       { method: 'patch', path: '/api/v1/dispatcher/service-requests/some-id/status' },

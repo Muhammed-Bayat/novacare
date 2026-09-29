@@ -11,6 +11,7 @@ import { migration as dispatchUnitsMigration } from './018_dispatch_units.js';
 import { migration as dispatcherInvitationsMigration } from './019_dispatcher_invitations.js';
 import { migration as responseUnitStatusesMigration } from './020_response_unit_statuses.js';
 import { migration as dispatchStatusTimestampsMigration } from './021_dispatch_status_timestamps.js';
+import { migration as locationConfirmationMigration } from './023_location_confirmation.js';
 
 describe('initial migration', () => {
   it('creates the local users table', () => {
@@ -105,5 +106,16 @@ describe('dispatch migrations', () => {
     expect(responseUnitStatusesMigration.sql).toContain("'EN_ROUTE'");
     expect(responseUnitStatusesMigration.sql).toContain("'OUT_OF_SERVICE'");
     expect(dispatchStatusTimestampsMigration.sql).toContain('dispatched_at');
+  });
+
+  it('adds location confirmation metadata without altering the existing dispatch status constraint', () => {
+    expect(locationConfirmationMigration.name).toBe('023_location_confirmation');
+    expect(locationConfirmationMigration.sql).toContain("ADD COLUMN location_state TEXT NOT NULL DEFAULT 'LEGACY'");
+    expect(locationConfirmationMigration.sql).toContain("ADD COLUMN location_source TEXT NOT NULL DEFAULT 'LEGACY'");
+    expect(locationConfirmationMigration.sql).toContain('CREATE TABLE location_confirmation_candidates');
+    expect(locationConfirmationMigration.sql).not.toMatch(/DROP\s+(?:CONSTRAINT|COLUMN|TABLE)/i);
+    expect(locationConfirmationMigration.sql).not.toMatch(/RENAME\s+COLUMN/i);
+    expect(locationConfirmationMigration.sql).not.toContain('service_requests_status_check');
+    expect(locationConfirmationMigration.sql).not.toContain('service_requests_coordinate_');
   });
 });

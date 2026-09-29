@@ -19,3 +19,7 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      - key: AT_CALLBACK_SECRET
+        sync: false
+      - key: AT_USSD_SERVICE_CODE
+        sync: false

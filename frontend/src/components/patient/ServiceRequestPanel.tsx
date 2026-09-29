@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import type { ServiceRequestRow, ServiceStatus, ServiceUrgency } from '../../api.ts';
-import { type ServiceRequestInput } from './useServiceRequests.ts';
+import type { LocationCandidate, ServiceRequestRow, ServiceStatus, ServiceUrgency } from '../../api.ts';
+import { type LocationResolution, type ServiceRequestInput } from './useServiceRequests.ts';
 
 const ambulanceReasonOptions = [
   { id: 'chest-pain', label: 'Chest pain' },
@@ -29,12 +29,6 @@ const responderOptions = [
   { id: 'DOCTOR', label: 'Doctor' },
   { id: 'NURSE', label: 'Nurse' },
   { id: 'EITHER', label: 'Either is fine' },
-] as const;
-
-const demoLocationOptions = [
-  { id: 'sandton', label: 'Sandton demo point', latitude: -26.1076, longitude: 28.0567 },
-  { id: 'rosebank', label: 'Rosebank demo point', latitude: -26.1467, longitude: 28.0417 },
-  { id: 'parktown', label: 'Parktown demo point', latitude: -26.176, longitude: 28.045 },
 ] as const;
 
 const statusLabels: Record<ServiceStatus, string> = {
@@ -89,9 +83,18 @@ interface ServiceRequestPanelProps {
   loading: boolean;
   error: string | undefined;
   onCreate: (input: ServiceRequestInput) => Promise<ServiceRequestRow>;
+  onResolveLocation: (address: string) => Promise<LocationResolution>;
+  onConfirmLocation: (candidateId: string) => Promise<LocationCandidate>;
 }
 
-export function ServiceRequestPanel({ requests, loading, error, onCreate }: ServiceRequestPanelProps) {
+function requestStatus(request: ServiceRequestRow): { label: string; tone: 'blue' | 'yellow' | 'green' | 'gray' | 'red' } {
+  if (request.location_state === 'DISPATCHER_LOCATION_REVIEW') {
+    return { label: 'Location needs dispatcher review', tone: 'yellow' };
+  }
+  return { label: statusLabels[request.status], tone: statusTone[request.status] };
+}
+
+export function ServiceRequestPanel({ requests, loading, error, onCreate, onResolveLocation, onConfirmLocation }: ServiceRequestPanelProps) {
   const [mode, setMode] = useState<'AMBULANCE' | 'HOME_VISIT' | null>(null);
   const [ambulanceReason, setAmbulanceReason] = useState('');
   const [homeVisitReason, setHomeVisitReason] = useState('');
@@ -99,9 +102,12 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
   const [preferredResponder, setPreferredResponder] = useState<'DOCTOR' | 'NURSE' | 'EITHER' | ''>('');
   const [address, setAddress] = useState('');
   const [coords, setCoords] = useState<LocationCapture | null>(null);
-  const [demoLocation, setDemoLocation] = useState('');
+  const [locationCandidates, setLocationCandidates] = useState<LocationCandidate[]>([]);
+  const [confirmedCandidateId, setConfirmedCandidateId] = useState<string>();
+  const [confirmingCandidateId, setConfirmingCandidateId] = useState<string>();
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string>();
+  const [locationReviewAvailable, setLocationReviewAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string>();
   const [success, setSuccess] = useState<{ reference: string; type: 'AMBULANCE' | 'HOME_VISIT' } | null>(null);
@@ -122,6 +128,9 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
     window.navigator.geolocation.getCurrentPosition(
       (position) => {
         setCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+        setLocationCandidates([]);
+        setConfirmedCandidateId(undefined);
+        setLocationReviewAvailable(false);
         setLocating(false);
       },
       () => {
@@ -130,6 +139,20 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
       },
       { enableHighAccuracy: true, timeout: 10000 },
     );
+  }
+
+  async function confirmCandidate(candidateId: string) {
+    setConfirmingCandidateId(candidateId);
+    setLocationError(undefined);
+    try {
+      await onConfirmLocation(candidateId);
+      setConfirmedCandidateId(candidateId);
+      setLocationReviewAvailable(false);
+    } catch (confirmationError) {
+      setLocationError(confirmationError instanceof Error ? confirmationError.message : 'Could not confirm that location. Search again.');
+    } finally {
+      setConfirmingCandidateId(undefined);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -152,10 +175,30 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
       return;
     }
     const trimmedAddress = address.trim();
-    const selectedDemoLocation = demoLocationOptions.find((option) => option.id === demoLocation);
-    const searchCoordinates = coords ?? (selectedDemoLocation ? { latitude: selectedDemoLocation.latitude, longitude: selectedDemoLocation.longitude } : null);
+    const searchCoordinates = coords;
     if (!searchCoordinates && !trimmedAddress) {
-      setFormError('Share your browser location or type your address so the demo search has a starting point.');
+      setFormError('Share your browser location or type an address to confirm.');
+      return;
+    }
+    if (!searchCoordinates && !confirmedCandidateId) {
+      setBusy(true);
+      setFormError(undefined);
+      try {
+        const result = await onResolveLocation(trimmedAddress);
+        const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+        setLocationCandidates(candidates);
+        if (result.status === 'unresolved' || candidates.length === 0) {
+          setLocationReviewAvailable(true);
+          setFormError('We could not confirm that South African address. Try another address, use your current location, or send it for location review.');
+        } else {
+          setLocationReviewAvailable(false);
+          setFormError('Choose the matching location below to confirm it before sending.');
+        }
+      } catch (resolutionError) {
+        setFormError(resolutionError instanceof Error ? resolutionError.message : 'Could not look up that address. Please try again.');
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);
@@ -168,8 +211,9 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
           mode === 'AMBULANCE'
             ? { ambulanceReason, conscious: conscious as 'YES' | 'NO' | 'UNKNOWN' }
             : { homeVisitReason, preferredResponder: preferredResponder as 'DOCTOR' | 'NURSE' | 'EITHER' },
-        ...(trimmedAddress ? { address: trimmedAddress } : {}),
+        ...(trimmedAddress && !confirmedCandidateId ? { address: trimmedAddress } : {}),
         ...(searchCoordinates ? { latitude: searchCoordinates.latitude, longitude: searchCoordinates.longitude } : {}),
+        ...(confirmedCandidateId ? { locationCandidateId: confirmedCandidateId } : {}),
       };
       const row = await onCreate(input);
       setSuccess({ reference: row.reference_code, type: mode });
@@ -179,9 +223,59 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
       setPreferredResponder('');
       setAddress('');
       setCoords(null);
-      setDemoLocation('');
+      setLocationCandidates([]);
+      setConfirmedCandidateId(undefined);
+      setLocationReviewAvailable(false);
     } catch (createError) {
       setFormError(createError instanceof Error ? createError.message : 'Could not send your test request. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendForLocationReview() {
+    if (!mode) return;
+    if (mode === 'AMBULANCE' && !ambulanceReason) {
+      setFormError('Choose what happened so the demo dispatcher sees the right category.');
+      return;
+    }
+    if (mode === 'AMBULANCE' && !conscious) {
+      setFormError('Let us know whether the person is conscious.');
+      return;
+    }
+    if (mode === 'HOME_VISIT' && !homeVisitReason) {
+      setFormError('Choose a reason for the home visit.');
+      return;
+    }
+    if (mode === 'HOME_VISIT' && !preferredResponder) {
+      setFormError('Choose whether you prefer a doctor, a nurse, or either.');
+      return;
+    }
+    const trimmedAddress = address.trim();
+    if (!trimmedAddress) return;
+    setBusy(true);
+    setFormError(undefined);
+    try {
+      const row = await onCreate({
+        type: mode,
+        urgency: mode === 'AMBULANCE' ? 'EMERGENCY' : 'STANDARD',
+        triage: mode === 'AMBULANCE'
+          ? { ambulanceReason, conscious: conscious as 'YES' | 'NO' | 'UNKNOWN' }
+          : { homeVisitReason, preferredResponder: preferredResponder as 'DOCTOR' | 'NURSE' | 'EITHER' },
+        address: trimmedAddress,
+        locationReview: true,
+      });
+      setSuccess({ reference: row.reference_code, type: mode });
+      setAmbulanceReason('');
+      setHomeVisitReason('');
+      setConscious('');
+      setPreferredResponder('');
+      setAddress('');
+      setLocationCandidates([]);
+      setConfirmedCandidateId(undefined);
+      setLocationReviewAvailable(false);
+    } catch (createError) {
+      setFormError(createError instanceof Error ? createError.message : 'Could not send this request for location review.');
     } finally {
       setBusy(false);
     }
@@ -317,22 +411,43 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
               Or type your address
               <input
                 value={address}
-                onChange={(event) => setAddress(event.target.value)}
+                onChange={(event) => {
+                  setAddress(event.target.value);
+                  setCoords(null);
+                  setLocationCandidates([]);
+                  setConfirmedCandidateId(undefined);
+                  setLocationReviewAvailable(false);
+                }}
                 placeholder="e.g. 7th Avenue, Parktown, Johannesburg"
               />
             </label>
-            {!coords ? (
-              <label className="nv-field">
-                Simulated map point for manual-address testing
-                <select value={demoLocation} onChange={(event) => setDemoLocation(event.target.value)}>
-                  <option value="">No simulated coordinate selected</option>
-                  {demoLocationOptions.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
+            {locationCandidates.length > 0 ? (
+              <div className="nv-sr-candidates" role="group" aria-label="Address matches">
+                <strong className="small">Confirm the matching location</strong>
+                {locationCandidates.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    className={`nv-sr-candidate${confirmedCandidateId === candidate.id ? ' selected' : ''}`}
+                    onClick={() => void confirmCandidate(candidate.id)}
+                    disabled={Boolean(confirmingCandidateId)}
+                  >
+                    <span>{candidate.formattedAddress}</span>
+                    <small>{confirmedCandidateId === candidate.id ? 'Confirmed location' : confirmingCandidateId === candidate.id ? 'Confirming…' : 'Use this location'}</small>
+                  </button>
+                ))}
+              </div>
             ) : null}
-            <p className="muted small">For a manual address, choose an optional simulated map point to run the demo radius search. Address-only requests are logged for dispatcher review.</p>
+            {locationReviewAvailable ? (
+              <div className="nv-sr-location-review" role="status">
+                <strong>We couldn&apos;t confirm this address.</strong>
+                <span>Send it to the demo dispatcher for manual location review. No facility matching starts until the location is verified.</span>
+                <button type="button" className="secondary-btn" onClick={() => void sendForLocationReview()} disabled={busy}>
+                  Send for location review
+                </button>
+              </div>
+            ) : null}
+            <p className="muted small">Typed addresses are sent for matching only after you select a server-confirmed result. Browser location remains a separate direct option.</p>
           </fieldset>
 
           {formError ? <p className="nv-error" role="alert">{formError}</p> : null}
@@ -366,7 +481,9 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
           </div>
         ) : (
           <ul className="nv-sr-list">
-            {requests.map((request) => (
+            {requests.map((request) => {
+              const displayStatus = requestStatus(request);
+              return (
               <li className="card nv-sr-row" key={request.id} data-no-translate>
                 <div className="nv-sr-row-main">
                   <div className="nv-sr-row-head">
@@ -391,14 +508,15 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate }: Serv
                   </p>
                 </div>
                 <div className="nv-sr-row-status">
-                  <span className={`nv-sr-badge nv-sr-${statusTone[request.status]}`}>{statusLabels[request.status]}</span>
+                  <span className={`nv-sr-badge nv-sr-${displayStatus.tone}`}>{displayStatus.label}</span>
                   {request.escalation_flag ? <span className="nv-sr-badge nv-sr-yellow">Widened search area</span> : null}
                   {request.status === 'NO_PROVIDER_FOUND' ? (
                     <span className="muted small">Demo request logged — no simulated facility accepted it.</span>
                   ) : null}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

@@ -1,8 +1,11 @@
 import type { RequestHandler } from 'express';
 import type { ChannelConversationStore } from './channels/conversation.store.js';
 import type { ChannelRequestContext } from './channels/request-context.service.js';
+import type { LocationResolutionService } from './location/location-resolution.service.js';
 import { logSms, maskPhone, processSmsConversation, sendSmsReply, type IncomingSms } from './sms.service.js';
 import type { ChannelDispatchService } from './ussd.service.js';
+
+const SMS_SANDBOX_SHORTCODE = '45854';
 
 function asText(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -12,6 +15,7 @@ export function createSmsIncomingHandler(deps: {
   dispatch: ChannelDispatchService;
   store: ChannelConversationStore;
   context: ChannelRequestContext;
+  location: LocationResolutionService;
 }): RequestHandler {
   return async (req, res) => {
     try {
@@ -22,7 +26,7 @@ export function createSmsIncomingHandler(deps: {
       const linkId = asText(body.linkId);
       const messageId = asText(body.id);
 
-      if (!from || !text.trim()) {
+      if (!from || !text.trim() || to !== SMS_SANDBOX_SHORTCODE) {
         logSms('incoming.rejected', { from: from ? maskPhone(from) : null, to: to || null });
         res.status(200).type('text/plain').send('ok');
         return;

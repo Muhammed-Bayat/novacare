@@ -217,6 +217,8 @@ export function PatientPortalPage() {
             loading={serviceRequests.loading}
             error={serviceRequests.error}
             onCreate={serviceRequests.createServiceRequest}
+            onResolveLocation={serviceRequests.resolveLocation}
+            onConfirmLocation={serviceRequests.confirmLocation}
           />
         )
       ) : null}

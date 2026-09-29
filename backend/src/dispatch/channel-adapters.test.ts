@@ -28,15 +28,23 @@ describe('web channel adapter', () => {
       longitude: 28.0567,
       requesterUserId: 'user-1',
       requesterPhone: '+27820000001',
+      locationState: 'LOCATION_CONFIRMED',
+      locationSource: 'GPS',
     });
   });
 
-  it('accepts a manual address when coordinates are absent', () => {
-    const input = adaptWebRequest({ type: 'HOME_VISIT', address: '  1 Care Lane, Sandton  ', triage: { homeVisitReason: 'check-up', preferredResponder: 'NURSE' } }, requester);
+  it('accepts an explicitly requested dispatcher location review without coordinates', () => {
+    const input = adaptWebRequest({ type: 'HOME_VISIT', address: '  1 Care Lane, Sandton  ', locationReview: true, triage: { homeVisitReason: 'check-up', preferredResponder: 'NURSE' } }, requester);
     expect(input.address).toBe('1 Care Lane, Sandton');
     expect(input.latitude).toBeNull();
     expect(input.type).toBe('HOME_VISIT');
     expect(input.triage).toEqual({ homeVisitReason: 'check-up', preferredResponder: 'NURSE' });
+    expect(input.locationState).toBe('DISPATCHER_LOCATION_REVIEW');
+  });
+
+  it('rejects an unconfirmed typed address', () => {
+    expect(() => adaptWebRequest({ type: 'HOME_VISIT', address: '1 Care Lane, Sandton', triage: { homeVisitReason: 'check-up', preferredResponder: 'NURSE' } }, requester))
+      .toThrow('Confirm an address match before sending this request.');
   });
 
   it('requires location or address', () => {
@@ -60,7 +68,7 @@ describe('web channel adapter', () => {
     expect(ambulance.triage).toEqual({ ambulanceReason: 'chest-pain', conscious: 'NO' });
 
     const homeVisit = adaptWebRequest(
-      { type: 'HOME_VISIT', address: '1 Demo Street', triage: { ambulanceReason: 'chest-pain', homeVisitReason: 'check-up', preferredResponder: 'EITHER' } },
+      { type: 'HOME_VISIT', address: '1 Demo Street', locationReview: true, triage: { ambulanceReason: 'chest-pain', homeVisitReason: 'check-up', preferredResponder: 'EITHER' } },
       requester,
     );
     expect(homeVisit.triage).toEqual({ homeVisitReason: 'check-up', preferredResponder: 'EITHER' });

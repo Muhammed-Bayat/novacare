@@ -284,9 +284,31 @@ const patientHomeVisitRow = {
   assigned_unit_id: null,
 };
 
-function stubServiceRequests(requests: unknown[], created?: unknown) {
+function stubServiceRequests(
+  requests: unknown[],
+  created?: unknown,
+  locationResolution: { status: 'confirmation_required' | 'unresolved'; candidates: unknown[] } = {
+    status: 'confirmation_required',
+    candidates: [{ id: '5c591bc7-3fdc-4761-9664-43e79932b159', formattedAddress: '7th Avenue, Parktown, Johannesburg' }],
+  },
+) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes('/api/v1/locations/resolve')) {
+      return {
+        ok: true,
+        json: async () => locationResolution,
+      };
+    }
+    if (url.includes('/api/v1/locations/confirm')) {
+      return {
+        ok: true,
+        json: async () => ({
+          status: 'confirmed',
+          candidate: { id: '5c591bc7-3fdc-4761-9664-43e79932b159', formattedAddress: '7th Avenue, Parktown, Johannesburg' },
+        }),
+      };
+    }
     if (url.includes('/api/v1/service-requests')) {
       if ((init?.method ?? 'GET') === 'POST') {
         return { ok: true, status: 201, json: async () => ({ data: created }) };
@@ -576,6 +598,10 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Yes' }));
     await userEvent.type(screen.getByLabelText('Or type your address'), '7th Avenue, Parktown, Johannesburg');
     await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
+    expect(await screen.findByText('Choose the matching location below to confirm it before sending.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Use this location/ }));
+    expect(await screen.findByText('Confirmed location')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
 
     expect(await screen.findByText('NovaCare received your test request successfully.')).toBeInTheDocument();
     expect(screen.getByText(/NC-2026-000301/)).toBeInTheDocument();
@@ -585,8 +611,37 @@ describe('App', () => {
       type: 'AMBULANCE',
       urgency: 'EMERGENCY',
       triage: { ambulanceReason: 'chest-pain', conscious: 'YES' },
-      address: '7th Avenue, Parktown, Johannesburg',
+      locationCandidateId: '5c591bc7-3fdc-4761-9664-43e79932b159',
     });
+  });
+
+  it('sends an unresolved typed address for dispatcher location review without coordinates', async () => {
+    auth.state.isAuthenticated = true;
+    const reviewRequest = {
+      ...patientServiceRequestRow,
+      status: 'CREATED',
+      latitude: null,
+      longitude: null,
+      location_state: 'DISPATCHER_LOCATION_REVIEW',
+      location_confirmation_required: true,
+    };
+    stubServiceRequests([], reviewRequest, { status: 'unresolved', candidates: [] });
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Request an Ambulance' }));
+    await userEvent.selectOptions(screen.getByLabelText('What happened?'), 'chest-pain');
+    await userEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await userEvent.type(screen.getByLabelText('Or type your address'), 'Unconfirmed address');
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
+    expect(await screen.findByText("We couldn't confirm this address.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Send for location review' }));
+
+    const post = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/service-requests') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+      address: 'Unconfirmed address',
+      locationReview: true,
+    });
+    expect(await screen.findByText('NovaCare received your test request successfully.')).toBeInTheDocument();
   });
 
   it('requires triage answers before sending an ambulance test request', async () => {
@@ -890,7 +945,7 @@ describe('App', () => {
         { membershipId: 'm1', email: 'nurse@example.com', displayName: 'Amina Dlamini', role: 'nurse', active: true, since: '2026-09-26T12:00:00.000Z', departments: [] },
       ],
       pendingInvitations: [
-        { email: 'dr@example.com', role: 'doctor', departmentIds: [], expiresAt: '2026-09-29T12:00:00.000Z', sentAt: '2026-09-26T12:00:00.000Z' },
+          { email: 'dr@example.com', role: 'doctor', departmentIds: [], expiresAt: '2030-09-29T12:00:00.000Z', sentAt: '2026-09-26T12:00:00.000Z' },
       ],
     });
     renderAt('/admin');

@@ -166,6 +166,12 @@
   font-size: 13px;
 }
 
+.nv-dispatch-location-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .nv-dispatch-location-pin {
   width: 13px;
   height: 13px;
@@ -297,6 +303,7 @@
 }
 
 @media (max-width: 720px) {
+  .nv-dispatch-location-fields { grid-template-columns: 1fr; }
   .nv-dispatch-metrics {
     grid-template-columns: 1fr 1fr;
   }

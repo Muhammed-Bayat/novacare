@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { ChannelConversationStore } from './channels/conversation.store.js';
 import type { ChannelRequestContext } from './channels/request-context.service.js';
+import type { LocationResolutionService } from './location/location-resolution.service.js';
 import { normalizePhoneNumber } from './channels/request-context.service.js';
 import { USSD_INVALID_REQUEST_MESSAGE, processUssdRequest, type ChannelDispatchService } from './ussd.service.js';
 
@@ -16,6 +17,8 @@ export function createUssdCallbackHandler(deps: {
   dispatch: ChannelDispatchService;
   store: ChannelConversationStore;
   context: ChannelRequestContext;
+  location: LocationResolutionService;
+  expectedServiceCode: string;
 }): RequestHandler {
   return async (req, res) => {
     try {
@@ -25,7 +28,7 @@ export function createUssdCallbackHandler(deps: {
       const phoneNumber = asText(body.phoneNumber);
       const text = asText(body.text);
 
-      if (!sessionId || !serviceCode || !phoneNumber) {
+      if (!sessionId || !serviceCode || !phoneNumber || serviceCode !== deps.expectedServiceCode) {
         console.log(JSON.stringify({ channel: 'ussd', event: 'callback.rejected', sessionId, serviceCode, phoneNumber: maskPhone(phoneNumber) }));
         res.status(200).type('text/plain').send(USSD_INVALID_REQUEST_MESSAGE);
         return;

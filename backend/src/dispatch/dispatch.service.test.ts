@@ -204,6 +204,22 @@ class FakeDb {
         escalation_flag: Boolean(params[3]),
       }) as QueryResult<T>;
     }
+    if (text.includes("location_source = 'MANUAL_DISPATCHER'")) {
+      const row = this.requests.get(String(params[0]));
+      if (!row || row.status !== 'CREATED' || row.location_state !== 'DISPATCHER_LOCATION_REVIEW') return { rows: [], rowCount: 0 } as QueryResult<T>;
+      Object.assign(row, {
+        address: String(params[1]),
+        latitude: Number(params[2]),
+        longitude: Number(params[3]),
+        location_state: 'LOCATION_CONFIRMED',
+        location_confirmation_required: false,
+        location_confirmed_at: String(params[4]),
+        location_source: 'MANUAL_DISPATCHER',
+        status: 'SEARCHING',
+        updated_at: String(params[4]),
+      });
+      return ok([{}]) as QueryResult<T>;
+    }
     if (text.startsWith('UPDATE service_requests')) {
       const slot = /status = \$(\d+)\s*$/.exec(text);
       const expected = slot ? params[Number(slot[1]) - 1] : undefined;
@@ -261,15 +277,19 @@ class FakeDb {
         }));
       return ok(rows) as QueryResult<T>;
     }
-    if (text.includes("status = 'NO_PROVIDER_FOUND'")) {
-      return ok([...this.requests.values()].filter((r) => r.status === 'NO_PROVIDER_FOUND')) as QueryResult<T>;
+    if (text.includes("location_state = 'DISPATCHER_LOCATION_REVIEW'")) {
+      return ok([...this.requests.values()].filter((r) =>
+        r.status === 'NO_PROVIDER_FOUND' || (!['COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND'].includes(r.status) && r.location_state === 'DISPATCHER_LOCATION_REVIEW'),
+      )) as QueryResult<T>;
     }
     if (text.includes('WHERE id = $1')) {
       const row = this.requests.get(String(params[0]));
       return ok(row ? [structuredClone(row)] : []) as QueryResult<T>;
     }
     if (text.includes('SELECT * FROM service_requests')) {
-      const live = [...this.requests.values()].filter((r) => !['COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND'].includes(r.status));
+      const live = [...this.requests.values()].filter((r) =>
+        !['COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND'].includes(r.status) && r.location_state !== 'DISPATCHER_LOCATION_REVIEW',
+      );
       return ok(live) as QueryResult<T>;
     }
     throw new Error(`Unexpected SQL in fake: ${text.slice(0, 80)}`);
@@ -283,8 +303,8 @@ class FakeDb {
   }
 
   private buildRequest(params: unknown[]): ServiceRequestRow {
-    const [referenceCode, requesterUserId, requesterPhone, type, channel, urgency, reason, triageJson, address, latitude, longitude] =
-      params as [string, string | null, string | null, ServiceRequestType, ServiceChannel, ServiceUrgency, string | null, string, string | null, number | null, number | null];
+    const [referenceCode, requesterUserId, requesterPhone, type, channel, urgency, reason, triageJson, address, latitude, longitude, locationState, locationConfirmationRequired, locationConfirmedAt, locationSource, geocodedFormattedAddress, geocodingPlaceId, geocodingConfidence, idempotencyKey] =
+      params as [string, string | null, string | null, ServiceRequestType, ServiceChannel, ServiceUrgency, string | null, string, string | null, number | null, number | null, ServiceRequestRow['location_state'], boolean, string | null, ServiceRequestRow['location_source'], string | null, string | null, number | null, string | null];
     this.seq += 1;
     return {
       id: `req-${this.seq}`,
@@ -300,6 +320,14 @@ class FakeDb {
       address,
       latitude,
       longitude,
+      location_state: locationState,
+      location_confirmation_required: locationConfirmationRequired,
+      location_confirmed_at: locationConfirmedAt,
+      location_source: locationSource,
+      geocoded_formatted_address: geocodedFormattedAddress,
+      geocoding_place_id: geocodingPlaceId,
+      geocoding_confidence: geocodingConfidence,
+      idempotency_key: idempotencyKey,
       search_radius_km: null,
       facilities_notified: null,
       escalation_flag: false,
@@ -487,13 +515,45 @@ describe('dispatch service', () => {
       expect(db.notifications.filter((n) => n.request_id === homeVisit.id).map((n) => n.facility_id)).not.toContain('amb-only');
     });
 
-    it('lands in NO_PROVIDER_FOUND when no location is provided', async () => {
+    it('uses dispatcher location state without starting matching when no confirmed coordinates are provided', async () => {
       db.facilities = [NEAR, MID, FAR];
       const request = await service.createServiceRequest(createInput({ latitude: null, longitude: null, address: 'Corner of Demo & Test, Sandton' }));
-      expect(request.status).toBe('NO_PROVIDER_FOUND');
+      expect(request.status).toBe('CREATED');
+      expect(request.location_state).toBe('DISPATCHER_LOCATION_REVIEW');
+      expect(request.location_confirmation_required).toBe(true);
       expect(db.notifications).toHaveLength(0);
-      const note = db.history.find((h) => h.request_id === request.id && h.to_status === 'NO_PROVIDER_FOUND')?.note;
-      expect(note).toContain('No location provided');
+      expect(db.history.filter((h) => h.request_id === request.id).map((h) => h.to_status)).toEqual(['CREATED']);
+    });
+
+    it('starts the regular matching flow after dispatcher location resolution', async () => {
+      db.facilities = [NEAR, MID, FAR];
+      const request = await service.createServiceRequest(createInput({ latitude: null, longitude: null, address: 'Unverified address' }));
+
+      const resolved = await service.resolveLocationForDispatcher(request.id, {
+        address: '1 Care Lane, Sandton',
+        latitude: -26.1076,
+        longitude: 28.0567,
+      }, DISPATCHER);
+
+      expect(resolved.status).toBe('NOTIFIED');
+      expect(resolved.location_source).toBe('MANUAL_DISPATCHER');
+      expect(resolved.location_state).toBe('LOCATION_CONFIRMED');
+      expect(db.notifications.filter((notification) => notification.request_id === request.id)).toHaveLength(3);
+      expect(db.history.filter((entry) => entry.request_id === request.id).map((entry) => entry.to_status)).toEqual(['CREATED', 'SEARCHING', 'NOTIFIED']);
+    });
+
+    it('blocks direct matching and cannot revive a cancelled location-review request', async () => {
+      db.facilities = [NEAR, MID, FAR];
+      const request = await service.createServiceRequest(createInput({ latitude: null, longitude: null, address: 'Unconfirmed address' }));
+
+      await expect(service.updateStatus(request.id, 'SEARCHING', DISPATCHER)).rejects.toThrow('A confirmed location with valid coordinates is required');
+      expect(db.notifications).toHaveLength(0);
+
+      await service.updateStatus(request.id, 'CANCELLED', DISPATCHER, { cancelReason: 'no longer needed' });
+      await expect(service.resolveLocationForDispatcher(request.id, {
+        address: '1 Care Lane, Sandton', latitude: ORIGIN.latitude, longitude: ORIGIN.longitude,
+      }, DISPATCHER)).rejects.toBeInstanceOf(ServiceRequestConflictError);
+      expect(db.notifications).toHaveLength(0);
     });
 
     it('lands in NO_PROVIDER_FOUND when nothing is within the max radius', async () => {

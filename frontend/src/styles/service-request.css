@@ -67,6 +67,22 @@
 .nv-sr-locate-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .nv-sr-locate-row .secondary-btn { padding: 12px 18px; }
 .nv-sr-located { color: #178653; font-weight: 700; font-size: 13px; }
+.nv-sr-candidates { display: grid; gap: 8px; }
+.nv-sr-candidate { display: grid; gap: 3px; text-align: left; padding: 12px 14px; border: 1.5px solid #d0e1f2; border-radius: 12px; background: #f6fbff; color: var(--text); font: inherit; cursor: pointer; }
+.nv-sr-candidate:hover:not(:disabled), .nv-sr-candidate.selected { border-color: var(--blue); background: #e8f4ff; }
+.nv-sr-candidate:disabled { cursor: wait; opacity: .75; }
+.nv-sr-candidate small { color: #61748b; font-weight: 700; }
+.nv-sr-location-review {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1.5px solid #f2d69a;
+  border-radius: 14px;
+  background: #fff9eb;
+  color: #78520a;
+}
+.nv-sr-location-review span { font-size: 13px; }
+.nv-sr-location-review .secondary-btn { justify-self: start; }
 
 .nv-sr-success {
   display: grid;

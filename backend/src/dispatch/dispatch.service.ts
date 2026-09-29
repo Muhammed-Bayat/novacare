@@ -11,6 +11,8 @@ import {
   ServiceRequestNotFoundError,
   type NotificationResponseStatus,
   type ServiceChannel,
+  type LocationSource,
+  type LocationState,
   type ServiceRequestRow,
   type ServiceRequestTriage,
   type ServiceRequestType,
@@ -51,6 +53,13 @@ export interface CreateServiceRequestInput {
   longitude?: number | null;
   requesterUserId?: string | null;
   requesterPhone?: string | null;
+  locationState?: LocationState;
+  locationSource?: LocationSource;
+  geocodedFormattedAddress?: string;
+  geocodingPlaceId?: string;
+  geocodingConfidence?: number;
+  idempotencyKey?: string;
+  locationCandidateId?: string;
 }
 
 export interface DispatchServiceDeps {
@@ -76,6 +85,12 @@ export interface AssignResponderTarget {
   unitId?: string;
 }
 
+export interface DispatcherLocationResolutionInput {
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
 const AWAITING_ASSIGNMENT: readonly ServiceStatus[] = ['NOTIFIED', 'ACKNOWLEDGED', 'ACCEPTED'];
 const DISPATCHED_STATUSES: readonly ServiceStatus[] = ['DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
 
@@ -84,8 +99,23 @@ function validateCoordinates(latitude: number | null | undefined, longitude: num
   if (latitude == null || longitude == null) {
     throw new DispatchValidationError('Latitude and longitude must be provided together.');
   }
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new DispatchValidationError('Latitude and longitude must be finite numbers.');
+  }
   if (latitude < -90 || latitude > 90) throw new DispatchValidationError('Latitude must be between -90 and 90.');
   if (longitude < -180 || longitude > 180) throw new DispatchValidationError('Longitude must be between -180 and 180.');
+}
+
+function hasConfirmedCoordinates(row: ServiceRequestRow): boolean {
+  return row.location_state === 'LOCATION_CONFIRMED'
+    && row.latitude != null
+    && row.longitude != null
+    && Number.isFinite(row.latitude)
+    && Number.isFinite(row.longitude)
+    && row.latitude >= -90
+    && row.latitude <= 90
+    && row.longitude >= -180
+    && row.longitude <= 180;
 }
 
 export function publicEventPayload(row: ServiceRequestRow): ServiceRequestEventPayload {
@@ -140,13 +170,20 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     return formatReferenceCode(year, result.rows[0].last_seq);
   }
 
-  async function insertRequest(q: QueryFn, input: CreateServiceRequestInput, referenceCode: string): Promise<ServiceRequestRow> {
+  async function insertRequest(q: QueryFn, input: CreateServiceRequestInput, referenceCode: string): Promise<ServiceRequestRow | null> {
+    const requestedLocationState = input.locationState ?? (input.latitude != null && input.longitude != null ? 'LOCATION_CONFIRMED' : 'DISPATCHER_LOCATION_REVIEW');
+    const locationState = requestedLocationState === 'LOCATION_UNRESOLVED' ? 'DISPATCHER_LOCATION_REVIEW' : requestedLocationState;
+    const locationSource = input.locationSource ?? (input.latitude != null && input.longitude != null ? 'GPS' : 'UNRESOLVED');
+    const confirmed = locationState === 'LOCATION_CONFIRMED';
     const result = await q<ServiceRequestRow>(
       `INSERT INTO service_requests (
          reference_code, requester_user_id, requester_phone, type, channel, status,
-         urgency, reason, triage, address, latitude, longitude
-       ) VALUES ($1,$2,$3,$4,$5,'CREATED',$6,$7,$8,$9,$10,$11)
-       RETURNING *`,
+          urgency, reason, triage, address, latitude, longitude, location_state,
+          location_confirmation_required, location_confirmed_at, location_source,
+          geocoded_formatted_address, geocoding_place_id, geocoding_confidence, idempotency_key
+        ) VALUES ($1,$2,$3,$4,$5,'CREATED',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+        RETURNING *`,
       [
         referenceCode,
         input.requesterUserId ?? null,
@@ -159,9 +196,17 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         input.address ?? null,
         input.latitude ?? null,
         input.longitude ?? null,
+        locationState,
+        !confirmed,
+        confirmed ? nowIso() : null,
+        locationSource,
+        input.geocodedFormattedAddress ?? null,
+        input.geocodingPlaceId ?? null,
+        input.geocodingConfidence ?? null,
+        input.idempotencyKey ?? null,
       ],
     );
-    return result.rows[0];
+    return result.rows[0] ?? null;
   }
 
   async function insertHistory(
@@ -196,6 +241,9 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     options: TransitionOptions = {},
   ): Promise<void> {
     if (!canTransition(current.status, to)) throw new InvalidTransitionError(current.status, to);
+    if (to === 'SEARCHING' && !hasConfirmedCoordinates(current)) {
+      throw new DispatchValidationError('A confirmed location with valid coordinates is required before matching can start.');
+    }
 
     const sets = ['status = $2', 'updated_at = $3'];
     const params: unknown[] = [current.id, to, nowIso()];
@@ -310,54 +358,26 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     }));
   }
 
-  /** WEB, USSD and SMS all converge on this one entry point. */
-  async function createServiceRequest(input: CreateServiceRequestInput): Promise<ServiceRequestRow> {
-    if (input.type !== 'AMBULANCE' && input.type !== 'HOME_VISIT') {
-      throw new DispatchValidationError('type must be AMBULANCE or HOME_VISIT.');
+  async function startMatching(created: ServiceRequestRow, actorUserId: string | null, alreadySearching = false): Promise<ServiceRequestRow> {
+    if (!hasConfirmedCoordinates(created)) {
+      throw new DispatchValidationError('A confirmed location with valid coordinates is required before matching can start.');
     }
-    if (input.channel !== 'WEB' && input.channel !== 'USSD' && input.channel !== 'SMS') {
-      throw new DispatchValidationError('channel must be WEB, USSD or SMS.');
+    if (!alreadySearching) {
+      await transition(created.id, 'SEARCHING', actorUserId, {
+        note: 'Automatic dispatch search started.',
+      });
     }
-    validateCoordinates(input.latitude, input.longitude);
-
-    let referenceCode = '';
-    let created: ServiceRequestRow | undefined;
-    await withTransaction(async (q) => {
-      referenceCode = await allocateReferenceCode(q);
-      created = await insertRequest(q, input, referenceCode);
-      await insertHistory(q, created.id, null, 'CREATED', input.requesterUserId ?? null, 'Demo request created.');
-    });
-    if (!created) throw new ServiceRequestConflictError('Could not create the service request.');
     await audit({
-      actorUserId: input.requesterUserId ?? null,
-      entityType: 'service_request',
-      entityId: created.id,
-      action: 'SERVICE_REQUEST_CREATED',
-      metadata: { referenceCode, type: input.type, channel: input.channel, urgency: created.urgency },
-    });
-    publish({ type: 'service-request:created', payload: publicEventPayload(created) });
-
-    await transition(created.id, 'SEARCHING', input.requesterUserId ?? null, {
-      note: 'Automatic dispatch search started.',
-    });
-    await audit({
-      actorUserId: input.requesterUserId ?? null,
+      actorUserId,
       entityType: 'service_request',
       entityId: created.id,
       action: 'DISPATCH_SEARCH_STARTED',
-      metadata: { referenceCode },
+      metadata: { referenceCode: created.reference_code },
     });
 
-    const origin: GeoPoint | null =
-      input.latitude != null && input.longitude != null ? { latitude: input.latitude, longitude: input.longitude } : null;
-    if (!origin) {
-      return transition(created.id, 'NO_PROVIDER_FOUND', null, {
-        note: 'No location provided for facility matching. Demo request logged for review.',
-      });
-    }
-
-    const candidates = await loadCandidateFacilities(input.type);
-    const { selected, radiusKm, exhausted } = expandRadiusUntilCovered(candidates, origin, input.type, config, location);
+    const origin: GeoPoint = { latitude: created.latitude!, longitude: created.longitude! };
+    const candidates = await loadCandidateFacilities(created.type);
+    const { selected, radiusKm, exhausted } = expandRadiusUntilCovered(candidates, origin, created.type, config, location);
     await query(
       `UPDATE service_requests
        SET search_radius_km = $2, facilities_notified = $3, escalation_flag = $4, updated_at = $5
@@ -390,8 +410,6 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         metadata: { facilityId: facility.id, facilityName: facility.name, distanceKm: facility.distanceKm },
       });
     }
-    const refreshed = await getRequest(created.id);
-    if (!refreshed) throw new ServiceRequestNotFoundError(created.id);
     await audit({
       entityType: 'service_request',
       entityId: created.id,
@@ -405,9 +423,108 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     });
   }
 
+  /** WEB, USSD and SMS all converge on this one entry point. */
+  async function createServiceRequest(input: CreateServiceRequestInput): Promise<ServiceRequestRow> {
+    if (input.type !== 'AMBULANCE' && input.type !== 'HOME_VISIT') {
+      throw new DispatchValidationError('type must be AMBULANCE or HOME_VISIT.');
+    }
+    if (input.channel !== 'WEB' && input.channel !== 'USSD' && input.channel !== 'SMS') {
+      throw new DispatchValidationError('channel must be WEB, USSD or SMS.');
+    }
+    validateCoordinates(input.latitude, input.longitude);
+
+    if (input.idempotencyKey) {
+      const existing = await query<ServiceRequestRow>(
+        'SELECT * FROM service_requests WHERE idempotency_key = $1',
+        [input.idempotencyKey],
+      );
+      if (existing.rows[0]) return existing.rows[0];
+    }
+
+    let referenceCode = '';
+    let created: ServiceRequestRow | undefined;
+    let reused = false;
+    await withTransaction(async (q) => {
+      referenceCode = await allocateReferenceCode(q);
+      created = await insertRequest(q, input, referenceCode) ?? undefined;
+      if (!created && input.idempotencyKey) {
+        const existing = await q<ServiceRequestRow>(
+          'SELECT * FROM service_requests WHERE idempotency_key = $1',
+          [input.idempotencyKey],
+        );
+        created = existing.rows[0];
+        reused = true;
+      }
+      if (!created) throw new ServiceRequestConflictError('Could not create the service request.');
+      if (reused) return;
+      await insertHistory(q, created.id, null, 'CREATED', input.requesterUserId ?? null, 'Demo request created.');
+    });
+    if (!created) throw new ServiceRequestConflictError('Could not create the service request.');
+    if (reused) return created;
+    await audit({
+      actorUserId: input.requesterUserId ?? null,
+      entityType: 'service_request',
+      entityId: created.id,
+      action: 'SERVICE_REQUEST_CREATED',
+      metadata: { referenceCode, type: input.type, channel: input.channel, urgency: created.urgency },
+    });
+    publish({ type: 'service-request:created', payload: publicEventPayload(created) });
+
+    if (!hasConfirmedCoordinates(created)) return created;
+    return startMatching(created, input.requesterUserId ?? null);
+  }
+
   async function getRequest(id: string): Promise<ServiceRequestRow | null> {
     const result = await query<ServiceRequestRow>('SELECT * FROM service_requests WHERE id = $1', [id]);
     return result.rows[0] ?? null;
+  }
+
+  async function resolveLocationForDispatcher(
+    requestId: string,
+    input: DispatcherLocationResolutionInput,
+    actorUserId: string,
+  ): Promise<ServiceRequestRow> {
+    const address = input.address.trim().slice(0, 320);
+    if (!address) throw new DispatchValidationError('Provide the manually verified address.');
+    validateCoordinates(input.latitude, input.longitude);
+
+    await withTransaction(async (q) => {
+      const result = await q<ServiceRequestRow>('SELECT * FROM service_requests WHERE id = $1 FOR UPDATE', [requestId]);
+      const current = result.rows[0];
+      if (!current) throw new ServiceRequestNotFoundError(requestId);
+      if (current.status !== 'CREATED' || current.location_state !== 'DISPATCHER_LOCATION_REVIEW') {
+        throw new ServiceRequestConflictError('Only requests awaiting location review can be resolved manually.');
+      }
+      const updated = await q(
+        `UPDATE service_requests
+         SET address = $2, latitude = $3, longitude = $4, location_state = 'LOCATION_CONFIRMED',
+             location_confirmation_required = false, location_confirmed_at = $5,
+             location_source = 'MANUAL_DISPATCHER', status = 'SEARCHING', updated_at = $5
+          WHERE id = $1 AND status = 'CREATED' AND location_state = 'DISPATCHER_LOCATION_REVIEW'`,
+        [requestId, address, input.latitude, input.longitude, nowIso()],
+      );
+      if (updated.rowCount === 0) throw new ServiceRequestConflictError('The request is no longer awaiting location review.');
+      await insertHistory(q, requestId, 'CREATED', 'SEARCHING', actorUserId, 'Dispatcher manually verified the location and started matching.');
+    });
+
+    const resolved = await getRequest(requestId);
+    if (!resolved) throw new ServiceRequestNotFoundError(requestId);
+    await audit({
+      actorUserId,
+      entityType: 'service_request',
+      entityId: requestId,
+      action: 'LOCATION_MANUALLY_RESOLVED',
+      metadata: { source: 'MANUAL_DISPATCHER' },
+    });
+    await audit({
+      actorUserId,
+      entityType: 'service_request',
+      entityId: requestId,
+      action: 'STATUS_CHANGED',
+      metadata: { from: 'CREATED', to: 'SEARCHING' },
+    });
+    publish({ type: 'service-request:status-changed', payload: publicEventPayload(resolved) });
+    return startMatching(resolved, actorUserId, true);
   }
 
   async function getRequestByReferenceForPhone(referenceCode: string, phoneNumber: string): Promise<ServiceRequestRow | null> {
@@ -438,11 +555,14 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     const live = await query<ServiceRequestRow>(
       `SELECT * FROM service_requests
        WHERE status NOT IN ('COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND')
+         AND location_state <> 'DISPATCHER_LOCATION_REVIEW'
        ORDER BY created_at DESC`,
     );
     const unresolved = await query<ServiceRequestRow>(
       `SELECT * FROM service_requests
        WHERE status = 'NO_PROVIDER_FOUND'
+          OR (status NOT IN ('COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND')
+              AND location_state = 'DISPATCHER_LOCATION_REVIEW')
        ORDER BY created_at DESC
        LIMIT 20`,
     );
@@ -729,6 +849,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
 
   return {
     createServiceRequest,
+    resolveLocationForDispatcher,
     getRequest,
     getRequestByReferenceForPhone,
     cancelRequestByReferenceForPhone,

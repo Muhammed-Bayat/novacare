@@ -8,12 +8,18 @@ import type { ServiceRequestRow, ServiceStatus } from './dispatch/domain.js';
 import { sendSms } from './sms.client.js';
 import { SMS_REPLY_AMBULANCE, SMS_REPLY_FALLBACK, SMS_REPLY_HOME } from './sms.service.js';
 import type { ChannelDispatchService } from './ussd.service.js';
+import { createMemoryLocationConfirmationStore } from './location/location-confirmation.store.js';
+import { createLocationResolutionService } from './location/location-resolution.service.js';
+import type { GeocodingService } from './geocoding/geocoding.service.js';
 
 vi.mock('./sms.client.js', () => ({
   sendSms: vi.fn(async () => ({ messageId: 'ATXid_test', status: 'Success', statusCode: 101 })),
 }));
 
-const SMS_URL = '/api/v1/channels/sms/incoming';
+const CALLBACK_SECRET = 'test-only-callback-secret';
+const SMS_SHORTCODE = '45854';
+const SMS_URL = `/api/v1/channels/sms/incoming/${CALLBACK_SECRET}`;
+const LEGACY_SMS_URL = '/api/v1/channels/sms/incoming';
 const SENDER = '+27821234567';
 const sendSmsMock = vi.mocked(sendSms);
 
@@ -32,6 +38,14 @@ function serviceRow(input: CreateServiceRequestInput, reference: string, status:
     address: input.address ?? null,
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
+    location_state: input.locationState,
+    location_confirmation_required: input.locationState !== 'LOCATION_CONFIRMED',
+    location_confirmed_at: null,
+    location_source: input.locationSource,
+    geocoded_formatted_address: null,
+    geocoding_place_id: null,
+    geocoding_confidence: null,
+    idempotency_key: input.idempotencyKey ?? null,
     search_radius_km: 10,
     facilities_notified: 3,
     escalation_flag: false,
@@ -47,6 +61,23 @@ function serviceRow(input: CreateServiceRequestInput, reference: string, status:
     cancelled_at: null,
     cancel_reason: null,
   };
+}
+
+function testLocationResolver() {
+  const geocode = vi.fn(async (address: string) => [{
+    formattedAddress: `${address}, Johannesburg`,
+    latitude: -26.1076,
+    longitude: 28.0567,
+    countryCode: 'za' as const,
+    city: 'Johannesburg',
+    suburb: 'Sandton',
+    confidence: 0.95,
+    matchType: 'full_match',
+  }]);
+  const geocoding: GeocodingService = {
+    geocode,
+  };
+  return { resolver: createLocationResolutionService(geocoding, createMemoryLocationConfirmationStore()), geocode };
 }
 
 function testApp(store: ChannelConversationStore = createMemoryChannelConversationStore()) {
@@ -78,15 +109,24 @@ function testApp(store: ChannelConversationStore = createMemoryChannelConversati
       return { address, latitude: -26.1076, longitude: 28.0567 };
     },
   };
+  const location = testLocationResolver();
   return {
-    app: createApp({ channelDispatch: dispatch, channelStore: store, channelContext: context }),
+    app: createApp({
+      channelDispatch: dispatch,
+      channelStore: store,
+      channelContext: context,
+      locationResolutionService: location.resolver,
+      channelCallbacks: { secret: CALLBACK_SECRET, ussdServiceCode: '*384*28149#' },
+    }),
     calls,
+    requests,
     store,
+    geocode: location.geocode,
   };
 }
 
 async function postIncoming(app: ReturnType<typeof createApp>, fields: Record<string, string>) {
-  return request(app).post(SMS_URL).type('form').send(fields);
+  return request(app).post(SMS_URL).type('form').send({ to: SMS_SHORTCODE, ...fields });
 }
 
 async function expectReply(message: string, count: number) {
@@ -99,7 +139,7 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     vi.clearAllMocks();
   });
 
-  it('accepts an unauthenticated form callback and sends the ambulance prompt', async () => {
+  it('accepts a callback with the configured secret and shortcode', async () => {
     const { app } = testApp();
     const response = await postIncoming(app, { from: SENDER, to: '45854', text: 'AMBULANCE' });
 
@@ -107,6 +147,40 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     expect(response.headers['content-type']).toMatch(/text\/plain/);
     expect(response.text).toBe('ok');
     await expectReply(SMS_REPLY_AMBULANCE, 1);
+  });
+
+  it('rejects missing or incorrect callback secrets before state, geocoding, dispatch, or SMS work', async () => {
+    const store = createMemoryChannelConversationStore();
+    const { app, calls, geocode } = testApp(store);
+    const get = vi.spyOn(store, 'get');
+    const save = vi.spyOn(store, 'save');
+
+    const missing = await request(app).post(LEGACY_SMS_URL).type('form').send({ from: SENDER, to: SMS_SHORTCODE, text: 'AMBULANCE' });
+    const incorrect = await request(app).post('/api/v1/channels/sms/incoming/wrong-secret').type('form').send({ from: SENDER, to: SMS_SHORTCODE, text: 'AMBULANCE' });
+
+    expect(missing.status).toBe(404);
+    expect(incorrect.status).toBe(403);
+    expect(get).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    expect(geocode).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+    expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incoming SMS for a different or missing destination shortcode before processing', async () => {
+    const store = createMemoryChannelConversationStore();
+    const { app, calls, geocode } = testApp(store);
+    const save = vi.spyOn(store, 'save');
+
+    const wrong = await postIncoming(app, { from: SENDER, to: '99999', text: 'AMBULANCE' });
+    const missing = await request(app).post(SMS_URL).type('form').send({ from: SENDER, text: 'AMBULANCE' });
+
+    expect(wrong.status).toBe(200);
+    expect(missing.status).toBe(200);
+    expect(save).not.toHaveBeenCalled();
+    expect(geocode).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
   it('normalizes lowercase ambulance and persists the full flow through a simulated restart', async () => {
@@ -118,13 +192,15 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     // A new app instance uses the same durable store just as a restarted Render process would.
     const restarted = testApp(store);
     await postIncoming(restarted.app, { from: SENDER, text: 'DEMO SANDTON' });
-    await expectReply('Is the patient conscious? Reply YES or NO to 45854.', 2);
+    await expectReply('We found: DEMO SANDTON, Johannesburg. Send YES to 45854 to confirm, or NO to enter the address again.', 2);
     await postIncoming(restarted.app, { from: SENDER, text: 'YES' });
-    await expectReply('Briefly describe the emergency. Reply CANCEL to stop or RESTART to begin again.', 3);
+    await expectReply('Is the patient conscious? Reply YES or NO to 45854.', 3);
+    await postIncoming(restarted.app, { from: SENDER, text: 'YES' });
+    await expectReply('Briefly describe the emergency. Reply CANCEL to stop or RESTART to begin again.', 4);
     await postIncoming(restarted.app, { from: SENDER, text: 'chest pain' });
-    await expectReply('Confirm this ambulance demo request? Reply YES to submit or NO to cancel.', 4);
+    await expectReply('Confirm this ambulance demo request? Reply YES to submit or NO to cancel.', 5);
     await postIncoming(restarted.app, { from: SENDER, text: 'YES' });
-    await expectReply('NovaCare demo request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 5);
+    await expectReply('NovaCare demo request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 6);
 
     expect(restarted.calls).toEqual([expect.objectContaining({
       channel: 'SMS',
@@ -144,9 +220,10 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     await expectReply(SMS_REPLY_HOME, 1);
     await postIncoming(app, { from: SENDER, text: 'EITHER' });
     await postIncoming(app, { from: SENDER, text: 'DEMO SANDTON' });
+    await postIncoming(app, { from: SENDER, text: 'YES' });
     await postIncoming(app, { from: SENDER, text: 'routine check up' });
     await postIncoming(app, { from: SENDER, text: 'YES' });
-    await expectReply('NovaCare demo request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 5);
+    await expectReply('NovaCare demo request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 6);
 
     expect(calls).toEqual([expect.objectContaining({
       channel: 'SMS',
@@ -159,18 +236,31 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     const { app } = testApp();
     await postIncoming(app, { from: SENDER, text: 'AMBULANCE' });
     await postIncoming(app, { from: SENDER, text: 'DEMO SANDTON' });
+    await postIncoming(app, { from: SENDER, text: 'YES' });
     await postIncoming(app, { from: SENDER, text: 'NO' });
     await postIncoming(app, { from: SENDER, text: 'road accident' });
     await postIncoming(app, { from: SENDER, text: 'YES' });
     await postIncoming(app, { from: SENDER, text: 'STATUS NC-2026-000001' });
-    await expectReply('NC-2026-000001 is currently notified.', 6);
+    await expectReply('NC-2026-000001 is currently notified.', 7);
     await postIncoming(app, { from: '+27820000000', text: 'STATUS NC-2026-000001' });
-    await vi.waitFor(() => expect(sendSmsMock).toHaveBeenCalledTimes(7));
-    expect(sendSmsMock.mock.calls[6]).toEqual(['+27820000000', 'NovaCare could not find that request reference for this number.']);
+    await vi.waitFor(() => expect(sendSmsMock).toHaveBeenCalledTimes(8));
+    expect(sendSmsMock.mock.calls[7]).toEqual(['+27820000000', 'NovaCare could not find that request reference for this number.']);
     await postIncoming(app, { from: SENDER, text: 'CANCEL' });
-    await expectReply('NovaCare demo request NC-2026-000001 cancelled.', 8);
+    await expectReply('NovaCare demo request NC-2026-000001 cancelled.', 9);
     await postIncoming(app, { from: SENDER, text: 'RESTART' });
-    await expectReply('NovaCare conversation restarted. Reply AMBULANCE or HOME to 45854.', 9);
+    await expectReply('NovaCare conversation restarted. Reply AMBULANCE or HOME to 45854.', 10);
+  });
+
+  it('reports dispatcher location review instead of an operational dispatch status', async () => {
+    const { app, requests } = testApp();
+    const reference = 'NC-2026-000777';
+    requests.set(reference, serviceRow({
+      channel: 'SMS', type: 'AMBULANCE', requesterPhone: SENDER, latitude: null, longitude: null,
+      locationState: 'DISPATCHER_LOCATION_REVIEW', locationSource: 'UNRESOLVED', triage: {},
+    }, reference, 'CREATED'));
+
+    await postIncoming(app, { from: SENDER, text: `STATUS ${reference}` });
+    await expectReply(`${reference} is currently waiting for location review.`, 1);
   });
 
   it('deduplicates a provider message ID and keeps optional callback fields safe', async () => {

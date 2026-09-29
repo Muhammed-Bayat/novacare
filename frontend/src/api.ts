@@ -361,6 +361,19 @@ export interface ServiceRequestRow {
   completed_at: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
+  location_state?: 'LEGACY' | 'ADDRESS_ENTERED' | 'GEOCODED_PENDING_CONFIRMATION' | 'LOCATION_CONFIRMED' | 'LOCATION_UNRESOLVED' | 'DISPATCHER_LOCATION_REVIEW';
+  location_confirmation_required?: boolean;
+  location_source?: 'GPS' | 'GEOCODED_ADDRESS' | 'MANUAL_DISPATCHER' | 'UNRESOLVED' | 'LEGACY';
+  geocoded_formatted_address?: string | null;
+  geocoding_place_id?: string | null;
+  geocoding_confidence?: number | null;
+}
+
+export interface LocationCandidate {
+  id: string;
+  formattedAddress: string;
+  suburb?: string;
+  city?: string;
 }
 
 export interface DispatchMetrics {

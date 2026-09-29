@@ -104,6 +104,16 @@ export interface ServiceRequestTriage {
   preferredResponder?: 'DOCTOR' | 'NURSE' | 'EITHER';
 }
 
+export type LocationState =
+  | 'LEGACY'
+  | 'ADDRESS_ENTERED'
+  | 'GEOCODED_PENDING_CONFIRMATION'
+  | 'LOCATION_CONFIRMED'
+  | 'LOCATION_UNRESOLVED'
+  | 'DISPATCHER_LOCATION_REVIEW';
+
+export type LocationSource = 'GPS' | 'GEOCODED_ADDRESS' | 'MANUAL_DISPATCHER' | 'UNRESOLVED' | 'LEGACY';
+
 export interface ServiceRequestRow {
   id: string;
   reference_code: string;
@@ -118,6 +128,14 @@ export interface ServiceRequestRow {
   address: string | null;
   latitude: number | null;
   longitude: number | null;
+  location_state?: LocationState;
+  location_confirmation_required?: boolean;
+  location_confirmed_at?: string | null;
+  location_source?: LocationSource | null;
+  geocoded_formatted_address?: string | null;
+  geocoding_place_id?: string | null;
+  geocoding_confidence?: number | null;
+  idempotency_key?: string | null;
   search_radius_km: number | null;
   facilities_notified: number | null;
   escalation_flag: boolean;

@@ -1,5 +1,5 @@
 import cors from 'cors';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import helmet from 'helmet';
 import { requireAuth } from './auth.js';
@@ -12,6 +12,9 @@ import { buildInvitationUrl, sendInvitationEmail } from './email.js';
 import { createGeocodingController } from './geocoding/geocoding.controller.js';
 import { GeoapifyGeocodingProvider } from './geocoding/geoapify-geocoding.provider.js';
 import { createGeocodingService, type GeocodingService } from './geocoding/geocoding.service.js';
+import { createPostgresLocationConfirmationStore, type LocationConfirmationStore } from './location/location-confirmation.store.js';
+import { createLocationResolutionService, type LocationResolutionService } from './location/location-resolution.service.js';
+import { createLocationsController } from './location/locations.controller.js';
 import { createUssdCallbackHandler } from './ussd.controller.js';
 import { createSmsIncomingHandler } from './sms.controller.js';
 import { createDispatchController } from './dispatch/dispatch.controller.js';
@@ -411,6 +414,25 @@ export interface CreateAppOptions {
   channelStore?: ChannelConversationStore;
   channelContext?: ChannelRequestContext;
   geocodingService?: GeocodingService;
+  locationConfirmationStore?: LocationConfirmationStore;
+  locationResolutionService?: LocationResolutionService;
+  channelCallbacks?: {
+    secret: string;
+    ussdServiceCode: string;
+  };
+}
+
+function callbackSecretGuard(secret: string): express.RequestHandler {
+  const expected = createHash('sha256').update(secret).digest();
+  return (req, res, next) => {
+    const supplied = typeof req.params.callbackSecret === 'string' ? req.params.callbackSecret : '';
+    const actual = createHash('sha256').update(supplied).digest();
+    if (!timingSafeEqual(expected, actual)) {
+      res.status(403).json({ error: { code: 'CALLBACK_FORBIDDEN', message: 'Callback access is forbidden.' } });
+      return;
+    }
+    next();
+  };
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -422,6 +444,8 @@ export function createApp(options: CreateAppOptions = {}) {
   const channelStore = options.channelStore ?? createPostgresChannelConversationStore();
   const channelContext = options.channelContext ?? createChannelRequestContext();
   const geocodingService = options.geocodingService ?? createGeocodingService(new GeoapifyGeocodingProvider());
+  const locationConfirmationStore = options.locationConfirmationStore ?? createPostgresLocationConfirmationStore();
+  const locationResolution = options.locationResolutionService ?? createLocationResolutionService(geocodingService, locationConfirmationStore);
 
   app.use(helmet());
   app.use(cors({
@@ -433,7 +457,13 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(express.json());
   app.use((req, res, next) => {
     res.on('finish', () => {
-      if (req.path.startsWith('/api/')) console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode}`);
+      if (!req.path.startsWith('/api/')) return;
+      const callbackPath = req.path.startsWith('/api/v1/channels/ussd/')
+        ? '/api/v1/channels/ussd/:callbackSecret'
+        : req.path.startsWith('/api/v1/channels/sms/incoming/')
+          ? '/api/v1/channels/sms/incoming/:callbackSecret'
+          : req.originalUrl;
+      console.log(`${req.method} ${callbackPath} -> ${res.statusCode}`);
     });
     next();
   });
@@ -2100,24 +2130,29 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
   const geocoding = createGeocodingController(geocodingService);
   app.post('/api/v1/geocoding/test', requireAuth, requireRole('administrator'), geocoding.test);
 
-  // Public USSD channel for Africa's Talking sandbox callbacks. Unauthenticated by design
-  // (Africa's Talking calls it externally); add callback validation/security before production.
-  app.post('/api/v1/channels/ussd', express.urlencoded({ extended: false }), createUssdCallbackHandler({
-    dispatch: channelDispatch,
-    store: channelStore,
-    context: channelContext,
-  }));
+  const locations = createLocationsController(locationResolution);
+  app.post('/api/v1/locations/resolve', requireAuth, locations.resolve);
+  app.post('/api/v1/locations/confirm', requireAuth, locations.confirm);
 
-  // Public inbound SMS channel for Africa's Talking sandbox two-way SMS. Unauthenticated by
-  // design (Africa's Talking calls it externally); add callback validation/security before production.
-  app.post('/api/v1/channels/sms/incoming', express.urlencoded({ extended: false }), createSmsIncomingHandler({
-    dispatch: channelDispatch,
-    store: channelStore,
-    context: channelContext,
-  }));
+  if (options.channelCallbacks) {
+    const callbackGuard = callbackSecretGuard(options.channelCallbacks.secret);
+    app.post('/api/v1/channels/ussd/:callbackSecret', callbackGuard, express.urlencoded({ extended: false }), createUssdCallbackHandler({
+      dispatch: channelDispatch,
+      store: channelStore,
+      context: channelContext,
+      location: locationResolution,
+      expectedServiceCode: options.channelCallbacks.ussdServiceCode,
+    }));
+    app.post('/api/v1/channels/sms/incoming/:callbackSecret', callbackGuard, express.urlencoded({ extended: false }), createSmsIncomingHandler({
+      dispatch: channelDispatch,
+      store: channelStore,
+      context: channelContext,
+      location: locationResolution,
+    }));
+  }
 
   // Dispatch Core: shared service-request domain (all simulated — demo prototype).
-  const dispatch = createDispatchController(dispatchService, dispatchHub);
+  const dispatch = createDispatchController(dispatchService, dispatchHub, locationResolution);
 
   app.post('/api/v1/service-requests', requireAuth, dispatch.createRequest);
   app.get('/api/v1/service-requests', requireAuth, dispatch.listMine);
@@ -2129,6 +2164,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
   app.post('/api/v1/dispatcher/service-requests/:id/acknowledge', requireAuth, requireRole('dispatcher'), dispatch.acknowledge);
   app.post('/api/v1/dispatcher/service-requests/:id/respond', requireAuth, requireRole('dispatcher'), dispatch.respond);
   app.post('/api/v1/dispatcher/service-requests/:id/assign-facility', requireAuth, requireRole('dispatcher'), dispatch.assignFacility);
+  app.post('/api/v1/dispatcher/service-requests/:id/location', requireAuth, requireRole('dispatcher'), dispatch.resolveLocation);
   app.post('/api/v1/dispatcher/service-requests/:id/assign-responder', requireAuth, requireRole('dispatcher'), dispatch.assignResponder);
   app.get('/api/v1/dispatcher/available-responders', requireAuth, requireRole('dispatcher'), dispatch.availableResponders);
   app.patch('/api/v1/dispatcher/service-requests/:id/status', requireAuth, requireRole('dispatcher'), dispatch.updateStatus);

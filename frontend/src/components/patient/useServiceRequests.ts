@@ -1,6 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useEffect, useState } from 'react';
-import { authenticatedRequest, type ServiceRequestRow } from '../../api.ts';
+import { authenticatedRequest, type LocationCandidate, type ServiceRequestRow } from '../../api.ts';
 
 export interface ServiceRequestInput {
   type: 'AMBULANCE' | 'HOME_VISIT';
@@ -9,6 +9,13 @@ export interface ServiceRequestInput {
   address?: string;
   latitude?: number;
   longitude?: number;
+  locationCandidateId?: string;
+  locationReview?: boolean;
+}
+
+export interface LocationResolution {
+  status: 'confirmation_required' | 'unresolved';
+  candidates: LocationCandidate[];
 }
 
 export interface ServiceRequestData {
@@ -17,6 +24,8 @@ export interface ServiceRequestData {
   error: string | undefined;
   refresh: () => Promise<void>;
   createServiceRequest: (input: ServiceRequestInput) => Promise<ServiceRequestRow>;
+  resolveLocation: (address: string) => Promise<LocationResolution>;
+  confirmLocation: (candidateId: string) => Promise<LocationCandidate>;
 }
 
 export function useServiceRequests(): ServiceRequestData {
@@ -56,5 +65,16 @@ export function useServiceRequests(): ServiceRequestData {
     return result.data;
   }, [getAccessTokenSilently, refresh]);
 
-  return { requests, loading, error, refresh, createServiceRequest };
+  const resolveLocation = useCallback(async (address: string) => {
+    const token = await getAccessTokenSilently();
+    return authenticatedRequest<LocationResolution>('/api/v1/locations/resolve', token, { method: 'POST', body: { address } });
+  }, [getAccessTokenSilently]);
+
+  const confirmLocation = useCallback(async (candidateId: string) => {
+    const token = await getAccessTokenSilently();
+    const result = await authenticatedRequest<{ status: 'confirmed'; candidate: LocationCandidate }>('/api/v1/locations/confirm', token, { method: 'POST', body: { candidateId } });
+    return result.candidate;
+  }, [getAccessTokenSilently]);
+
+  return { requests, loading, error, refresh, createServiceRequest, resolveLocation, confirmLocation };
 }

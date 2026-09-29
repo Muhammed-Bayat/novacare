@@ -20,6 +20,7 @@ import {
 } from './domain.js';
 import { adaptWebRequest } from './channel-adapters.js';
 import type { DispatchEventHub } from './events.js';
+import { LocationConfirmationError, type LocationResolutionService } from '../location/location-resolution.service.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -88,7 +89,7 @@ function canSeeRequest(membership: Membership | null, row: ServiceRequestRow, us
   }).allowed;
 }
 
-export function createDispatchController(service: DispatchService, hub: DispatchEventHub) {
+export function createDispatchController(service: DispatchService, hub: DispatchEventHub, locationResolution: LocationResolutionService) {
   const createRequest: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const decision = decideResourceAccess({
@@ -105,10 +106,48 @@ export function createDispatchController(service: DispatchService, hub: Dispatch
         res.status(403).json({ error: { code: 'USER_NOT_SYNCHRONIZED', message: 'Call /api/v1/me first' } });
         return;
       }
-      const input = adaptWebRequest(req.body as Record<string, unknown>, { userId });
+      const body = req.body as Record<string, unknown>;
+      const address = typeof body.address === 'string' ? body.address.trim() : '';
+      const hasCandidate = typeof body.locationCandidateId === 'string' && body.locationCandidateId.trim().length > 0;
+      const hasCoordinates = body.latitude != null || body.longitude != null;
+      if (address && !hasCandidate && !hasCoordinates && body.locationReview !== true) {
+        res.status(409).json({
+          error: {
+            code: 'LOCATION_CONFIRMATION_REQUIRED',
+            message: 'Confirm an address match before sending this request, or explicitly send the address for dispatcher location review.',
+          },
+        });
+        return;
+      }
+      const input = adaptWebRequest(body, { userId });
+      let confirmedCandidateId: string | undefined;
+      if (input.locationCandidateId) {
+        const candidate = await locationResolution.getConfirmed({
+          channel: 'WEB',
+          ownerKey: req.auth!.subject,
+          candidateId: input.locationCandidateId,
+        });
+        confirmedCandidateId = candidate.id;
+        Object.assign(input, {
+          address: candidate.enteredAddress,
+          latitude: candidate.latitude,
+          longitude: candidate.longitude,
+          locationState: 'LOCATION_CONFIRMED' as const,
+          locationSource: 'GEOCODED_ADDRESS' as const,
+          geocodedFormattedAddress: candidate.formattedAddress,
+          geocodingPlaceId: candidate.placeId,
+          geocodingConfidence: candidate.confidence,
+          idempotencyKey: `location:${candidate.id}`,
+        });
+      }
       const row = await service.createServiceRequest(input);
+      if (confirmedCandidateId) await locationResolution.linkRequest(confirmedCandidateId, row.id);
       res.status(201).json({ data: row });
     } catch (error) {
+      if (error instanceof LocationConfirmationError) {
+        res.status(error.code === 'EXPIRED_CANDIDATE' ? 410 : 400).json({ error: { code: error.code, message: error.message } });
+        return;
+      }
       if (mapError(error, res)) return;
       next(error);
     }
@@ -285,6 +324,22 @@ export function createDispatchController(service: DispatchService, hub: Dispatch
     }
   };
 
+  const resolveLocation: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = req.body as Record<string, unknown>;
+      const { address, latitude, longitude } = body;
+      if (typeof address !== 'string' || typeof latitude !== 'number' || typeof longitude !== 'number') {
+        throw new DispatchValidationError('address, latitude and longitude are required for manual location resolution.');
+      }
+      const userId = await requiredActorUserId(req.auth!.subject);
+      const row = await service.resolveLocationForDispatcher(requestId(req.params.id), { address, latitude, longitude }, userId);
+      res.json({ data: row });
+    } catch (error) {
+      if (mapError(error, res)) return;
+      next(error);
+    }
+  };
+
   return {
     createRequest,
     listMine,
@@ -298,5 +353,6 @@ export function createDispatchController(service: DispatchService, hub: Dispatch
     assignResponder,
     availableResponders,
     updateStatus,
+    resolveLocation,
   };
 }

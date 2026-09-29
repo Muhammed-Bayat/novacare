@@ -10,7 +10,7 @@ import {
 } from './domain.js';
 
 describe('service request statuses', () => {
-  it('defines the full 13-status controlled workflow', () => {
+  it('keeps location review separate from the controlled dispatch workflow', () => {
     expect(SERVICE_STATUSES).toEqual([
       'CREATED',
       'SEARCHING',
@@ -77,6 +77,7 @@ describe('controlled workflow transitions', () => {
     expect(canTransition('CREATED', 'NOTIFIED')).toBe(false);
     expect(canTransition('ASSIGNED', 'EN_ROUTE')).toBe(false);
     expect(canTransition('ARRIVED', 'COMPLETED')).toBe(false);
+    expect(canTransition('CREATED', 'SEARCHING')).toBe(true);
   });
 
   it('marks COMPLETED, CANCELLED and NO_PROVIDER_FOUND as terminal', () => {
