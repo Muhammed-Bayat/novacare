@@ -9,6 +9,9 @@ import { createPostgresChannelConversationStore, type ChannelConversationStore }
 import { createChannelRequestContext, type ChannelRequestContext } from './channels/request-context.service.js';
 import { getPool } from './db.js';
 import { buildInvitationUrl, sendInvitationEmail } from './email.js';
+import { createGeocodingController } from './geocoding/geocoding.controller.js';
+import { GeoapifyGeocodingProvider } from './geocoding/geoapify-geocoding.provider.js';
+import { createGeocodingService, type GeocodingService } from './geocoding/geocoding.service.js';
 import { createUssdCallbackHandler } from './ussd.controller.js';
 import { createSmsIncomingHandler } from './sms.controller.js';
 import { createDispatchController } from './dispatch/dispatch.controller.js';
@@ -407,6 +410,7 @@ export interface CreateAppOptions {
   channelDispatch?: ChannelDispatchService;
   channelStore?: ChannelConversationStore;
   channelContext?: ChannelRequestContext;
+  geocodingService?: GeocodingService;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -417,6 +421,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const channelDispatch = options.channelDispatch ?? dispatchService;
   const channelStore = options.channelStore ?? createPostgresChannelConversationStore();
   const channelContext = options.channelContext ?? createChannelRequestContext();
+  const geocodingService = options.geocodingService ?? createGeocodingService(new GeoapifyGeocodingProvider());
 
   app.use(helmet());
   app.use(cors({
@@ -2091,6 +2096,9 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
       next(error);
     }
   });
+
+  const geocoding = createGeocodingController(geocodingService);
+  app.post('/api/v1/geocoding/test', requireAuth, requireRole('administrator'), geocoding.test);
 
   // Public USSD channel for Africa's Talking sandbox callbacks. Unauthenticated by design
   // (Africa's Talking calls it externally); add callback validation/security before production.
