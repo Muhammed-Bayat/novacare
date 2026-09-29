@@ -15,6 +15,10 @@ const USSD_URL = `/api/v1/channels/ussd/${CALLBACK_SECRET}`;
 const LEGACY_USSD_URL = '/api/v1/channels/ussd';
 const SESSION = { sessionId: 'AT-session-001', serviceCode: '*384*28149#', phoneNumber: '+27821234567' };
 
+function expectPublicText(text: string): void {
+  expect(text).not.toMatch(/demo|simulated|simulation/i);
+}
+
 function serviceRow(input: CreateServiceRequestInput, reference: string, status: ServiceStatus = 'NOTIFIED'): ServiceRequestRow {
   return {
     id: `request-${reference}`,
@@ -136,8 +140,8 @@ describe('USSD channel transport and shared dispatch workflow', () => {
     const get = vi.spyOn(store, 'get');
     const save = vi.spyOn(store, 'save');
 
-    const missing = await request(app).post(LEGACY_USSD_URL).type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON' });
-    const incorrect = await request(app).post('/api/v1/channels/ussd/wrong-secret').type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON' });
+    const missing = await request(app).post(LEGACY_USSD_URL).type('form').send({ ...SESSION, text: '1*1*Sandton' });
+    const incorrect = await request(app).post('/api/v1/channels/ussd/wrong-secret').type('form').send({ ...SESSION, text: '1*1*Sandton' });
 
     expect(missing.status).toBe(404);
     expect(incorrect.status).toBe(403);
@@ -150,7 +154,7 @@ describe('USSD channel transport and shared dispatch workflow', () => {
   it('rejects an unexpected USSD service code before state, geocoding, or dispatch work', async () => {
     const { app, calls, store, geocode } = testApp();
     const save = vi.spyOn(store, 'save');
-    const response = await request(app).post(USSD_URL).type('form').send({ ...SESSION, serviceCode: '*999#', text: '1*1*DEMO SANDTON' });
+    const response = await request(app).post(USSD_URL).type('form').send({ ...SESSION, serviceCode: '*999#', text: '1*1*Sandton' });
 
     expect(response.status).toBe(200);
     expect(response.text).toBe('END NovaCare could not process this request. Please try again.');
@@ -162,38 +166,41 @@ describe('USSD channel transport and shared dispatch workflow', () => {
   it('creates an ambulance request through the shared service and returns its real reference', async () => {
     const { app, calls } = testApp();
     const prompt = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1' });
-    const locations = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON' });
-    const reason = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON*1' });
-    const response = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON*1*chest pain*1' });
+    const locations = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*Sandton' });
+    const reason = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*Sandton*1' });
+    const response = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*Sandton*1*chest pain*1' });
 
     expect(prompt.text).toMatch(/^CON Enter the address/);
     expect(locations.text).toMatch(/^CON We found:/);
     expect(reason.text).toBe('CON Briefly describe the emergency.');
     expect(response.status).toBe(200);
-    expect(response.text).toBe('END NovaCare demo request received.\nReference: NC-2026-000001');
+    expect(response.text).toBe('END NovaCare request received.\nReference: NC-2026-000001');
+    expectPublicText(response.text);
     expect(calls).toEqual([expect.objectContaining({
       channel: 'USSD',
       type: 'AMBULANCE',
       requesterUserId: 'patient-1',
       requesterPhone: SESSION.phoneNumber,
-      address: 'DEMO SANDTON',
+      address: 'Sandton',
       latitude: -26.1076,
       longitude: 28.0567,
       triage: { conscious: 'YES' },
     })]);
 
-    const replay = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON*1*chest pain*1' });
+    const replay = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*Sandton*1*chest pain*1' });
     expect(replay.text).toContain('NC-2026-000001');
+    expectPublicText(replay.text);
     expect(calls).toHaveLength(1);
   });
 
   it('creates a home-visit request through the shared service', async () => {
     const { app, calls } = testApp();
-    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '2*3*DEMO SANDTON' });
-    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '2*3*DEMO SANDTON*1' });
-    const response = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '2*3*DEMO SANDTON*1*check up*1' });
+    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '2*3*Sandton' });
+    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '2*3*Sandton*1' });
+    const response = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '2*3*Sandton*1*check up*1' });
 
     expect(response.text).toContain('Reference: NC-2026-000001');
+    expectPublicText(response.text);
     expect(calls[0]).toEqual(expect.objectContaining({
       channel: 'USSD',
       type: 'HOME_VISIT',
@@ -203,14 +210,15 @@ describe('USSD channel transport and shared dispatch workflow', () => {
 
   it('looks up only the caller-owned real request reference', async () => {
     const { app } = testApp();
-    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*2*DEMO SANDTON' });
-    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*2*DEMO SANDTON*1' });
-    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*2*DEMO SANDTON*1*road accident*1' });
+    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*2*Sandton' });
+    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*2*Sandton*1' });
+    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*2*Sandton*1*road accident*1' });
 
     const found = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '3*NC-2026-000001' });
     const hidden = await request(app).post(USSD_URL).type('form').send({ ...SESSION, phoneNumber: '+27820000000', text: '3*NC-2026-000001' });
 
     expect(found.text).toBe('END NC-2026-000001 is currently notified.');
+    expectPublicText(found.text);
     expect(hidden.text).toBe('END We could not find that request reference for this number.');
   });
 
@@ -229,8 +237,8 @@ describe('USSD channel transport and shared dispatch workflow', () => {
   it('ends invalid selections safely and keeps malformed callbacks unauthenticated', async () => {
     const { app } = testApp();
     const invalid = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*9' });
-    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON' });
-    const enterAgain = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*DEMO SANDTON*2' });
+    await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*Sandton' });
+    const enterAgain = await request(app).post(USSD_URL).type('form').send({ ...SESSION, text: '1*1*Sandton*2' });
     const missing = await request(app).post(USSD_URL).type('form').send({ sessionId: SESSION.sessionId, text: '1' });
     const nonForm = await request(app)
       .post(USSD_URL)

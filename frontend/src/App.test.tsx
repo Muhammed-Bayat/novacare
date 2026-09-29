@@ -232,14 +232,14 @@ const dispatcherRequestRow = {
 };
 
 const dispatcherNotifications = [
-  { id: 'n1', request_id: 'sr1', facility_id: 'h1', distance_km: 1.2, notified_at: '2026-09-27T10:01:00.000Z', acknowledged_at: null, response_status: 'PENDING', responded_at: null, facility_name: 'Simulated Facility Near' },
-  { id: 'n2', request_id: 'sr1', facility_id: 'h2', distance_km: 3.4, notified_at: '2026-09-27T10:01:00.000Z', acknowledged_at: null, response_status: 'PENDING', responded_at: null, facility_name: 'Simulated Facility Mid' },
+  { id: 'n1', request_id: 'sr1', facility_id: 'h1', distance_km: 1.2, notified_at: '2026-09-27T10:01:00.000Z', acknowledged_at: null, response_status: 'PENDING', responded_at: null, facility_name: 'Sample Facility Near' },
+  { id: 'n2', request_id: 'sr1', facility_id: 'h2', distance_km: 3.4, notified_at: '2026-09-27T10:01:00.000Z', acknowledged_at: null, response_status: 'PENDING', responded_at: null, facility_name: 'Sample Facility Mid' },
 ];
 
 const dispatcherHistory = [
   { id: 'hh1', from_status: null, to_status: 'CREATED', actor_user_id: null, note: null, created_at: '2026-09-27T10:00:00.000Z' },
   { id: 'hh2', from_status: 'CREATED', to_status: 'SEARCHING', actor_user_id: null, note: null, created_at: '2026-09-27T10:00:30.000Z' },
-  { id: 'hh3', from_status: 'SEARCHING', to_status: 'NOTIFIED', actor_user_id: null, note: '3 simulated facilities notified', created_at: '2026-09-27T10:01:00.000Z' },
+  { id: 'hh3', from_status: 'SEARCHING', to_status: 'NOTIFIED', actor_user_id: null, note: '3 facilities notified', created_at: '2026-09-27T10:01:00.000Z' },
 ];
 
 const patientServiceRequestRow = {
@@ -581,7 +581,7 @@ describe('App', () => {
   it('shows a sign-in prompt when opening emergency requests anonymously', async () => {
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
-    expect(screen.getByRole('heading', { name: 'Sign in to send a test request' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sign in to send a request' })).toBeInTheDocument();
   });
 
   it('lets patients send an ambulance test request with manual address', async () => {
@@ -590,20 +590,20 @@ describe('App', () => {
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
     expect(await screen.findByRole('heading', { name: 'Emergency & home-visit requests' })).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Development prototype — not a real emergency service.');
+    expect(screen.getByRole('alert')).toHaveTextContent('For testing only. No real emergency services are contacted.');
     expect(screen.getByText('If this is a real emergency, call 10177 or 112 now.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Request an Ambulance' }));
     await userEvent.selectOptions(screen.getByLabelText('What happened?'), 'chest-pain');
     await userEvent.click(screen.getByRole('button', { name: 'Yes' }));
     await userEvent.type(screen.getByLabelText('Or type your address'), '7th Avenue, Parktown, Johannesburg');
-    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance request' }));
     expect(await screen.findByText('Choose the matching location below to confirm it before sending.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Use this location/ }));
     expect(await screen.findByText('Confirmed location')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance request' }));
 
-    expect(await screen.findByText('NovaCare received your test request successfully.')).toBeInTheDocument();
+    expect(await screen.findByText('NovaCare received your request.')).toBeInTheDocument();
     expect(screen.getByText(/NC-2026-000301/)).toBeInTheDocument();
     const post = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/service-requests') && (options as RequestInit | undefined)?.method === 'POST');
     expect(post).toBeDefined();
@@ -632,7 +632,7 @@ describe('App', () => {
     await userEvent.selectOptions(screen.getByLabelText('What happened?'), 'chest-pain');
     await userEvent.click(screen.getByRole('button', { name: 'Yes' }));
     await userEvent.type(screen.getByLabelText('Or type your address'), 'Unconfirmed address');
-    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance request' }));
     expect(await screen.findByText("We couldn't confirm this address.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Send for location review' }));
 
@@ -641,22 +641,22 @@ describe('App', () => {
       address: 'Unconfirmed address',
       locationReview: true,
     });
-    expect(await screen.findByText('NovaCare received your test request successfully.')).toBeInTheDocument();
+    expect(await screen.findByText('NovaCare received your request.')).toBeInTheDocument();
   });
 
-  it('requires triage answers before sending an ambulance test request', async () => {
+  it('requires triage answers before sending an ambulance request', async () => {
     auth.state.isAuthenticated = true;
     stubServiceRequests([], patientServiceRequestRow);
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
     await screen.findByRole('heading', { name: 'Emergency & home-visit requests' });
     await userEvent.click(screen.getByRole('button', { name: 'Request an Ambulance' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance test request' }));
-    expect(screen.getByText('Choose what happened so the demo dispatcher sees the right category.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Send ambulance request' }));
+    expect(screen.getByText('Choose what happened so the dispatcher sees the right category.')).toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.some(([url, options]) => String(url).includes('/api/v1/service-requests') && (options as RequestInit | undefined)?.method === 'POST')).toBe(false);
   });
 
-  it('lets patients send a home-visit test request using browser location', async () => {
+  it('lets patients send a home-visit request using browser location', async () => {
     auth.state.isAuthenticated = true;
     stubServiceRequests([], patientHomeVisitRow);
     Object.defineProperty(window.navigator, 'geolocation', {
@@ -674,9 +674,9 @@ describe('App', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Nurse' }));
       await userEvent.click(screen.getByRole('button', { name: 'Use my current location' }));
       expect(await screen.findByText(/Location captured/)).toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Send home-visit test request' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Send home-visit request' }));
 
-      expect(await screen.findByText('NovaCare received your test request successfully.')).toBeInTheDocument();
+      expect(await screen.findByText('NovaCare received your request.')).toBeInTheDocument();
       const post = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/service-requests') && (options as RequestInit | undefined)?.method === 'POST');
       expect(post).toBeDefined();
       expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
@@ -691,16 +691,17 @@ describe('App', () => {
     }
   });
 
-  it('tracks the simulated status of previous test requests', async () => {
+  it('uses operational wording for previous request statuses', async () => {
     auth.state.isAuthenticated = true;
     stubServiceRequests([patientServiceRequestRow, patientHomeVisitRow]);
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
     expect(await screen.findByText('NC-2026-000301')).toBeInTheDocument();
-    expect(screen.getByText('Notified simulated facilities')).toBeInTheDocument();
-    expect(screen.getByText('Simulated responder assigned')).toBeInTheDocument();
+    expect(screen.getByText('Notified')).toBeInTheDocument();
+    expect(screen.getByText('Assigned')).toBeInTheDocument();
     expect(screen.getByText(/Reason: Chest pain · conscious: yes/)).toBeInTheDocument();
     expect(screen.getByText(/Reason: Wound care · prefers nurse/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/demo|simulated|simulation/i);
   });
 
   it('shows a staff sign-in prompt when opening the staff portal anonymously', () => {
@@ -792,11 +793,11 @@ describe('App', () => {
     });
     renderAt('/dispatcher');
     await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
-    expect(await screen.findByText('Read-only administrator view. Dispatcher access is required to change a simulated request.')).toBeInTheDocument();
+    expect(await screen.findByText('Read-only administrator view. Dispatcher access is required to change a request.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel request' })).not.toBeInTheDocument();
   });
 
-  it('renders the dispatcher console with live queue, metrics and the simulation banner', async () => {
+  it('renders the dispatcher console with the testing-only safety notice', async () => {
     auth.state.isAuthenticated = true;
     stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
       live: [dispatcherRequestRow],
@@ -809,10 +810,11 @@ describe('App', () => {
     expect(screen.getByText('Home visits')).toBeInTheDocument();
     expect(screen.getByText('Awaiting assignment')).toBeInTheDocument();
     expect(screen.getByText('Dispatched')).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Simulation environment.');
+    expect(screen.getByRole('alert')).toHaveTextContent('For testing only. No real emergency services are contacted.');
+    expect(document.body.textContent).not.toMatch(/demo|simulated|simulation/i);
   });
 
-  it('lets the dispatcher acknowledge a simulated facility from the detail view', async () => {
+  it('lets the dispatcher acknowledge a facility from the detail view', async () => {
     auth.state.isAuthenticated = true;
     stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
       live: [dispatcherRequestRow],
@@ -820,7 +822,7 @@ describe('App', () => {
     });
     renderAt('/dispatcher');
     await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
-    expect(await screen.findByText('Notified facilities (simulated)')).toBeInTheDocument();
+    expect(await screen.findByText('Notified facilities')).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole('button', { name: 'Acknowledge' })[0]);
 
     const respondPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/dispatcher/service-requests/sr1/respond') && (options as RequestInit | undefined)?.method === 'POST');
@@ -828,12 +830,12 @@ describe('App', () => {
     expect(JSON.parse(String((respondPost?.[1] as RequestInit).body))).toMatchObject({ facilityId: 'h1', response: 'ACKNOWLEDGED' });
   });
 
-  it('lets the dispatcher assign a simulated response unit to an assigned ambulance request', async () => {
+  it('lets the dispatcher assign a response unit to an assigned ambulance request', async () => {
     auth.state.isAuthenticated = true;
     const assignedRow = { ...dispatcherRequestRow, status: 'ASSIGNED', assigned_facility_id: 'h1' };
     stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
       live: [assignedRow],
-      units: [{ id: 'u1', callsign: 'A01', unit_type: 'AMBULANCE', status: 'AVAILABLE', hospital_id: 'h1', hospital_name: 'Simulated Facility Near' }],
+      units: [{ id: 'u1', callsign: 'A01', unit_type: 'AMBULANCE', status: 'AVAILABLE', hospital_id: 'h1', hospital_name: 'Sample Facility Near' }],
       detail: {
         ...assignedRow,
         history: [...dispatcherHistory, { id: 'hh4', from_status: 'ACCEPTED', to_status: 'ASSIGNED', actor_user_id: 'user-1', note: 'Facility assigned by dispatcher', created_at: '2026-09-27T10:05:00.000Z' }],

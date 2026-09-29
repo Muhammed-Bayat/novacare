@@ -440,7 +440,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
   const assignmentOptions = detail.type === 'AMBULANCE'
     ? responders.units
         .filter((unit) => unit.hospital_id === assignedFacilityId)
-        .map((unit) => ({ value: `unit:${unit.id}`, label: `${unit.callsign} — ${unit.hospital_name} (simulated unit)` }))
+        .map((unit) => ({ value: `unit:${unit.id}`, label: `${unit.callsign} — ${unit.hospital_name}` }))
     : responders.responders
         .filter((responder) => responder.hospital_id === assignedFacilityId && responder.home_visit_eligible && (preferredResponder === 'EITHER' || !preferredResponder || responder.role === preferredResponder.toLowerCase()))
         .map((responder) => ({ value: `responder:${responder.id}`, label: `${responder.display_name ?? responder.email ?? 'Responder'} — ${responder.hospital_name}` }));
@@ -472,15 +472,13 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
         </div>
       </header>
 
-      <p className="nv-dispatch-demo-note">Development request — facilities, responders and units below are simulated demo data.</p>
-
       {detail.address || detail.latitude != null ? (
         <div className="nv-dispatch-block">
           <strong className="small">Location</strong>
-          <div className="nv-dispatch-location-visual" aria-label="Simulated request location">
+          <div className="nv-dispatch-location-visual" aria-label="Request location">
             <span aria-hidden="true" className="nv-dispatch-location-pin" />
             <div>
-              <strong>Simulated request point</strong>
+              <strong>Request point</strong>
               <p className="muted small">{detail.address ?? 'Coordinates only'}</p>
               {detail.latitude != null && detail.longitude != null ? (
                 <p className="muted small">{detail.latitude.toFixed(5)}, {detail.longitude.toFixed(5)}</p>
@@ -505,8 +503,8 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
 
       {detail.status === 'NO_PROVIDER_FOUND' ? (
         <div className="nv-sw-alert" role="alert">
-          <strong>No simulated facility accepted this request within the maximum search radius.</strong>
-          <span>Review the request details and contact the requester directly. This demo does not send further notifications.</span>
+          <strong>No provider found within the maximum search radius.</strong>
+          <span>Review the request details and contact the requester directly. No further notifications will be sent.</span>
         </div>
       ) : null}
 
@@ -520,7 +518,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
       {canResolveLocation ? (
         <div className="nv-dispatch-block">
           <strong className="small">Resolve location manually</strong>
-          <p className="muted small">Enter a dispatcher-verified address and coordinates. This starts the normal simulated matching flow.</p>
+          <p className="muted small">Enter a dispatcher-verified address and coordinates. This starts provider matching.</p>
           <label className="nv-field">
             Verified address
             <input value={manualAddress} onChange={(event) => setManualAddress(event.target.value)} placeholder="Verified address" />
@@ -554,8 +552,8 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
       {assignedFacility || assignedUnit || assignedResponder ? (
         <div className="nv-dispatch-block">
           <strong className="small">Current assignment</strong>
-          {assignedFacility ? <p className="muted small">Facility: {assignedFacility.facility_name} (simulated facility)</p> : null}
-          {assignedUnit ? <p className="muted small">Unit: {assignedUnit.callsign} — {assignedUnit.hospital_name} (simulated response unit)</p> : null}
+          {assignedFacility ? <p className="muted small">Facility: {assignedFacility.facility_name}</p> : null}
+          {assignedUnit ? <p className="muted small">Unit: {assignedUnit.callsign} — {assignedUnit.hospital_name}</p> : null}
           {assignedResponder ? <p className="muted small">Responder: {assignedResponder.display_name ?? assignedResponder.email} — {assignedResponder.hospital_name}</p> : null}
         </div>
       ) : null}
@@ -576,7 +574,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
       </div>
 
       <div className="nv-dispatch-block">
-        <strong className="small">Notified facilities (simulated)</strong>
+        <strong className="small">Notified facilities</strong>
         {detail.notifications.length === 0 ? (
           <p className="muted small">No facilities have been notified yet.</p>
         ) : (
@@ -598,7 +596,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
                     <tr key={notification.id}>
                       <td>
                         {notification.facility_name}
-                        <span className="nv-dispatch-sub">Simulated facility</span>
+                        <span className="nv-dispatch-sub">Facility</span>
                       </td>
                       <td>{notification.distance_km != null ? `${notification.distance_km.toFixed(1)} km` : '—'}</td>
                       <td>{formatTime(notification.notified_at)}</td>
@@ -659,7 +657,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
           const body = kind === 'unit' ? { unitId: rest.join(':') } : { responderId: rest.join(':') };
           void act('assign-responder', `/api/v1/dispatcher/service-requests/${detail.id}/assign-responder`, body);
         }}>
-          <strong className="small">{detail.type === 'AMBULANCE' ? 'Assign a simulated response unit' : 'Assign a home-visit responder'}</strong>
+          <strong className="small">{detail.type === 'AMBULANCE' ? 'Assign a response unit' : 'Assign a home-visit responder'}</strong>
           <div className="nv-dispatch-assign-row">
             <select
               value={assignment}
@@ -703,7 +701,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
             <button type="button" className="ghost-btn" disabled={busyKey !== undefined} onClick={() => setCancelOpen(true)}>Cancel request</button>
           )
         ) : null}
-      </div> : <p className="muted small">Read-only administrator view. Dispatcher access is required to change a simulated request.</p>}
+      </div> : <p className="muted small">Read-only administrator view. Dispatcher access is required to change a request.</p>}
     </div>
   );
 }
@@ -752,7 +750,7 @@ export function DispatcherPortalPage() {
           <div className="hero-copy">
             <p className="eyebrow">Dispatcher portal</p>
             <h1>{greeting}</h1>
-            <p className="muted">{canOperate ? 'Monitor live ambulance and home-visit requests, coordinate simulated facilities, and track each request through to completion.' : 'Review the simulated dispatch queue and request history. Operational changes require a dispatcher account.'}</p>
+            <p className="muted">{canOperate ? 'Monitor ambulance and home-visit requests, coordinate facilities, and track each request through to completion.' : 'Review the dispatch queue and request history. Operational changes require a dispatcher account.'}</p>
           </div>
         </div>
       </section>
@@ -770,8 +768,7 @@ export function DispatcherPortalPage() {
       ) : (
         <>
           <div className="nv-sw-alert nv-dispatch-sim-banner" role="alert">
-            <strong>Simulation environment.</strong>
-            <span>Every facility, responder and response unit here is simulated demo data. No real emergency response is triggered by any action on this page.</span>
+            <strong>For testing only. No real emergency services are contacted.</strong>
           </div>
 
           {data.error ? <p className="nv-error" role="alert" style={{ margin: '0 24px' }}>{data.error}</p> : null}
@@ -802,8 +799,8 @@ export function DispatcherPortalPage() {
                     {data.loading
                       ? 'Loading requests…'
                       : view === 'queue'
-                        ? 'No active requests right now. New test requests appear here in real time.'
-                        : 'No unresolved requests. Requests with no simulated provider land here.'}
+                        ? 'No active requests right now. New requests appear here in real time.'
+                        : 'No unresolved requests. Requests with no provider appear here.'}
                   </p>
                 </div>
               ) : (

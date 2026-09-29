@@ -33,18 +33,18 @@ const responderOptions = [
 
 const statusLabels: Record<ServiceStatus, string> = {
   CREATED: 'Received',
-  SEARCHING: 'Searching simulated facilities',
-  NOTIFIED: 'Notified simulated facilities',
+  SEARCHING: 'Searching for provider',
+  NOTIFIED: 'Notified',
   ACKNOWLEDGED: 'Facility acknowledged',
   ACCEPTED: 'Facility accepted',
   ASSIGNED: 'Facility assigned',
-  DISPATCHED: 'Simulated responder assigned',
-  EN_ROUTE: 'En route (simulated)',
-  ARRIVED: 'Arrived (simulated)',
-  IN_PROGRESS: 'Care in progress (simulated)',
+  DISPATCHED: 'Assigned',
+  EN_ROUTE: 'En route',
+  ARRIVED: 'Arrived',
+  IN_PROGRESS: 'Care in progress',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
-  NO_PROVIDER_FOUND: 'No simulated provider found',
+  NO_PROVIDER_FOUND: 'No provider found',
 };
 
 const statusTone: Record<ServiceStatus, 'blue' | 'yellow' | 'green' | 'gray' | 'red'> = {
@@ -159,7 +159,7 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
     event.preventDefault();
     if (!mode) return;
     if (mode === 'AMBULANCE' && !ambulanceReason) {
-      setFormError('Choose what happened so the demo dispatcher sees the right category.');
+      setFormError('Choose what happened so the dispatcher sees the right category.');
       return;
     }
     if (mode === 'AMBULANCE' && !conscious) {
@@ -236,7 +236,7 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
   async function sendForLocationReview() {
     if (!mode) return;
     if (mode === 'AMBULANCE' && !ambulanceReason) {
-      setFormError('Choose what happened so the demo dispatcher sees the right category.');
+      setFormError('Choose what happened so the dispatcher sees the right category.');
       return;
     }
     if (mode === 'AMBULANCE' && !conscious) {
@@ -285,17 +285,16 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
     <section className="nv-care-view">
       <header className="nv-care-view-head">
         <h1 className="section-title">Emergency & home-visit requests</h1>
-        <p className="muted">Send a development test request to the demo dispatcher console and follow its simulated status here.</p>
+        <p className="muted">Send an ambulance or home-visit request and follow its status here.</p>
       </header>
 
       <div className="nv-sw-alert nv-sr-sim-banner" role="alert">
-        <strong>Development prototype — not a real emergency service.</strong>
-        <span>Every request sent from this page is a marked test request. Simulated facilities and responders are used for the demo and no real ambulance, doctor or nurse is dispatched.</span>
+        <strong>For testing only. No real emergency services are contacted.</strong>
       </div>
 
       <div className="nv-sr-safety" role="note">
         <strong>If this is a real emergency, call 10177 or 112 now.</strong>
-        <span>Do not wait for this demo page. South Africa&apos;s emergency numbers connect you to real help.</span>
+        <span>Do not wait for this page. South Africa&apos;s emergency numbers connect you to real help.</span>
       </div>
 
       <div className="nv-sr-actions">
@@ -306,9 +305,9 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
           className={`card nv-sr-action nv-sr-ambulance${mode === 'AMBULANCE' ? ' selected' : ''}`}
           onClick={() => chooseMode('AMBULANCE')}
         >
-          <span className="nv-sr-action-tag">Development request</span>
+          <span className="nv-sr-action-tag">Ambulance request</span>
           <h2>Request an Ambulance</h2>
-          <p className="muted">Send a simulated ambulance test request with the reason and whether the person is conscious.</p>
+          <p className="muted">Send an ambulance request with the reason and whether the person is conscious.</p>
         </button>
         <button
           type="button"
@@ -317,20 +316,20 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
           className={`card nv-sr-action nv-sr-homevisit${mode === 'HOME_VISIT' ? ' selected' : ''}`}
           onClick={() => chooseMode('HOME_VISIT')}
         >
-          <span className="nv-sr-action-tag">Development request</span>
+          <span className="nv-sr-action-tag">Home-visit request</span>
           <h2>Request a Home Visit</h2>
-          <p className="muted">Send a simulated home-visit test request and choose whether you prefer a doctor or a nurse.</p>
+          <p className="muted">Send a home-visit request and choose whether you prefer a doctor or a nurse.</p>
         </button>
       </div>
 
       {mode ? (
         <form className="card nv-care-card nv-sr-form" onSubmit={(event) => void submit(event)}>
           <div className="nv-care-card-head">
-            <h2>{mode === 'AMBULANCE' ? 'Ambulance test request' : 'Home-visit test request'}</h2>
+            <h2>{mode === 'AMBULANCE' ? 'Ambulance request' : 'Home-visit request'}</h2>
             <p className="muted">
               {mode === 'AMBULANCE'
-                ? 'Tell the demo dispatcher what happened. This stays inside the simulation.'
-                : 'Tell the demo dispatcher what the visit is for. This stays inside the simulation.'}
+                ? 'Tell NovaCare what happened.'
+                : 'Tell NovaCare what the visit is for.'}
             </p>
           </div>
 
@@ -393,17 +392,17 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
           )}
 
           <fieldset className="nv-sr-choice">
-            <legend>Where should the simulated team go?</legend>
+            <legend>Where should the request go?</legend>
             <div className="nv-sr-locate-row">
               <button type="button" className="secondary-btn" onClick={useBrowserLocation} disabled={locating}>
                 {locating ? 'Locating…' : 'Use my current location'}
               </button>
               {coords ? (
                 <span className="nv-sr-located">
-                  Location captured ({coords.latitude.toFixed(4)}, {coords.longitude.toFixed(4)}) — simulated search will start here.
+                  Location captured ({coords.latitude.toFixed(4)}, {coords.longitude.toFixed(4)}) — provider matching will use this position.
                 </span>
               ) : (
-                <span className="muted small">Browser location is used only for this demo search.</span>
+                <span className="muted small">Browser location is used to find available providers.</span>
               )}
             </div>
             {locationError ? <p className="nv-error" role="alert">{locationError}</p> : null}
@@ -441,7 +440,7 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
             {locationReviewAvailable ? (
               <div className="nv-sr-location-review" role="status">
                 <strong>We couldn&apos;t confirm this address.</strong>
-                <span>Send it to the demo dispatcher for manual location review. No facility matching starts until the location is verified.</span>
+                <span>Send it to the dispatcher for manual location review. No facility matching starts until the location is verified.</span>
                 <button type="button" className="secondary-btn" onClick={() => void sendForLocationReview()} disabled={busy}>
                   Send for location review
                 </button>
@@ -453,16 +452,16 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
           {formError ? <p className="nv-error" role="alert">{formError}</p> : null}
           {success ? (
             <div className="nv-sr-success" role="status">
-              <strong>NovaCare received your test request successfully.</strong>
+              <strong>NovaCare received your request.</strong>
               <span>
-                Reference {success.reference} — {success.type === 'AMBULANCE' ? 'an' : 'a'} {typeLabels[success.type].toLowerCase()} test request. Track its simulated status below.
+                Reference {success.reference} — {success.type === 'AMBULANCE' ? 'an' : 'a'} {typeLabels[success.type].toLowerCase()} request. Track its status below.
               </span>
             </div>
           ) : null}
 
           <div className="nv-book-actions">
             <button type="submit" className="primary-btn" disabled={busy}>
-              {busy ? 'Sending…' : mode === 'AMBULANCE' ? 'Send ambulance test request' : 'Send home-visit test request'}
+              {busy ? 'Sending…' : mode === 'AMBULANCE' ? 'Send ambulance request' : 'Send home-visit request'}
             </button>
             <button type="button" className="ghost-btn" onClick={() => { setMode(null); setFormError(undefined); }}>
               Cancel
@@ -472,12 +471,12 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
       ) : null}
 
       <div className="nv-care-block">
-        <h2 className="section-title">Your test requests</h2>
+        <h2 className="section-title">Your requests</h2>
         {error ? <p className="nv-error" role="alert">{error}</p> : null}
-        {loading ? <p className="muted">Loading your test requests…</p> : null}
+        {loading ? <p className="muted">Loading your requests…</p> : null}
         {!loading && requests.length === 0 ? (
           <div className="card nv-empty">
-            <p className="muted">No test requests yet. Use one of the actions above to send your first development request.</p>
+            <p className="muted">No requests yet. Use one of the actions above to send your first request.</p>
           </div>
         ) : (
           <ul className="nv-sr-list">
@@ -511,7 +510,7 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
                   <span className={`nv-sr-badge nv-sr-${displayStatus.tone}`}>{displayStatus.label}</span>
                   {request.escalation_flag ? <span className="nv-sr-badge nv-sr-yellow">Widened search area</span> : null}
                   {request.status === 'NO_PROVIDER_FOUND' ? (
-                    <span className="muted small">Demo request logged — no simulated facility accepted it.</span>
+                    <span className="muted small">No provider found for this request.</span>
                   ) : null}
                 </div>
               </li>

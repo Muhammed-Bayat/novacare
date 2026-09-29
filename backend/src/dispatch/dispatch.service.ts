@@ -392,7 +392,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         metadata: { matched: 0, radiusKm, escalation: exhausted },
       });
       return transition(created.id, 'NO_PROVIDER_FOUND', null, {
-        note: `No simulated facility within ${radiusKm} km. Demo request logged for review.`,
+        note: `No provider within ${radiusKm} km. Request logged for review.`,
       });
     }
 
@@ -418,7 +418,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     });
 
     return transition(created.id, 'NOTIFIED', null, {
-      note: `${selected.length} simulated facilities notified within ${radiusKm} km${exhausted ? ' (escalation flag: fewer than minimum at max radius)' : ''}.`,
+      note: `${selected.length} facilities notified within ${radiusKm} km${exhausted ? ' (escalation flag: fewer than minimum at max radius)' : ''}.`,
       eventType: 'service-request:updated',
     });
   }
@@ -457,7 +457,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
       }
       if (!created) throw new ServiceRequestConflictError('Could not create the service request.');
       if (reused) return;
-      await insertHistory(q, created.id, null, 'CREATED', input.requesterUserId ?? null, 'Demo request created.');
+      await insertHistory(q, created.id, null, 'CREATED', input.requesterUserId ?? null, 'Request created.');
     });
     if (!created) throw new ServiceRequestConflictError('Could not create the service request.');
     if (reused) return created;
@@ -684,7 +684,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         );
         if (Number(remaining.rows[0]?.count ?? 0) === 0) {
           await transitionLocked(q, current, 'NO_PROVIDER_FOUND', actorUserId, {
-            note: 'All simulated facilities marked the request unavailable.',
+            note: 'All facilities marked the request unavailable.',
           });
         }
         return;
@@ -730,7 +730,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         [requestId, facilityId],
       );
       if (eligible.rowCount === 0) {
-        throw new ServiceRequestConflictError('Only an available or accepted simulated facility can be assigned.');
+        throw new ServiceRequestConflictError('Only an available or accepted facility can be assigned.');
       }
       await transitionLocked(q, current, 'ASSIGNED', actorUserId, {
         note: 'Facility assigned by dispatcher.',
@@ -767,12 +767,12 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
       if (!current) throw new ServiceRequestNotFoundError(requestId);
       if (current.status !== 'ASSIGNED') throw new InvalidTransitionError(current.status, 'DISPATCHED');
       if (!current.assigned_facility_id) {
-        throw new ServiceRequestConflictError('Assign a simulated facility before assigning a responder or unit.');
+        throw new ServiceRequestConflictError('Assign a facility before assigning a responder or unit.');
       }
 
       if (target.responderId) {
         if (current.type !== 'HOME_VISIT') {
-          throw new DispatchValidationError('Ambulance requests require a simulated ambulance unit.');
+          throw new DispatchValidationError('Ambulance requests require an ambulance unit.');
         }
         const claimed = await q(
           `UPDATE hospital_memberships
@@ -788,7 +788,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         });
       } else if (target.unitId) {
         if (current.type !== 'AMBULANCE') {
-          throw new DispatchValidationError('Home-visit requests require an eligible simulated responder.');
+          throw new DispatchValidationError('Home-visit requests require an eligible responder.');
         }
         const claimed = await q(
           `UPDATE response_units
@@ -798,7 +798,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         );
         if (claimed.rowCount === 0) throw new ServiceRequestConflictError('That response unit is not available for the assigned facility.');
         await transitionLocked(q, current, 'DISPATCHED', actorUserId, {
-          note: 'Simulated ambulance unit assigned by dispatcher.',
+          note: 'Ambulance unit assigned by dispatcher.',
           assignedUnitId: target.unitId,
         });
       }

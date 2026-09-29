@@ -130,6 +130,7 @@ async function postIncoming(app: ReturnType<typeof createApp>, fields: Record<st
 }
 
 async function expectReply(message: string, count: number) {
+  expect(message).not.toMatch(/demo|simulated|simulation/i);
   await vi.waitFor(() => expect(sendSmsMock).toHaveBeenCalledTimes(count));
   expect(sendSmsMock.mock.calls[count - 1]).toEqual([SENDER, message]);
 }
@@ -183,7 +184,7 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
-  it('normalizes lowercase ambulance and persists the full flow through a simulated restart', async () => {
+  it('normalizes lowercase ambulance and persists the full flow through a restart', async () => {
     const store = createMemoryChannelConversationStore();
     const first = testApp(store);
     await postIncoming(first.app, { from: SENDER, text: ' ambulance ' });
@@ -191,23 +192,23 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
 
     // A new app instance uses the same durable store just as a restarted Render process would.
     const restarted = testApp(store);
-    await postIncoming(restarted.app, { from: SENDER, text: 'DEMO SANDTON' });
-    await expectReply('We found: DEMO SANDTON, Johannesburg. Send YES to 45854 to confirm, or NO to enter the address again.', 2);
+    await postIncoming(restarted.app, { from: SENDER, text: 'Sandton' });
+    await expectReply('We found: Sandton, Johannesburg. Send YES to 45854 to confirm, or NO to enter the address again.', 2);
     await postIncoming(restarted.app, { from: SENDER, text: 'YES' });
     await expectReply('Is the patient conscious? Reply YES or NO to 45854.', 3);
     await postIncoming(restarted.app, { from: SENDER, text: 'YES' });
-    await expectReply('Briefly describe the emergency. Reply CANCEL to stop or RESTART to begin again.', 4);
+    await expectReply('Briefly describe the emergency. Reply to 45854, or reply CANCEL or RESTART to 45854.', 4);
     await postIncoming(restarted.app, { from: SENDER, text: 'chest pain' });
-    await expectReply('Confirm this ambulance demo request? Reply YES to submit or NO to cancel.', 5);
+    await expectReply('Confirm this ambulance request? Send YES to 45854 to submit, or NO to 45854 to cancel.', 5);
     await postIncoming(restarted.app, { from: SENDER, text: 'YES' });
-    await expectReply('NovaCare demo request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 6);
+    await expectReply('NovaCare request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 6);
 
     expect(restarted.calls).toEqual([expect.objectContaining({
       channel: 'SMS',
       type: 'AMBULANCE',
       requesterUserId: 'patient-1',
       requesterPhone: SENDER,
-      address: 'DEMO SANDTON',
+      address: 'Sandton',
       latitude: -26.1076,
       longitude: 28.0567,
       triage: { conscious: 'YES' },
@@ -219,11 +220,15 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     await postIncoming(app, { from: SENDER, text: 'HOME' });
     await expectReply(SMS_REPLY_HOME, 1);
     await postIncoming(app, { from: SENDER, text: 'EITHER' });
-    await postIncoming(app, { from: SENDER, text: 'DEMO SANDTON' });
+    await expectReply('Please send your address to 45854. Reply SAVED to use a consented profile address.', 2);
+    await postIncoming(app, { from: SENDER, text: 'Sandton' });
+    await expectReply('We found: Sandton, Johannesburg. Send YES to 45854 to confirm, or NO to enter the address again.', 3);
     await postIncoming(app, { from: SENDER, text: 'YES' });
+    await expectReply('Briefly describe the reason for the home visit. Reply to 45854, or reply CANCEL or RESTART to 45854.', 4);
     await postIncoming(app, { from: SENDER, text: 'routine check up' });
+    await expectReply('Confirm this home-visit request? Send YES to 45854 to submit, or NO to 45854 to cancel.', 5);
     await postIncoming(app, { from: SENDER, text: 'YES' });
-    await expectReply('NovaCare demo request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 6);
+    await expectReply('NovaCare request received. Reference: NC-2026-000001. Reply STATUS NC-2026-000001 to 45854 for updates.', 6);
 
     expect(calls).toEqual([expect.objectContaining({
       channel: 'SMS',
@@ -235,7 +240,7 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
   it('supports STATUS, CANCEL, and RESTART without exposing another caller request', async () => {
     const { app } = testApp();
     await postIncoming(app, { from: SENDER, text: 'AMBULANCE' });
-    await postIncoming(app, { from: SENDER, text: 'DEMO SANDTON' });
+    await postIncoming(app, { from: SENDER, text: 'Sandton' });
     await postIncoming(app, { from: SENDER, text: 'YES' });
     await postIncoming(app, { from: SENDER, text: 'NO' });
     await postIncoming(app, { from: SENDER, text: 'road accident' });
@@ -246,7 +251,7 @@ describe('SMS incoming channel transport and shared dispatch workflow', () => {
     await vi.waitFor(() => expect(sendSmsMock).toHaveBeenCalledTimes(8));
     expect(sendSmsMock.mock.calls[7]).toEqual(['+27820000000', 'NovaCare could not find that request reference for this number.']);
     await postIncoming(app, { from: SENDER, text: 'CANCEL' });
-    await expectReply('NovaCare demo request NC-2026-000001 cancelled.', 9);
+    await expectReply('NovaCare request NC-2026-000001 cancelled.', 9);
     await postIncoming(app, { from: SENDER, text: 'RESTART' });
     await expectReply('NovaCare conversation restarted. Reply AMBULANCE or HOME to 45854.', 10);
   });

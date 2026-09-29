@@ -22,7 +22,7 @@ const roleContent: Record<InvitationRole, { label: string; description: (hospita
   },
   dispatcher: {
     label: 'dispatcher',
-    description: (hospitalName) => `You now coordinate simulated service requests for ${hospitalName} on NovaCare. Once your access is active, you can review the dispatcher queue and manage the demo workflow.`,
+    description: (hospitalName) => `You now coordinate NovaCare service requests for ${hospitalName}. For testing only. No real emergency services are contacted. Once your access is active, you can review the dispatcher queue.`,
   },
 };
 

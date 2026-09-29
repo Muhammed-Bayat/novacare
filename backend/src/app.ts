@@ -90,7 +90,7 @@ const questionnairePathways: QuestionnairePathway[] = [
   {
     id: 'general',
     name: 'General symptoms',
-    description: 'Symptoms that do not clearly match one of the focused demo pathways.',
+    description: 'Symptoms that do not clearly match one of the focused assessment pathways.',
     keywords: [],
     department: 'General Medicine',
     urgency: 'routine',

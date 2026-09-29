@@ -184,8 +184,8 @@ async function completeRequest(
   if (confirmed) await deps.location.linkRequest(confirmed.id, request.id);
   await saveConversation(deps, phoneNumber, flow, 'COMPLETED', { ...draft, referenceCode: request.reference_code }, request.id);
   return draft.locationReview
-    ? `NovaCare demo request received. Reference: ${request.reference_code}. Location needs dispatcher review. Reply STATUS ${request.reference_code} to 45854 for updates.`
-    : `NovaCare demo request received. Reference: ${request.reference_code}. Reply STATUS ${request.reference_code} to 45854 for updates.`;
+    ? `NovaCare request received. Reference: ${request.reference_code}. Location needs dispatcher review. Reply STATUS ${request.reference_code} to 45854 for updates.`
+    : `NovaCare request received. Reference: ${request.reference_code}. Reply STATUS ${request.reference_code} to 45854 for updates.`;
 }
 
 function locationLabel(candidate: { formattedAddress: string; city?: string; suburb?: string }): string {
@@ -202,7 +202,7 @@ function nextAfterLocation(flow: SmsFlow): SmsStep {
 function promptAfterLocation(flow: SmsFlow): string {
   return flow === 'AMBULANCE'
     ? 'Is the patient conscious? Reply YES or NO to 45854.'
-    : 'Briefly describe the reason for the home visit. Reply CANCEL to stop or RESTART to begin again.';
+    : 'Briefly describe the reason for the home visit. Reply to 45854, or reply CANCEL or RESTART to 45854.';
 }
 
 async function processConversation(phoneNumber: string, text: string, deps: SmsWorkflowDeps): Promise<{ command: SmsCommand; reply: string }> {
@@ -222,7 +222,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
       return {
         command: 'unknown',
         reply: cancelled?.status === 'CANCELLED'
-          ? `NovaCare demo request ${reference} cancelled.`
+          ? `NovaCare request ${reference} cancelled.`
           : `NovaCare could not cancel ${reference}. It may already be completed or unavailable.`,
       };
     }
@@ -256,7 +256,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
     const preferredResponder = upper === 'DOCTOR' ? 'DOCTOR' : upper === 'NURSE' ? 'NURSE' : upper === 'EITHER' ? 'EITHER' : null;
     if (!preferredResponder) return { command: 'home', reply: 'Reply DOCTOR, NURSE, or EITHER to 45854.' };
     await saveConversation(deps, phoneNumber, flow, 'WAITING_FOR_ADDRESS', { ...draft, preferredResponder });
-    return { command: 'home', reply: 'Please send your address to 45854. Reply SAVED to use a consented profile address, or DEMO SANDTON for simulated radius matching.' };
+    return { command: 'home', reply: 'Please send your address to 45854. Reply SAVED to use a consented profile address.' };
   }
 
   if (session.step === 'WAITING_FOR_ADDRESS') {
@@ -314,7 +314,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
     if (selectedIndex < 0 || selectedIndex >= candidateIds.length) {
       return {
         command: flow === 'AMBULANCE' ? 'ambulance' : 'home',
-        reply: candidateIds.length === 1 ? 'Reply YES to confirm or NO to enter the address again.' : `Reply 1-${candidateIds.length} to 45854, or 0 to enter the address again.`,
+        reply: candidateIds.length === 1 ? 'Reply YES to 45854 to confirm or NO to 45854 to enter the address again.' : `Reply 1-${candidateIds.length} to 45854, or 0 to 45854 to enter the address again.`,
       };
     }
     const candidateId = candidateIds[selectedIndex];
@@ -335,7 +335,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
     const conscious = upper === 'YES' ? 'YES' : upper === 'NO' ? 'NO' : null;
     if (!conscious) return { command: 'ambulance', reply: 'Reply YES or NO to 45854.' };
     await saveConversation(deps, phoneNumber, flow, 'WAITING_FOR_REASON', { ...draft, conscious });
-    return { command: 'ambulance', reply: 'Briefly describe the emergency. Reply CANCEL to stop or RESTART to begin again.' };
+    return { command: 'ambulance', reply: 'Briefly describe the emergency. Reply to 45854, or reply CANCEL or RESTART to 45854.' };
   }
 
   if (session.step === 'WAITING_FOR_REASON') {
@@ -344,7 +344,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
     await saveConversation(deps, phoneNumber, flow, 'WAITING_FOR_CONFIRMATION', { ...draft, reason });
     return {
       command: flow === 'AMBULANCE' ? 'ambulance' : 'home',
-      reply: `Confirm this ${flow === 'AMBULANCE' ? 'ambulance' : 'home-visit'} demo request? Reply YES to submit or NO to cancel.`,
+      reply: `Confirm this ${flow === 'AMBULANCE' ? 'ambulance' : 'home-visit'} request? Send YES to 45854 to submit, or NO to 45854 to cancel.`,
     };
   }
 
@@ -353,7 +353,7 @@ async function processConversation(phoneNumber: string, text: string, deps: SmsW
       await deps.store.clear('SMS', phoneNumber);
       return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: 'NovaCare request setup cancelled. Reply AMBULANCE or HOME to 45854.' };
     }
-    if (upper !== 'YES') return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: 'Reply YES to submit or NO to cancel.' };
+    if (upper !== 'YES') return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: 'Reply YES to 45854 to submit or NO to 45854 to cancel.' };
     return { command: flow === 'AMBULANCE' ? 'ambulance' : 'home', reply: await completeRequest(phoneNumber, flow, draft, deps) };
   }
 

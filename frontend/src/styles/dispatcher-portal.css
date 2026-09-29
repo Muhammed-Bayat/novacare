@@ -127,16 +127,6 @@
   color: var(--text);
 }
 
-.nv-dispatch-demo-note {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: #fff3d9;
-  color: #9c6c00;
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .nv-dispatch-block {
   display: grid;
   gap: 8px;

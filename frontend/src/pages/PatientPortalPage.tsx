@@ -206,8 +206,8 @@ export function PatientPortalPage() {
         !isAuthenticated ? (
           <section className="nv-care-view">
             <div className="card nv-care-signin">
-              <h3>Sign in to send a test request</h3>
-              <p className="muted">Use your Nova Care account to send a development ambulance or home-visit test request and track its simulated status.</p>
+              <h3>Sign in to send a request</h3>
+              <p className="muted">Use your Nova Care account to send an ambulance or home-visit request and track its status. For testing only. No real emergency services are contacted.</p>
               <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign In</button>
             </div>
           </section>

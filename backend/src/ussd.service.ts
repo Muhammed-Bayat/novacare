@@ -44,11 +44,11 @@ export const USSD_INVALID_REQUEST_MESSAGE = 'END NovaCare could not process this
 const MAIN_MENU = 'CON Welcome to NovaCare\n1. Request an ambulance\n2. Request a home visit\n3. Check a request';
 const AMBULANCE_MENU = 'CON Ambulance request\nIs the patient conscious?\n1. Yes\n2. No';
 const HOME_VISIT_MENU = 'CON Home visit request\nPlease select:\n1. Doctor\n2. Nurse\n3. Either';
-const LOCATION_PROMPT = 'CON Enter the address for this demo request. Reply SAVED to use a consented profile address.';
+const LOCATION_PROMPT = 'CON Enter the address for this request. Reply SAVED to use a consented profile address.';
 const AMBULANCE_REASON_PROMPT = 'CON Briefly describe the emergency.';
 const HOME_VISIT_REASON_PROMPT = 'CON Briefly describe the reason for the home visit.';
-const CONFIRM_AMBULANCE = 'CON Confirm this ambulance demo request?\n1. Yes\n2. Cancel';
-const CONFIRM_HOME_VISIT = 'CON Confirm this home-visit demo request?\n1. Yes\n2. Cancel';
+const CONFIRM_AMBULANCE = 'CON Confirm this ambulance request?\n1. Yes\n2. Cancel';
+const CONFIRM_HOME_VISIT = 'CON Confirm this home-visit request?\n1. Yes\n2. Cancel';
 const REFERENCE_PROMPT = 'CON Enter your NovaCare request reference';
 const INVALID_SELECTION = 'END Invalid selection. Please try again.';
 const SESSION_TTL_MS = 30 * 60 * 1000;
@@ -92,7 +92,7 @@ async function completeRequest(
   const existing = await deps.store.get('USSD', input.sessionId);
   if (existing?.requestId && existing.collectedData.inputText === input.text) {
     const reference = typeof existing.collectedData.referenceCode === 'string' ? existing.collectedData.referenceCode : null;
-    if (reference) return response('confirmation', `END NovaCare demo request received.\nReference: ${reference}`);
+    if (reference) return response('confirmation', `END NovaCare request received.\nReference: ${reference}`);
   }
 
   const requester = await deps.context.resolveRequester(input.phoneNumber);
@@ -149,8 +149,8 @@ async function completeRequest(
     expiresAt: expiry(deps.now ?? (() => new Date())),
   });
   return response('confirmation', input.locationReview
-    ? `END NovaCare demo request received.\nReference: ${request.reference_code}\nLocation needs dispatcher review.`
-    : `END NovaCare demo request received.\nReference: ${request.reference_code}`);
+    ? `END NovaCare request received.\nReference: ${request.reference_code}\nLocation needs dispatcher review.`
+    : `END NovaCare request received.\nReference: ${request.reference_code}`);
 }
 
 type UssdLocationDraft = {
@@ -259,7 +259,7 @@ export async function processUssdRequest(
     if (parts.length === 6) {
       const existing = await deps.store.get('USSD', input.sessionId);
       if (existing?.requestId && existing.collectedData.inputText === text && typeof existing.collectedData.referenceCode === 'string') {
-        return response('confirmation', `END NovaCare demo request received.\nReference: ${existing.collectedData.referenceCode}`);
+        return response('confirmation', `END NovaCare request received.\nReference: ${existing.collectedData.referenceCode}`);
       }
     }
     if (parts.length === 3) return locationChoice({ sessionId: input.sessionId, phoneNumber: input.phoneNumber, flow: 'AMBULANCE', address: parts[2] }, deps);
@@ -275,7 +275,7 @@ export async function processUssdRequest(
     if (parts.length !== 6) return response('invalid_selection', INVALID_SELECTION);
     if (parts[5] === '2') {
       await deps.store.clear('USSD', input.sessionId);
-      return response('confirmation', 'END Ambulance demo request cancelled.');
+      return response('confirmation', 'END Ambulance request cancelled.');
     }
     if (parts[5] !== '1') return response('invalid_selection', INVALID_SELECTION);
     return completeRequest({
@@ -299,7 +299,7 @@ export async function processUssdRequest(
     if (parts.length === 6) {
       const existing = await deps.store.get('USSD', input.sessionId);
       if (existing?.requestId && existing.collectedData.inputText === text && typeof existing.collectedData.referenceCode === 'string') {
-        return response('confirmation', `END NovaCare demo request received.\nReference: ${existing.collectedData.referenceCode}`);
+        return response('confirmation', `END NovaCare request received.\nReference: ${existing.collectedData.referenceCode}`);
       }
     }
     if (parts.length === 3) return locationChoice({ sessionId: input.sessionId, phoneNumber: input.phoneNumber, flow: 'HOME_VISIT', address: parts[2] }, deps);
@@ -315,7 +315,7 @@ export async function processUssdRequest(
     if (parts.length !== 6) return response('invalid_selection', INVALID_SELECTION);
     if (parts[5] === '2') {
       await deps.store.clear('USSD', input.sessionId);
-      return response('confirmation', 'END Home-visit demo request cancelled.');
+      return response('confirmation', 'END Home-visit request cancelled.');
     }
     if (parts[5] !== '1') return response('invalid_selection', INVALID_SELECTION);
     return completeRequest({

@@ -208,7 +208,7 @@ function Dashboard() {
     </section>
     <section className="queue-home" aria-labelledby="queue-title">
       <div className="section-heading"><div><p className="eyebrow">Virtual queue</p><h2 id="queue-title">Need care today?</h2></div><button type="button" onClick={() => navigate('/queue')}>Join today&apos;s queue</button></div>
-      <p>Join a same-day service queue from home. Queue order is first in, first out for this demo.</p>
+      <p>Join a same-day service queue from home. Queue order is first in, first out.</p>
       {!queueEntries ? <p>Loading today&apos;s queue status...</p> : null}
       {queueEntries?.map((entry) => <article className="queue-card" key={entry.id}><div className="queue-position"><span>Position</span><strong>{entry.status === 'called' ? 'Called' : entry.position}</strong></div><div><h3>{entry.serviceName}</h3><p>{entry.hospitalName}</p><small>{entry.estimatedWaitMinutes !== null && entry.estimatedWaitMinutes > 0 ? `Estimated wait: about ${entry.estimatedWaitMinutes} minutes` : 'You are next in line.'}</small></div><button type="button" className="text-button danger-button" onClick={() => void leaveQueue(entry)}>Leave queue</button></article>)}
     </section>
@@ -657,7 +657,7 @@ function BookingPage() {
             <label htmlFor="service">Service needed</label>
             <select id="service" value={serviceId} onChange={(event) => setServiceId(event.target.value)}>{selectedHospital.services.map((service) => <option value={service.id} key={service.id}>{service.name}</option>)}</select>
             <div className="date-time-fields"><label htmlFor="date">Date<input id="date" type="date" min={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => setDate(event.target.value)} required /></label><label htmlFor="time">Time<input id="time" type="time" min={BOOKING_START} max="18:30" step="1800" value={time} onChange={(event) => setTime(event.target.value)} required /></label></div>
-            <p className="booking-note">Booking hours are {BOOKING_START}–{BOOKING_END}. Listed services follow the hospital booking hours for this demo.</p>
+            <p className="booking-note">Booking hours are {BOOKING_START}–{BOOKING_END}. Listed services follow the hospital booking hours for this service.</p>
             {error ? <p role="alert" className="error-message">{error}</p> : null}
             <button type="submit" disabled={submitting}>{submitting ? 'Saving booking...' : editingAppointment?.status === 'cancelled' ? 'Rebook appointment' : editingAppointment ? 'Save changes' : 'Confirm booking'}</button>
           </form>

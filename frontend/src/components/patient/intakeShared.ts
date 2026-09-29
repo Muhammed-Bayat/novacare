@@ -6,7 +6,7 @@ export function urgencyText(urgency: QuestionnaireUrgency) {
     case 'emergency': return { label: 'Emergency assessment', detail: 'Warning signs were reported, so urgent in-person assessment is recommended.' };
     case 'urgent': return { label: 'Urgent', detail: 'Your answers suggest prompt clinical review is a safer next step.' };
     case 'priority': return { label: 'Priority', detail: 'Your answers should be reviewed before routine visits where possible.' };
-    default: return { label: 'Routine', detail: 'Your answers appear suitable for a standard booking pathway in this demo.' };
+    default: return { label: 'Routine', detail: 'Your answers appear suitable for a standard booking pathway in this service.' };
   }
 }
 
