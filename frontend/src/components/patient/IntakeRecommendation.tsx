@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AppointmentTriageSummary, Hospital, QuestionnaireUrgency } from '../../api.ts';
+import type { AppointmentTriageSummary, FallbackReason, Hospital, IntakeSource, QuestionnaireUrgency } from '../../api.ts';
 import { distanceInKm, type Coordinates } from './careMath.ts';
 import { matchingServices, readUserLocation, serviceKeywords, urgencyText } from './intakeShared.ts';
 
@@ -7,6 +7,7 @@ export function IntakeRecommendation({
   hospitals,
   pathwayName,
   source,
+  fallbackReason,
   urgency,
   department,
   reason,
@@ -16,7 +17,8 @@ export function IntakeRecommendation({
 }: {
   hospitals: Hospital[];
   pathwayName: string;
-  source: 'gemini' | 'local';
+  source: IntakeSource;
+  fallbackReason?: FallbackReason;
   urgency: QuestionnaireUrgency;
   department: string;
   reason: string;
@@ -79,8 +81,8 @@ export function IntakeRecommendation({
       <p className="eyebrow">Recommended next step</p>
       <h2>{department}</h2>
       <p className="muted">{reason}</p>
-      {source === 'local' ? (
-        <p className="nv-notice" role="status">The AI assistant is briefly unavailable, so this is a conservative assessment from your message alone. A nurse reviews everything before you are placed in a queue.</p>
+      {source === 'local-fallback' ? (
+        <p className="nv-notice" role="status">The AI assistant is briefly unavailable, so this assessment is continuing using the standard intake process. A nurse reviews everything before you are placed in a queue.</p>
       ) : null}
       <div className={`nv-urgency-card urgency-${urgency}`}>
         <strong>{urgencyText(urgency).label}</strong>
@@ -93,7 +95,8 @@ export function IntakeRecommendation({
         </div>
       ) : null}
       <div className="nv-questionnaire-summary">
-        <span>AI intake source: {source === 'gemini' ? 'Gemini' : 'Local fallback'}</span>
+        <span>AI intake source: {source === 'ai' ? 'AI-assisted' : 'Local fallback'}</span>
+        {import.meta.env.DEV && source === 'local-fallback' && fallbackReason ? <span>Fallback reason: {fallbackReason}</span> : null}
         <span>Pathway: {pathwayName}</span>
       </div>
       <div className="nv-recommended-care">

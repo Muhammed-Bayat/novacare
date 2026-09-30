@@ -60,7 +60,9 @@ npm --workspace @novacare/e2e test
 
 ### Render API
 
-Use `render.yaml` or create a Node web service with root directory `backend`, build command `npm install --include=dev && npm run build`, and start command `npm run start`. The start command safely runs compiled migrations before starting Express. Configure `DATABASE_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `CORS_ORIGINS`, `BREVO_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, and `PLATFORM_OVERSEER_EMAIL` in Render, never in the repository.
+Use `render.yaml` or create a Node web service with root directory `backend`, build command `npm install --include=dev && npm run build`, and start command `npm run start`. The start command safely runs compiled migrations before starting Express. Configure `DATABASE_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `CORS_ORIGINS`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `BREVO_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, and `PLATFORM_OVERSEER_EMAIL` in Render, never in the repository. `GEMINI_API_KEY` remains server-side; never add it as a `VITE_*` variable.
+
+Run `npm --workspace @novacare/backend run gemini:check` during local setup or deployment diagnostics to verify that the explicitly configured `GEMINI_MODEL` supports `generateContent` for the configured key. This diagnostic is never called during a patient assessment.
 
 ### Vercel SPA
 

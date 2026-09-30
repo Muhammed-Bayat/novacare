@@ -51,15 +51,11 @@ function stubPatientData(appointments: unknown[], queueEntries: unknown[] = [], 
   }));
 }
 
-function stubChatFlow(hospitals: unknown[], turns: unknown[]) {
-  let turnIndex = 0;
+function stubIntakeFlow(hospitals: unknown[], intake: unknown, assessment: unknown) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes('/api/v1/intake/chat')) {
-      const turn = turns[Math.min(turnIndex, turns.length - 1)];
-      turnIndex += 1;
-      return { ok: true, json: async () => ({ data: turn }) };
-    }
+    if (url.includes('/api/v1/questionnaire/intake')) return { ok: true, json: async () => ({ data: intake }) };
+    if (url.includes('/api/v1/questionnaire/complete')) return { ok: true, json: async () => ({ data: assessment }) };
     if (url.includes('/api/v1/appointments')) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: hospitals }) };
     return { ok: true, json: async () => ({ data: { userType: 'patient' } }) };
@@ -436,9 +432,9 @@ describe('App', () => {
     }
   });
 
-  it('lets patients chat with the AI intake and open recommended booking', async () => {
+  it('uses AI once to select a questionnaire, then completes intake locally before booking', async () => {
     auth.state.isAuthenticated = true;
-    stubChatFlow([
+    stubIntakeFlow([
       {
         id: 'h1',
         name: 'Helen Joseph Hospital',
@@ -449,39 +445,99 @@ describe('App', () => {
         facilityType: 'Academic hospital',
         services: [{ id: 's1', name: 'Orthopaedics' }, { id: 's2', name: 'Emergency Department' }],
       },
-    ], [
-      { action: 'question', question: { id: 'weight_bearing', text: 'Can you put weight on the injured area?', type: 'single', options: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }] } },
-      { action: 'complete', source: 'gemini', intake: { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Ankle injury — unable to bear weight.', department: 'Emergency Department', urgency: 'emergency', redFlags: ['Unable to bear weight'] } },
-    ]);
+    ], {
+      pathwayId: 'injury',
+      pathwayName: 'Injury & musculoskeletal',
+      source: 'ai',
+      questions: [
+        { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
+        { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
+        { id: 'deformity', text: 'Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+        { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
+      ],
+    }, {
+      pathwayId: 'injury',
+      pathwayName: 'Injury & musculoskeletal',
+      summary: 'Completed the Injury & musculoskeletal questionnaire.',
+      department: 'Emergency Department',
+      urgency: 'emergency',
+      redFlags: ['Possible serious injury warning sign reported'],
+    });
 
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }));
-    expect(await screen.findByText('Can you put weight on the injured area?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
+    expect(await screen.findByText('When did the injury happen?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Today' }));
+    expect(await screen.findByText('Can you use or put weight on the injured area?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'No' }));
+    expect(await screen.findByText('Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    expect(await screen.findByText('How severe is the pain?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '8' }));
 
     expect(screen.getByRole('heading', { name: 'Emergency Department' })).toBeInTheDocument();
     expect(screen.getByText('Emergency assessment')).toBeInTheDocument();
     expect(screen.getByText('Helen Joseph Hospital')).toBeInTheDocument();
+    expect(screen.queryByText(/AI assistant is briefly unavailable/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Book here' }));
     expect(screen.getByRole('heading', { name: 'Appointments' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm booking' }));
     expect(await screen.findByText('Appointment booked')).toBeInTheDocument();
     expect(screen.getByText(/Helen Joseph Hospital/)).toBeInTheDocument();
 
-    const chatPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/intake/chat') && (options as RequestInit | undefined)?.method === 'POST');
-    expect(chatPosts).toHaveLength(2);
-    expect(JSON.parse(String((chatPosts[0][1] as RequestInit).body))).toMatchObject({ complaint: 'I hurt my ankle today', answers: [] });
-    expect(JSON.parse(String((chatPosts[1][1] as RequestInit).body))).toMatchObject({ answers: [{ question: 'Can you put weight on the injured area?', answer: 'No' }] });
+    const classificationPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/intake') && (options as RequestInit | undefined)?.method === 'POST');
+    const completionPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/complete') && (options as RequestInit | undefined)?.method === 'POST');
+    const aiChatPosts = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/v1/intake/chat'));
+    expect(classificationPosts).toHaveLength(1);
+    expect(completionPosts).toHaveLength(1);
+    expect(aiChatPosts).toHaveLength(0);
+    expect(JSON.parse(String((classificationPosts[0][1] as RequestInit).body))).toEqual({ complaint: 'I hurt my ankle today' });
     const appointmentPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/appointments') && (options as RequestInit | undefined)?.method === 'POST');
     expect(appointmentPost).toBeDefined();
     const body = JSON.parse(String((appointmentPost?.[1] as RequestInit).body));
     expect(body).toMatchObject({ hospitalId: 'h1', serviceId: 's2', triageSummary: { urgency: 'emergency', pathwayName: 'Injury & musculoskeletal' } });
   });
 
+  it('continues through the static questionnaire when classification uses a local fallback', async () => {
+    auth.state.isAuthenticated = true;
+    stubIntakeFlow([], {
+      pathwayId: 'general',
+      pathwayName: 'General symptoms',
+      source: 'local-fallback',
+      fallbackReason: 'provider-rate-limit',
+      questions: [
+        { id: 'severity', text: 'How unwell do you feel overall?', type: 'scale', min: 0, max: 10 },
+        { id: 'worsening', text: 'Are your symptoms getting rapidly worse?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+        { id: 'danger_signs', text: 'Are you having severe breathing difficulty, fainting, uncontrolled bleeding, seizures or severe confusion?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      ],
+    }, {
+      pathwayId: 'general',
+      pathwayName: 'General symptoms',
+      summary: 'Completed the General symptoms questionnaire.',
+      department: 'General Medicine',
+      urgency: 'routine',
+      redFlags: [],
+    });
+
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'I have a bad headache' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
+    await userEvent.click(await screen.findByRole('button', { name: '4' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'No' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'No' }));
+
+    expect(await screen.findByText(/AI assistant is briefly unavailable/)).toBeInTheDocument();
+    expect(screen.getByText('AI intake source: Local fallback')).toBeInTheDocument();
+    const classificationPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/intake') && (options as RequestInit | undefined)?.method === 'POST');
+    const completionPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/complete') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(classificationPosts).toHaveLength(1);
+    expect(completionPosts).toHaveLength(1);
+  });
+
   it('ranks recommended hospitals by distance and queue length when location is available', async () => {
     auth.state.isAuthenticated = true;
-    stubChatFlow([
+    stubIntakeFlow([
       {
         id: 'far',
         name: 'Far Hospital',
@@ -512,10 +568,23 @@ describe('App', () => {
         facilityType: 'Academic hospital',
         services: [{ id: 's3', name: 'General Consultation', waitingCount: 0 }],
       },
-    ], [
-      { action: 'question', question: { id: 'pain', text: 'How severe is the pain?', type: 'scale' } },
-      { action: 'complete', source: 'gemini', intake: { pathwayId: 'headache', pathwayName: 'Headache & neurological', summary: 'Persistent headache.', department: 'General Medicine', urgency: 'priority', redFlags: [] } },
-    ]);
+    ], {
+      pathwayId: 'headache',
+      pathwayName: 'Headache & neurological',
+      source: 'ai',
+      questions: [
+        { id: 'sudden_onset', text: 'Did the headache reach severe intensity very suddenly?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+        { id: 'neuro_signs', text: 'Do you have new weakness, facial drooping, difficulty speaking, confusion or loss of balance?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+        { id: 'pain_level', text: 'How severe is the headache?', type: 'scale', min: 0, max: 10 },
+      ],
+    }, {
+      pathwayId: 'headache',
+      pathwayName: 'Headache & neurological',
+      summary: 'Completed the Headache & neurological questionnaire.',
+      department: 'General Medicine',
+      urgency: 'priority',
+      redFlags: [],
+    });
     Object.defineProperty(window.navigator, 'geolocation', {
       configurable: true,
       value: {
@@ -525,8 +594,12 @@ describe('App', () => {
     try {
       renderAt('/patient');
       await userEvent.click(screen.getByRole('button', { name: 'I have a bad headache' }));
-      await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }));
-      expect(await screen.findByText('How severe is the pain?')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
+      expect(await screen.findByText('Did the headache reach severe intensity very suddenly?')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'No' }));
+      expect(await screen.findByText('Do you have new weakness, facial drooping, difficulty speaking, confusion or loss of balance?')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'No' }));
+      expect(await screen.findByText('How severe is the headache?')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: '8' }));
 
       expect(await screen.findByText('Ranked by distance and queue length from your location.')).toBeInTheDocument();
@@ -554,7 +627,7 @@ describe('App', () => {
     }));
     renderAt('/patient');
     await userEvent.selectOptions(screen.getByLabelText('Language'), 'zu');
-    await waitFor(() => expect(document.body.textContent).toContain('translated:AI triage chat'), { timeout: 3000 });
+    await waitFor(() => expect(document.body.textContent).toContain('translated:AI-assisted intake'), { timeout: 3000 });
     expect(document.body.textContent).toContain('translated:Welcome back, Thandi');
     expect(document.body.textContent).toContain('isiZulu');
     expect(document.body.textContent).not.toContain('translated:isiZulu');
@@ -751,7 +824,7 @@ describe('App', () => {
       },
     ]);
     renderAt('/staff');
-    expect(await screen.findByRole('alert')).toHaveTextContent('1 AI red-flag suggestion needs prompt review.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 intake red-flag suggestion needs prompt review.');
     expect(screen.getByText('Thandi Mokoena')).toBeInTheDocument();
     expect(screen.getByText('Chest pain at rest')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm triage — send to Emergency Department' }));

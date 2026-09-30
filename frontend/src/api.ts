@@ -93,6 +93,21 @@ export interface DisplayData {
 
 export type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
 export type QuestionnaireQuestionType = 'single' | 'yes-no' | 'scale';
+export type IntakeSource = 'ai' | 'local-fallback';
+export type FallbackReason =
+  | 'missing-api-key'
+  | 'provider-auth'
+  | 'provider-rate-limit'
+  | 'provider-quota'
+  | 'provider-billing'
+  | 'provider-model'
+  | 'provider-request'
+  | 'provider-server-error'
+  | 'network'
+  | 'timeout'
+  | 'invalid-json'
+  | 'schema-validation'
+  | 'invalid-pathway';
 
 export interface QuestionnaireOption {
   id: string;
@@ -113,36 +128,17 @@ export interface QuestionnaireQuestion {
 export interface QuestionnaireIntake {
   pathwayId: string;
   pathwayName: string;
-  summary: string;
-  department: string;
-  urgency: QuestionnaireUrgency;
   questions: QuestionnaireQuestion[];
-  source: 'gemini' | 'local';
+  source: IntakeSource;
+  fallbackReason?: FallbackReason;
 }
 
-export interface AppointmentTriageSummary {
-  urgency: QuestionnaireUrgency;
-  pathwayName: string;
-  department: string;
-  summary: string;
-  redFlags: string[];
+export interface QuestionnaireAnswer {
+  questionId: string;
+  value: string | number | boolean;
 }
 
-export type IntakeChatQuestionType = 'yes_no' | 'single' | 'scale' | 'text';
-
-export interface IntakeChatOption {
-  id: string;
-  label: string;
-}
-
-export interface IntakeChatQuestion {
-  id: string;
-  text: string;
-  type: IntakeChatQuestionType;
-  options?: IntakeChatOption[];
-}
-
-export interface IntakeChatConclusion {
+export interface QuestionnaireAssessment {
   pathwayId: string;
   pathwayName: string;
   summary: string;
@@ -151,13 +147,12 @@ export interface IntakeChatConclusion {
   redFlags: string[];
 }
 
-export type IntakeChatTurn =
-  | { action: 'question'; question: IntakeChatQuestion }
-  | { action: 'complete'; source: 'gemini' | 'local'; intake: IntakeChatConclusion };
-
-export interface IntakeChatAnswer {
-  question: string;
-  answer: string;
+export interface AppointmentTriageSummary {
+  urgency: QuestionnaireUrgency;
+  pathwayName: string;
+  department: string;
+  summary: string;
+  redFlags: string[];
 }
 
 export interface PatientProfile {

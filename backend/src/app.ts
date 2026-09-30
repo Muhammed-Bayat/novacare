@@ -20,87 +20,12 @@ import { createSmsIncomingHandler } from './sms.controller.js';
 import { createDispatchController } from './dispatch/dispatch.controller.js';
 import { createDispatchService } from './dispatch/dispatch.service.js';
 import { createDispatchEventHub } from './dispatch/events.js';
+import { selectIntakeQuestionnaire } from './intake/gemini.js';
+import { evaluateQuestionnaire, findQuestionnairePathway, type QuestionnaireUrgency, validateQuestionnaireAnswers } from './intake/questionnaire.js';
 import type { ChannelDispatchService } from './ussd.service.js';
 
 type UserRow = { id: string; auth0_subject: string; email: string | null; display_name: string | null };
-type QuestionnaireUrgency = 'emergency' | 'urgent' | 'priority' | 'routine';
-type QuestionnaireQuestionType = 'single' | 'yes-no' | 'scale';
-type QuestionnaireOption = { id: string; label: string; value: string | number | boolean };
-type QuestionnaireQuestion = { id: string; text: string; helper?: string; type: QuestionnaireQuestionType; options?: QuestionnaireOption[]; min?: number; max?: number };
-type QuestionnairePathway = { id: string; name: string; description: string; keywords: string[]; department: string; urgency: QuestionnaireUrgency; questions: QuestionnaireQuestion[] };
-type QuestionnaireIntake = { pathwayId: string; pathwayName: string; summary: string; department: string; urgency: QuestionnaireUrgency; questions: QuestionnaireQuestion[]; source: 'gemini' | 'local' };
 type AppointmentTriageSummary = { urgency: QuestionnaireUrgency; pathwayName: string; department: string; summary: string; redFlags: string[] };
-
-const questionnairePathways: QuestionnairePathway[] = [
-  {
-    id: 'chest-breathing',
-    name: 'Chest & breathing',
-    description: 'Chest discomfort, breathing difficulty, palpitations or related symptoms.',
-    keywords: ['chest', 'breath', 'breathing', 'shortness of breath', 'heart', 'palpitation'],
-    department: 'Emergency Department',
-    urgency: 'priority',
-    questions: [
-      { id: 'chest_now', text: 'Are you having chest pain or pressure right now?', helper: 'Choose the option that best reflects how you feel at this moment.', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-      { id: 'breath_now', text: 'Are you struggling to breathe or unable to speak comfortably in full sentences?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-      { id: 'pain_level', text: 'How severe is the discomfort?', helper: '0 means no pain and 10 means the worst pain you can imagine.', type: 'scale', min: 0, max: 10 },
-      { id: 'radiating', text: 'Does the discomfort spread to your arm, jaw, shoulder or back?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-    ],
-  },
-  {
-    id: 'injury',
-    name: 'Injury & musculoskeletal',
-    description: 'Recent falls, sports injuries, joint pain, swelling or difficulty moving.',
-    keywords: ['knee', 'ankle', 'leg', 'arm', 'shoulder', 'injury', 'fell', 'fall', 'sports', 'swelling', 'fracture', 'sprain'],
-    department: 'Orthopaedics',
-    urgency: 'priority',
-    questions: [
-      { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
-      { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
-      { id: 'deformity', text: 'Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-      { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
-    ],
-  },
-  {
-    id: 'abdominal',
-    name: 'Abdominal symptoms',
-    description: 'Stomach or abdominal pain, nausea, vomiting or digestive complaints.',
-    keywords: ['stomach', 'abdomen', 'abdominal', 'belly', 'vomit', 'nausea', 'appendix', 'cramp'],
-    department: 'General Medicine',
-    urgency: 'priority',
-    questions: [
-      { id: 'pain_location', text: 'Where is the pain strongest?', type: 'single', options: [{ id: 'upper', label: 'Upper abdomen', value: 'upper' }, { id: 'lower_right', label: 'Lower right side', value: 'lower-right' }, { id: 'lower_left', label: 'Lower left side', value: 'lower-left' }, { id: 'general', label: 'All over / not sure', value: 'general' }] },
-      { id: 'vomiting', text: 'Have you been vomiting repeatedly or been unable to keep fluids down?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-      { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
-      { id: 'fainting', text: 'Have you fainted, felt close to fainting, or noticed significant blood?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-    ],
-  },
-  {
-    id: 'headache',
-    name: 'Headache & neurological',
-    description: 'Headache, dizziness, weakness, numbness or neurological symptoms.',
-    keywords: ['headache', 'head', 'migraine', 'dizzy', 'dizziness', 'weakness', 'numb', 'vision'],
-    department: 'General Medicine',
-    urgency: 'priority',
-    questions: [
-      { id: 'sudden_onset', text: 'Did the headache reach severe intensity very suddenly?', helper: 'For example, becoming very severe within seconds or a few minutes.', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-      { id: 'neuro_signs', text: 'Do you have new weakness, facial drooping, difficulty speaking, confusion or loss of balance?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-      { id: 'pain_level', text: 'How severe is the headache?', type: 'scale', min: 0, max: 10 },
-    ],
-  },
-  {
-    id: 'general',
-    name: 'General symptoms',
-    description: 'Symptoms that do not clearly match one of the focused assessment pathways.',
-    keywords: [],
-    department: 'General Medicine',
-    urgency: 'routine',
-    questions: [
-      { id: 'severity', text: 'How unwell do you feel overall?', type: 'scale', min: 0, max: 10 },
-      { id: 'worsening', text: 'Are your symptoms getting rapidly worse?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-      { id: 'danger_signs', text: 'Are you having severe breathing difficulty, fainting, uncontrolled bleeding, seizures or severe confusion?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
-    ],
-  },
-];
 
 function isBookingTime(date: string, time: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time)
@@ -161,28 +86,6 @@ function platformOverseerEmail(): string {
   return (process.env.PLATFORM_OVERSEER_EMAIL ?? '2811604@students.wits.ac.za').trim().toLowerCase();
 }
 
-function fallbackQuestionnaire(complaint: string, source: 'gemini' | 'local' = 'local'): QuestionnaireIntake {
-  const text = complaint.toLowerCase();
-  let selected = questionnairePathways.find((pathway) => pathway.id === 'general')!;
-  let bestScore = 0;
-  for (const pathway of questionnairePathways.filter((item) => item.id !== 'general')) {
-    const score = pathway.keywords.reduce((total, keyword) => total + (text.includes(keyword) ? Math.max(1, keyword.split(' ').length) : 0), 0);
-    if (score > bestScore) {
-      selected = pathway;
-      bestScore = score;
-    }
-  }
-  return {
-    pathwayId: selected.id,
-    pathwayName: selected.name,
-    summary: selected.description,
-    department: selected.department,
-    urgency: selected.urgency,
-    questions: selected.questions,
-    source,
-  };
-}
-
 function asObject(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -191,91 +94,6 @@ function boundedText(value: unknown, fallback: string, limit = 220): string {
   if (typeof value !== 'string') return fallback;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, limit) : fallback;
-}
-
-function parseGeminiJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
-  const jsonText = fenced ?? text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-  return JSON.parse(jsonText);
-}
-
-function normalizeQuestions(value: unknown, fallback: QuestionnaireQuestion[]): QuestionnaireQuestion[] {
-  if (!Array.isArray(value)) return fallback;
-  const questions = value.flatMap((item): QuestionnaireQuestion[] => {
-    const question = asObject(item);
-    if (!question) return [];
-    const type = question.type;
-    if (type !== 'single' && type !== 'yes-no' && type !== 'scale') return [];
-    const id = boundedText(question.id, '', 60).replace(/[^a-z0-9_-]/gi, '_');
-    const text = boundedText(question.text, '', 180);
-    if (!id || !text) return [];
-    if (type === 'scale') {
-      const min = typeof question.min === 'number' ? question.min : 0;
-      const max = typeof question.max === 'number' ? question.max : 10;
-      return [{ id, text, helper: boundedText(question.helper, '', 160) || undefined, type, min, max }];
-    }
-    const options = Array.isArray(question.options) ? question.options.flatMap((option): QuestionnaireOption[] => {
-      const optionObject = asObject(option);
-      if (!optionObject) return [];
-      const optionId = boundedText(optionObject.id, '', 40).replace(/[^a-z0-9_-]/gi, '_');
-      const label = boundedText(optionObject.label, '', 80);
-      const optionValue = optionObject.value;
-      if (!optionId || !label || (typeof optionValue !== 'string' && typeof optionValue !== 'number' && typeof optionValue !== 'boolean')) return [];
-      return [{ id: optionId, label, value: optionValue }];
-    }) : [];
-    return options.length >= 2 ? [{ id, text, helper: boundedText(question.helper, '', 160) || undefined, type, options }] : [];
-  });
-  return questions.length >= 2 ? questions.slice(0, 5) : fallback;
-}
-
-function normalizeQuestionnaire(value: unknown, complaint: string): QuestionnaireIntake {
-  const fallback = fallbackQuestionnaire(complaint, 'gemini');
-  const object = asObject(value);
-  if (!object) return fallback;
-  const urgency = object.urgency === 'emergency' || object.urgency === 'urgent' || object.urgency === 'priority' || object.urgency === 'routine' ? object.urgency : fallback.urgency;
-  return {
-    pathwayId: boundedText(object.pathwayId, fallback.pathwayId, 80),
-    pathwayName: boundedText(object.pathwayName, fallback.pathwayName, 120),
-    summary: boundedText(object.summary, fallback.summary, 260),
-    department: boundedText(object.department, fallback.department, 120),
-    urgency,
-    questions: normalizeQuestions(object.questions, fallback.questions),
-    source: 'gemini',
-  };
-}
-
-function geminiText(payload: unknown): string | undefined {
-  const response = asObject(payload);
-  const candidates = response?.candidates;
-  if (!Array.isArray(candidates)) return undefined;
-  const firstCandidate = asObject(candidates[0]);
-  const content = asObject(firstCandidate?.content);
-  const parts = content?.parts;
-  if (!Array.isArray(parts)) return undefined;
-  return parts.map((part) => asObject(part)?.text).filter((text): text is string => typeof text === 'string').join('\n').trim() || undefined;
-}
-
-async function buildQuestionnaireWithGemini(complaint: string): Promise<QuestionnaireIntake> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) return fallbackQuestionnaire(complaint);
-  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
-  const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`);
-  url.searchParams.set('key', apiKey);
-  const prompt = `You are helping a South African patient portal prepare an intake questionnaire. Return only JSON with keys: pathwayId, pathwayName, summary, department, urgency, questions. urgency must be one of emergency, urgent, priority, routine. questions must be 2 to 5 short non-diagnostic questions with id, text, type, and options for single or yes-no questions, or min/max for scale questions. Do not give diagnosis or treatment. Complaint: ${complaint}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }),
-  });
-  const payload: unknown = await response.json();
-  if (!response.ok) throw new Error('Gemini questionnaire request failed');
-  const text = geminiText(payload);
-  if (!text) throw new Error('Gemini questionnaire response was empty');
-  try {
-    return normalizeQuestionnaire(parseGeminiJson(text), complaint);
-  } catch {
-    throw new Error('Gemini questionnaire response was invalid');
-  }
 }
 
 const translationLanguageNames: Record<string, string> = {
@@ -293,9 +111,6 @@ const translationLanguageNames: Record<string, string> = {
 };
 
 const translationCache = new Map<string, string>();
-
-let geminiQuestionnaireCooldownUntil = 0;
-const geminiQuestionnaireCooldownMs = 60_000;
 
 async function translateOneWithGoogle(text: string, targetCode: string): Promise<string> {
   const url = new URL('https://translate.googleapis.com/translate_a/single');
@@ -549,180 +364,23 @@ export function createApp(options: CreateAppOptions = {}) {
         res.status(400).json({ error: { code: 'INVALID_QUESTIONNAIRE', message: 'Describe your main symptom in 4 to 300 characters.' } });
         return;
       }
-      const trimmed = complaint.trim();
-      let questionnaire: QuestionnaireIntake;
-      if (Date.now() >= geminiQuestionnaireCooldownUntil) {
-        try {
-          questionnaire = await buildQuestionnaireWithGemini(trimmed);
-        } catch (error) {
-          geminiQuestionnaireCooldownUntil = Date.now() + geminiQuestionnaireCooldownMs;
-          console.error('[questionnaire] Gemini unavailable, serving local fallback:', error instanceof Error ? error.message : error);
-          questionnaire = fallbackQuestionnaire(trimmed);
-        }
-      } else {
-        questionnaire = fallbackQuestionnaire(trimmed);
-      }
-      res.json({ data: questionnaire });
+      res.json({ data: await selectIntakeQuestionnaire(complaint.trim()) });
     } catch (error) {
       next(error);
     }
   });
 
-  const intakeChatMaxTurns = 4;
-
-  interface IntakeChatAnswer { question: string; answer: string }
-
-  interface IntakeChatQuestion { id: string; text: string; type: 'yes_no' | 'single' | 'scale' | 'text'; options?: { id: string; label: string }[] }
-
-  interface IntakeChatConclusion {
-    pathwayId: string;
-    pathwayName: string;
-    summary: string;
-    department: string;
-    urgency: QuestionnaireUrgency;
-    redFlags: string[];
-  }
-
-  type IntakeChatTurn =
-    | { action: 'question'; question: IntakeChatQuestion }
-    | { action: 'complete'; source: 'gemini' | 'local'; intake: IntakeChatConclusion };
-
-  function fallbackChatConclusion(complaint: string, answers: IntakeChatAnswer[]): IntakeChatConclusion {
-    const text = `${complaint} ${answers.map((entry) => `${entry.question} ${entry.answer}`).join(' ')}`.toLowerCase();
-    const emergencyPattern = /chest pain|heart attack|c(an't|annot) breathe|short(ness)? of breath|unconscious|passed out|faint(ed)?|severe bleed|heavy bleed|vomit(ing)? blood|stroke|seizure|overdose|suicidal|allergic reaction|swollen face|blue lips/;
-    const urgentPattern = /blood|pee|urinat|burning|fever|worsening|severe|c(an't|annot) walk|dizzy|vomit|persistent|infection|pain/;
-    const urgency: QuestionnaireUrgency = emergencyPattern.test(text) ? 'emergency' : urgentPattern.test(text) ? 'urgent' : 'priority';
-    const urinaryPattern = /pee|urinat|bladder|kidney|urine/;
-    const department = urgency === 'emergency' ? 'Emergency Department' : urinaryPattern.test(text) ? 'Urology' : 'General consultation';
-    return {
-      pathwayId: 'chat-intake',
-      pathwayName: 'Chat intake assessment',
-      summary: answers.length > 0 ? `${complaint} (assessed from the chat conversation)` : `${complaint} (assessed from your message — the AI assistant was briefly unavailable)`,
-      department,
-      urgency,
-      redFlags: [],
-    };
-  }
-
-  function normalizeIntakeChatTurn(value: unknown, complaint: string, answers: IntakeChatAnswer[], forceComplete: boolean): IntakeChatTurn {
-    const object = asObject(value);
-    if (!object) throw new Error('Gemini intake chat response was invalid');
-    if (object.action === 'question' && !forceComplete) {
-      const questionObject = asObject(object.question);
-      const text = boundedText(questionObject?.text, '', 240);
-      const type = questionObject?.type;
-      if (!text || (type !== 'yes_no' && type !== 'single' && type !== 'scale' && type !== 'text')) throw new Error('Gemini intake chat response was invalid');
-      const rawOptions = Array.isArray(questionObject?.options) ? questionObject.options : [];
-      const options = rawOptions.flatMap((option) => {
-        const optionObject = asObject(option);
-        const optionId = boundedText(optionObject?.id, '', 40).replace(/[^a-z0-9_-]/gi, '_');
-        const label = boundedText(optionObject?.label, '', 80);
-        return optionId && label ? [{ id: optionId, label }] : [];
-      });
-      if (type === 'single' && options.length < 2) throw new Error('Gemini intake chat response was invalid');
-      const id = boundedText(questionObject?.id, '', 40).replace(/[^a-z0-9_-]/gi, '_') || `q${answers.length + 1}`;
-      return { action: 'question', question: { id, text, type, ...(type === 'single' ? { options } : {}) } };
-    }
-    if (object.action === 'complete' || (object.action === 'question' && forceComplete)) {
-      const intakeObject = asObject(object.intake) ?? {};
-      const local = fallbackChatConclusion(complaint, answers);
-      const urgency: QuestionnaireUrgency = intakeObject.urgency === 'emergency' || intakeObject.urgency === 'urgent' || intakeObject.urgency === 'priority' || intakeObject.urgency === 'routine'
-        ? intakeObject.urgency
-        : local.urgency;
-      const redFlags = (Array.isArray(intakeObject.redFlags) ? intakeObject.redFlags : []).flatMap((flag) => {
-        const text = boundedText(flag, '', 80);
-        return text ? [text] : [];
-      }).slice(0, 6);
-      return {
-        action: 'complete',
-        source: 'gemini',
-        intake: {
-          pathwayId: boundedText(intakeObject.pathwayId, local.pathwayId, 80),
-          pathwayName: boundedText(intakeObject.pathwayName, local.pathwayName, 120),
-          summary: boundedText(intakeObject.summary, local.summary, 260),
-          department: boundedText(intakeObject.department, local.department, 120),
-          urgency,
-          redFlags,
-        },
-      };
-    }
-    throw new Error('Gemini intake chat response was invalid');
-  }
-
-  function buildIntakeChatPrompt(complaint: string, answers: IntakeChatAnswer[], forceComplete: boolean): string {
-    const lines = [`Patient: ${complaint}`];
-    answers.forEach((entry) => {
-      lines.push(`Assistant: ${entry.question}`);
-      lines.push(`Patient: ${entry.answer}`);
-    });
-    return `You are a triage intake assistant in a South African public hospital patient portal. Your goal is the FEWEST questions possible — no more than 4 in total — but you MUST ask at least 2 questions before responding with action "complete", unless the patient clearly reported emergency warning signs or the case is obviously minor. Vague or common complaints (pain, fever, headache, urinary symptoms, nausea, dizziness, rash) always need 2-3 questions covering severity, duration, and key warning signs. Ask one short, plain-language question at a time; prefer questions answerable with Yes/No or by picking one of 2-4 options.
-
-Conversation so far:
-${lines.join('\n')}
-${forceComplete ? '\nYou have asked enough questions. You MUST respond with action "complete" now.\n' : ''}
-Return only JSON, exactly one of:
-{"action":"question","question":{"id":"short_snake_case_id","text":"the question","type":"yes_no"}} — type must be yes_no, single, scale, or text. For "single" include "options":[{"id":"yes","label":"Yes"},{"id":"no","label":"No"}] with 2 to 4 choices. For "scale" the patient rates 0-10.
-{"action":"complete","intake":{"pathwayId":"short-id","pathwayName":"short pathway title","summary":"one sentence of what the patient reported","department":"best matching hospital service name","urgency":"emergency|urgent|priority|routine","redFlags":["warning signs if any"]}}
-
-Never diagnose, prescribe, or give treatment advice. If the patient reports emergency warning signs — chest pain, trouble breathing, severe bleeding, fainting, signs of stroke, severe allergic reaction — reply with action "complete" and urgency "emergency" immediately. Choose urgency conservatively.`;
-  }
-
-  async function buildIntakeChatTurn(complaint: string, answers: IntakeChatAnswer[]): Promise<IntakeChatTurn> {
-    const local: IntakeChatTurn = { action: 'complete', source: 'local', intake: fallbackChatConclusion(complaint, answers) };
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) return local;
-    if (Date.now() < geminiQuestionnaireCooldownUntil) return local;
-    const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
-    const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`);
-    url.searchParams.set('key', apiKey);
-    const forceComplete = answers.length >= intakeChatMaxTurns;
-    const prompt = buildIntakeChatPrompt(complaint, answers, forceComplete);
-    const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } });
-    let text: string | undefined;
-    let lastError: Error | undefined;
-    for (let attempt = 0; attempt < 2 && text === undefined; attempt += 1) {
-      try {
-        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-        const payload: unknown = await response.json();
-        if (!response.ok) {
-          lastError = new Error(`Gemini intake chat request failed: ${response.status}`);
-          if (response.status !== 429 && response.status < 500) break;
-          await new Promise((resolve) => setTimeout(resolve, 400));
-          continue;
-        }
-        const extracted = geminiText(payload);
-        if (!extracted) throw new Error('Gemini intake chat response was empty');
-        text = extracted;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        await new Promise((resolve) => setTimeout(resolve, 400));
-      }
-    }
-    if (text === undefined) {
-      geminiQuestionnaireCooldownUntil = Date.now() + geminiQuestionnaireCooldownMs;
-      console.error('[intake-chat] Gemini unavailable, concluding locally:', lastError?.message ?? lastError);
-      return local;
-    }
-    return normalizeIntakeChatTurn(parseGeminiJson(text), complaint, answers, forceComplete);
-  }
-
-  app.post('/api/v1/intake/chat', requireAuth, async (req, res, next) => {
+  app.post('/api/v1/questionnaire/complete', requireAuth, async (req, res, next) => {
     try {
       const body = asObject(req.body);
-      const complaint = boundedText(body?.complaint, '', 300);
-      if (complaint.trim().length < 4) {
-        res.status(400).json({ error: { code: 'INVALID_INTAKE_CHAT', message: 'Describe your main symptom in 4 to 300 characters.' } });
+      const pathwayId = boundedText(body?.pathwayId, '', 80);
+      const pathway = findQuestionnairePathway(pathwayId);
+      const answers = pathway ? validateQuestionnaireAnswers(pathway, body?.answers) : undefined;
+      if (!pathway || !answers) {
+        res.status(400).json({ error: { code: 'INVALID_QUESTIONNAIRE_ANSWERS', message: 'Complete each question using one of the available answers.' } });
         return;
       }
-      const rawAnswers = Array.isArray(body?.answers) ? body.answers.slice(0, intakeChatMaxTurns + 1) : [];
-      const answers: IntakeChatAnswer[] = rawAnswers.flatMap((entry) => {
-        const entryObject = asObject(entry);
-        const question = boundedText(entryObject?.question, '', 300);
-        const answer = boundedText(entryObject?.answer, '', 300);
-        return question && answer ? [{ question, answer }] : [];
-      });
-      const turn = await buildIntakeChatTurn(complaint.trim(), answers);
-      res.json({ data: turn });
+      res.json({ data: evaluateQuestionnaire(pathway, answers) });
     } catch (error) {
       next(error);
     }
@@ -2235,10 +1893,6 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     void _next;
     console.error(error);
-    if (error instanceof Error && error.message.startsWith('Gemini intake chat')) {
-      res.status(502).json({ error: { code: 'INTAKE_CHAT_UNAVAILABLE', message: 'The AI intake service returned an invalid response. Please try again.' } });
-      return;
-    }
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505' && 'constraint' in error && error.constraint === 'appointments_booked_service_slot_key') {
       res.status(409).json({ error: { code: 'SLOT_UNAVAILABLE', message: 'This appointment slot is no longer available. Please choose another time.' } });
       return;

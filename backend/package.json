@@ -9,6 +9,7 @@
     "start": "npm run migrate:prod && node dist/server.js",
     "migrate": "tsx src/migrations/run.ts",
     "migrate:prod": "node dist/migrations/run.js",
+    "gemini:check": "tsx src/gemini-diagnostic.ts",
     "seed": "tsx src/data/seed.ts",
     "seed:dispatch": "tsx src/data/seed-dispatch.ts",
     "lint": "eslint .",

@@ -159,9 +159,9 @@ function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; s
         <div className="nv-sw-badges">
           {entry.critical ? <span className="badge red">Emergency flag</span> : null}
           {entry.triageSummary ? (
-            <span className={`badge urgency-${entry.triageSummary.urgency}`}>AI suggests {categoryLabels[entry.triageSummary.urgency]}</span>
+            <span className={`badge urgency-${entry.triageSummary.urgency}`}>Intake suggests {categoryLabels[entry.triageSummary.urgency]}</span>
           ) : (
-            <span className="badge yellow">No AI intake</span>
+            <span className="badge yellow">No intake assessment</span>
           )}
         </div>
       </div>
@@ -174,7 +174,7 @@ function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; s
               {entry.triageSummary.redFlags.map((flag) => <span key={flag} className="nv-tag nv-sw-redflag">{flag}</span>)}
             </div>
           ) : null}
-            <p className="muted small">AI-assisted routing suggestion — not a diagnosis or confirmed urgency. Confirm it or change it below.</p>
+            <p className="muted small">Questionnaire-based routing suggestion — not a diagnosis or confirmed urgency. Confirm it or change it below.</p>
         </div>
       ) : entry.intakeNote ? (
         <div className="nv-sw-summary">
@@ -183,7 +183,7 @@ function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; s
           <p className="muted small">Confirm the receiving queue below.</p>
         </div>
       ) : (
-        <p className="muted small nv-sw-summary">No AI intake for this patient. Ask about their symptoms and choose a queue manually.</p>
+        <p className="muted small nv-sw-summary">No intake assessment for this patient. Ask about their symptoms and choose a queue manually.</p>
       )}
       <form className="nv-book-form nv-sw-confirm" onSubmit={(event) => void confirm(event)}>
         <label className="nv-field">Department
@@ -197,7 +197,7 @@ function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; s
           </select>
         </label>
         <label className="nv-field">Reason for change (optional)
-          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Only if you changed the AI suggestion" />
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Only if you changed the intake suggestion" />
         </label>
         {error ? <p className="nv-error" role="alert">{error}</p> : null}
         <div className="nv-book-actions">
@@ -220,7 +220,7 @@ function TriageBoard({ entries, services, loading, onChanged }: { entries: Staff
       </header>
       {criticalCount > 0 ? (
         <div className="nv-sw-alert" role="alert">
-          <strong>{criticalCount} AI red-flag suggestion{criticalCount === 1 ? ' needs' : 's need'} prompt review.</strong>
+          <strong>{criticalCount} intake red-flag suggestion{criticalCount === 1 ? ' needs' : 's need'} prompt review.</strong>
           <span>These are unverified intake warnings and do not change queue priority until a nurse confirms urgency.</span>
         </div>
       ) : null}

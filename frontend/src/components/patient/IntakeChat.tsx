@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { AppointmentTriageSummary, Hospital, IntakeChatAnswer, IntakeChatConclusion, IntakeChatQuestion, IntakeChatTurn } from '../../api.ts';
+import type { AppointmentTriageSummary, Hospital, QuestionnaireAnswer, QuestionnaireAssessment, QuestionnaireIntake } from '../../api.ts';
 import { IntakeRecommendation } from './IntakeRecommendation.tsx';
 
 type ChatStage = 'intro' | 'chat' | 'result';
@@ -13,43 +13,32 @@ export function IntakeChat({
   isAuthenticated,
   hospitals,
   onSignIn,
-  onChatTurn,
+  onStartIntake,
+  onCompleteQuestionnaire,
   onBookAppointment,
 }: {
   isAuthenticated: boolean;
   hospitals: Hospital[];
   onSignIn: () => void;
-  onChatTurn: (complaint: string, answers: IntakeChatAnswer[]) => Promise<IntakeChatTurn>;
+  onStartIntake: (complaint: string) => Promise<QuestionnaireIntake>;
+  onCompleteQuestionnaire: (pathwayId: string, answers: QuestionnaireAnswer[]) => Promise<QuestionnaireAssessment>;
   onBookAppointment: (input: { hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary }) => void;
 }) {
   const [stage, setStage] = useState<ChatStage>('intro');
   const [complaint, setComplaint] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<IntakeChatQuestion>();
-  const [answers, setAnswers] = useState<IntakeChatAnswer[]>([]);
-  const [textAnswer, setTextAnswer] = useState('');
+  const [intake, setIntake] = useState<QuestionnaireIntake>();
+  const [answers, setAnswers] = useState<QuestionnaireAnswer[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [conclusion, setConclusion] = useState<{ source: 'gemini' | 'local'; intake: IntakeChatConclusion }>();
+  const [conclusion, setConclusion] = useState<{ source: QuestionnaireIntake['source']; fallbackReason?: QuestionnaireIntake['fallbackReason']; assessment: QuestionnaireAssessment }>();
   const messagesRef = useRef<HTMLDivElement>(null);
+  const currentQuestion = intake?.questions[answers.length];
 
   useEffect(() => {
     const node = messagesRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, busy]);
-
-  async function advance(activeComplaint: string, nextAnswers: IntakeChatAnswer[]) {
-    const turn = await onChatTurn(activeComplaint, nextAnswers);
-    if (turn.action === 'question') {
-      setMessages((current) => [...current, { role: 'ai', text: turn.question.text }]);
-      setCurrentQuestion(turn.question);
-      setStage('chat');
-      return;
-    }
-    setConclusion({ source: turn.source, intake: turn.intake });
-    setCurrentQuestion(undefined);
-    setStage('result');
-  }
 
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,8 +49,16 @@ export function IntakeChat({
     if (complaint.trim().length < 4) return;
     setBusy(true);
     setError(undefined);
+    setMessages([]);
+    setIntake(undefined);
+    setAnswers([]);
+    setConclusion(undefined);
     try {
-      await advance(complaint.trim(), []);
+      const nextIntake = await onStartIntake(complaint.trim());
+      if (nextIntake.questions.length === 0) throw new Error('The standard intake questionnaire is unavailable. Please try again.');
+      setIntake(nextIntake);
+      setMessages([{ role: 'ai', text: nextIntake.questions[0].text }]);
+      setStage('chat');
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : 'Could not start the conversation.');
     } finally {
@@ -69,18 +66,25 @@ export function IntakeChat({
     }
   }
 
-  async function submitAnswer(display: string, stored: string) {
-    if (!currentQuestion || busy) return;
-    const nextAnswers = [...answers, { question: currentQuestion.text, answer: stored }];
-    setMessages((current) => [...current, { role: 'patient', text: display }]);
-    setAnswers(nextAnswers);
-    setCurrentQuestion(undefined);
-    setTextAnswer('');
-    setBusy(true);
+  async function submitAnswer(display: string, value: QuestionnaireAnswer['value']) {
+    if (!intake || !currentQuestion || busy) return;
+    const nextAnswers = [...answers, { questionId: currentQuestion.id, value }];
     setError(undefined);
+    if (nextAnswers.length < intake.questions.length) {
+      const nextQuestion = intake.questions[nextAnswers.length]!;
+      setMessages((current) => [...current, { role: 'patient', text: display }, { role: 'ai', text: nextQuestion.text }]);
+      setAnswers(nextAnswers);
+      return;
+    }
+    setMessages((current) => [...current, { role: 'patient', text: display }]);
+    setBusy(true);
     try {
-      await advance(complaint, nextAnswers);
+      const assessment = await onCompleteQuestionnaire(intake.pathwayId, nextAnswers);
+      setAnswers(nextAnswers);
+      setConclusion({ source: intake.source, fallbackReason: intake.fallbackReason, assessment });
+      setStage('result');
     } catch (answerError) {
+      setMessages((current) => current.slice(0, -1));
       setError(answerError instanceof Error ? answerError.message : 'Something went wrong. Please try again.');
     } finally {
       setBusy(false);
@@ -91,20 +95,19 @@ export function IntakeChat({
     setStage('intro');
     setComplaint('');
     setMessages([]);
-    setCurrentQuestion(undefined);
+    setIntake(undefined);
     setAnswers([]);
-    setTextAnswer('');
     setError(undefined);
     setConclusion(undefined);
   }
 
   return (
-    <section className="card nv-questionnaire-card" aria-label="AI triage chat">
+    <section className="card nv-questionnaire-card" aria-label="AI-assisted intake">
       {stage === 'intro' ? (
         <form className="nv-questionnaire-intro" onSubmit={start}>
-          <p className="eyebrow">AI triage chat</p>
+          <p className="eyebrow">AI-assisted intake</p>
           <h2>Tell us what you are feeling before you book</h2>
-          <p className="muted">Have a short conversation with our AI intake assistant. It asks only the fewest questions needed to point you to the right service. This is not a diagnosis.</p>
+          <p className="muted">Your initial message selects a standard intake questionnaire. The questions and assessment are not generated by AI. This is not a diagnosis.</p>
           <label className="nv-field">
             Main symptom
             <textarea
@@ -121,7 +124,7 @@ export function IntakeChat({
           </div>
           {error ? <p className="nv-error" role="alert">{error}</p> : null}
           <button className="primary-btn" type="submit" disabled={busy || complaint.trim().length < 4}>
-            {busy ? 'Connecting…' : isAuthenticated ? 'Start conversation' : 'Sign in to start'}
+            {busy ? 'Starting…' : isAuthenticated ? 'Start assessment' : 'Sign in to start'}
           </button>
         </form>
       ) : null}
@@ -132,21 +135,21 @@ export function IntakeChat({
             {messages.map((message, index) => (
               <div key={index} className={`nv-chat-bubble ${message.role}`}>{message.text}</div>
             ))}
-            {busy ? <div className="nv-chat-bubble ai nv-chat-typing">Typing…</div> : null}
-          </div>
-          {currentQuestion && !busy ? (
-            <div className="nv-chat-reply">
-              {currentQuestion.type === 'yes_no' ? (
-                <div className="nv-questionnaire-options">
-                  <button type="button" className="nv-questionnaire-option" onClick={() => void submitAnswer('Yes', 'Yes')}>Yes</button>
-                  <button type="button" className="nv-questionnaire-option" onClick={() => void submitAnswer('No', 'No')}>No</button>
-                </div>
-              ) : null}
-              {currentQuestion.type === 'single' ? (
-                <div className="nv-questionnaire-options">
-                  {currentQuestion.options?.map((option) => (
-                    <button key={option.id} type="button" className="nv-questionnaire-option" onClick={() => void submitAnswer(option.label, option.label)}>
-                      {option.label}
+              {busy ? <div className="nv-chat-bubble ai nv-chat-typing">Assessing…</div> : null}
+            </div>
+            {currentQuestion && !busy ? (
+              <div className="nv-chat-reply">
+                {currentQuestion.type === 'yes-no' ? (
+                  <div className="nv-questionnaire-options">
+                    <button type="button" className="nv-questionnaire-option" onClick={() => void submitAnswer('Yes', true)}>Yes</button>
+                    <button type="button" className="nv-questionnaire-option" onClick={() => void submitAnswer('No', false)}>No</button>
+                  </div>
+                ) : null}
+                {currentQuestion.type === 'single' ? (
+                  <div className="nv-questionnaire-options">
+                    {currentQuestion.options?.map((option) => (
+                      <button key={option.id} type="button" className="nv-questionnaire-option" onClick={() => void submitAnswer(option.label, option.value)}>
+                        {option.label}
                     </button>
                   ))}
                 </div>
@@ -156,33 +159,28 @@ export function IntakeChat({
                   <span className="muted small">0 = none · 10 = worst</span>
                   <div className="nv-chat-scale-options">
                     {Array.from({ length: 11 }, (_, value) => (
-                      <button key={value} type="button" className="nv-chat-scale-chip" onClick={() => void submitAnswer(`${value}/10`, String(value))}>{value}</button>
+                      <button key={value} type="button" className="nv-chat-scale-chip" onClick={() => void submitAnswer(`${value}/10`, value)}>{value}</button>
                     ))}
                   </div>
                 </div>
               ) : null}
-              {currentQuestion.type === 'text' ? (
-                <form className="nv-chat-text-row" onSubmit={(event) => { event.preventDefault(); if (textAnswer.trim()) void submitAnswer(textAnswer.trim(), textAnswer.trim()); }}>
-                  <input value={textAnswer} onChange={(event) => setTextAnswer(event.target.value)} placeholder="Type your answer…" maxLength={300} />
-                  <button className="primary-btn" type="submit" disabled={!textAnswer.trim()}>Send</button>
-                </form>
-              ) : null}
             </div>
           ) : null}
           {error ? <p className="nv-error" role="alert">{error}</p> : null}
-          <p className="muted small">This assistant does not diagnose or treat — a nurse reviews everything before you are placed in a queue.</p>
+          <p className="muted small">AI is used only to select this standard questionnaire. A nurse reviews everything before you are placed in a queue.</p>
         </div>
       ) : null}
 
       {stage === 'result' && conclusion ? (
         <IntakeRecommendation
           hospitals={hospitals}
-          pathwayName={conclusion.intake.pathwayName}
+          pathwayName={conclusion.assessment.pathwayName}
           source={conclusion.source}
-          urgency={conclusion.intake.urgency}
-          department={conclusion.intake.department}
-          reason={conclusion.intake.summary}
-          redFlags={conclusion.intake.redFlags}
+          fallbackReason={conclusion.fallbackReason}
+          urgency={conclusion.assessment.urgency}
+          department={conclusion.assessment.department}
+          reason={conclusion.assessment.summary}
+          redFlags={conclusion.assessment.redFlags}
           onBookAppointment={onBookAppointment}
           onRestart={restart}
         />
