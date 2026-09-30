@@ -8,7 +8,7 @@ export interface PatientCareData {
   queueEntries: QueueEntry[];
   loading: boolean;
   error: string | undefined;
-  refresh: () => Promise<void>;
+  refresh: (silent?: boolean) => Promise<void>;
   cancelAppointment: (id: string) => Promise<void>;
   createAppointment: (input: { hospitalId: string; serviceId: string; date: string; time: string; triageSummary?: AppointmentTriageSummary | null }) => Promise<void>;
   updateAppointment: (id: string, input: { serviceId: string; date: string; time: string }) => Promise<void>;
@@ -26,9 +26,9 @@ export function usePatientCare(): PatientCareData {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
     if (!isAuthenticated) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(undefined);
     try {
       const token = await getAccessTokenSilently();
@@ -43,12 +43,18 @@ export function usePatientCare(): PatientCareData {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load your care information.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [isAuthenticated, getAccessTokenSilently]);
 
   useEffect(() => {
     if (isAuthenticated) void refresh();
+  }, [isAuthenticated, refresh]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const timer = window.setInterval(() => void refresh(true), 15000);
+    return () => window.clearInterval(timer);
   }, [isAuthenticated, refresh]);
 
   const cancelAppointment = useCallback(async (id: string) => {

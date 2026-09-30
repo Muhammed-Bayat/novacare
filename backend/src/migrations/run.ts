@@ -27,8 +27,9 @@ import { migration as responseUnitStatusesMigration } from './020_response_unit_
 import { migration as dispatchStatusTimestampsMigration } from './021_dispatch_status_timestamps.js';
 import { migration as channelConversationsMigration } from './022_channel_conversations.js';
 import { migration as locationConfirmationMigration } from './023_location_confirmation.js';
+import { migration as clinicalQueueCompletionMigration } from './024_clinical_queue_completion.js';
 
-const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration, secureStaffInvitationsMigration, appointmentTriageSummaryMigration, queueTriageWorkflowMigration, appointmentCheckedInStatusMigration, adminDomainMigration, adminSettingsMigration, dispatcherRoleMigration, dispatchSchemaMigration, dispatchUnitsMigration, dispatcherInvitationsMigration, responseUnitStatusesMigration, dispatchStatusTimestampsMigration, channelConversationsMigration, locationConfirmationMigration];
+const migrations = [initialMigration, bookingDirectoryMigration, generalConsultationsMigration, expandDirectoryAndAppointmentsMigration, importVerifiedSpecialtiesMigration, importCompleteDirectoryMigration, correctMajorHospitalServicesMigration, applyDohServicePackagesMigration, patientQueuesMigration, patientHealthRecordsMigration, staffRolesMigration, userTypeMigration, secureStaffInvitationsMigration, appointmentTriageSummaryMigration, queueTriageWorkflowMigration, appointmentCheckedInStatusMigration, adminDomainMigration, adminSettingsMigration, dispatcherRoleMigration, dispatchSchemaMigration, dispatchUnitsMigration, dispatcherInvitationsMigration, responseUnitStatusesMigration, dispatchStatusTimestampsMigration, channelConversationsMigration, locationConfirmationMigration, clinicalQueueCompletionMigration];
 
 export async function runMigrations(): Promise<void> {
   const pool = getPool();

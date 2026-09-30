@@ -23,6 +23,12 @@ const auditLabels: Record<string, string> = {
   'hospital_display.rotated': 'Display link regenerated',
   'hospital_display.activated': 'Waiting-room display turned on',
   'hospital_display.deactivated': 'Waiting-room display turned off',
+  TRIAGE_CONFIRMED: 'Triage confirmed',
+  QUEUE_ENTRY_CALLED: 'Patient called',
+  CONSULTATION_STARTED: 'Consultation started',
+  CONSULTATION_COMPLETED: 'Diagnosis recorded and consultation completed',
+  QUEUE_ENTRY_REFERRED: 'Patient referred',
+  QUEUE_ENTRY_CANCELLED: 'Queue entry cancelled',
 };
 
 function auditDetail(event: AuditEvent): string {
@@ -42,6 +48,8 @@ function auditDetail(event: AuditEvent): string {
   if (typeof metadata.departmentName === 'string') parts.push(metadata.departmentName);
   if (typeof metadata.created === 'number') parts.push(`${metadata.created} slots`);
   if (typeof metadata.date === 'string') parts.push(metadata.date);
+  if (typeof metadata.category === 'string') parts.push(metadata.category);
+  if (typeof metadata.reason === 'string') parts.push(metadata.reason);
   return parts.join(' · ');
 }
 

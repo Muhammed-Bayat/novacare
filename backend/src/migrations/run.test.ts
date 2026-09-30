@@ -12,6 +12,7 @@ import { migration as dispatcherInvitationsMigration } from './019_dispatcher_in
 import { migration as responseUnitStatusesMigration } from './020_response_unit_statuses.js';
 import { migration as dispatchStatusTimestampsMigration } from './021_dispatch_status_timestamps.js';
 import { migration as locationConfirmationMigration } from './023_location_confirmation.js';
+import { migration as clinicalQueueCompletionMigration } from './024_clinical_queue_completion.js';
 
 describe('initial migration', () => {
   it('creates the local users table', () => {
@@ -117,5 +118,15 @@ describe('dispatch migrations', () => {
     expect(locationConfirmationMigration.sql).not.toMatch(/RENAME\s+COLUMN/i);
     expect(locationConfirmationMigration.sql).not.toContain('service_requests_status_check');
     expect(locationConfirmationMigration.sql).not.toContain('service_requests_coordinate_');
+  });
+});
+
+describe('clinical queue completion migration', () => {
+  it('links diagnoses to completed consultations and protects active queues', () => {
+    expect(clinicalQueueCompletionMigration.name).toBe('024_clinical_queue_completion');
+    expect(clinicalQueueCompletionMigration.sql).toContain("'awaiting_triage', 'waiting', 'called', 'in_consultation'");
+    expect(clinicalQueueCompletionMigration.sql).toContain('ADD COLUMN queue_entry_id');
+    expect(clinicalQueueCompletionMigration.sql).toContain('ADD COLUMN diagnosed_by');
+    expect(clinicalQueueCompletionMigration.sql).toContain('clinical_diagnoses_one_per_queue_entry');
   });
 });

@@ -1,6 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type IntakeChatAnswer, type IntakeChatTurn } from '../api.ts';
+import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type ClinicalDiagnosis, type IntakeChatAnswer, type IntakeChatTurn } from '../api.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
 import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
@@ -54,12 +54,15 @@ export function PatientPortalPage() {
   const careData = usePatientCare();
   const serviceRequests = useServiceRequests();
   const authDisplayName = user?.given_name ?? user?.nickname ?? user?.name ?? 'Thandi';
-  const [view, setView] = useState<'dashboard' | 'appointments' | 'help'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'appointments' | 'results' | 'help'>('dashboard');
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [displayName, setDisplayName] = useState(() => readStoredDisplayName() ?? authDisplayName);
   const [draftDisplayName, setDraftDisplayName] = useState(displayName);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [bookingSuggestion, setBookingSuggestion] = useState<{ hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary } | null>(null);
+  const [diagnoses, setDiagnoses] = useState<ClinicalDiagnosis[]>([]);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsError, setResultsError] = useState<string>();
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -72,6 +75,31 @@ export function PatientPortalPage() {
       setDraftDisplayName(authDisplayName);
     }
   }, [authDisplayName]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setDiagnoses([]);
+      return;
+    }
+    if (view !== 'results') return;
+    let cancelled = false;
+    async function loadResults(silent = false) {
+      if (!silent) setResultsLoading(true);
+      setResultsError(undefined);
+      try {
+        const token = await getAccessTokenSilently();
+        const response = await authenticatedRequest<{ data: { diagnoses?: ClinicalDiagnosis[] } }>('/api/v1/profile', token);
+        if (!cancelled) setDiagnoses(response.data.diagnoses ?? []);
+      } catch (error) {
+        if (!cancelled) setResultsError(error instanceof Error ? error.message : 'Could not load your clinical results.');
+      } finally {
+        if (!cancelled && !silent) setResultsLoading(false);
+      }
+    }
+    void loadResults();
+    const timer = window.setInterval(() => void loadResults(true), 15000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [isAuthenticated, getAccessTokenSilently, view]);
 
   function saveDisplayName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -107,6 +135,7 @@ export function PatientPortalPage() {
   const navItems = [
     { label: 'Dashboard', active: view === 'dashboard', onClick: () => setView('dashboard') },
     { label: 'Appointments', active: view === 'appointments', onClick: () => setView('appointments') },
+    { label: 'My health', active: view === 'results', onClick: () => setView('results') },
     { label: 'Emergency', active: view === 'help', onClick: () => setView('help') },
   ];
 
@@ -221,6 +250,39 @@ export function PatientPortalPage() {
             onConfirmLocation={serviceRequests.confirmLocation}
           />
         )
+      ) : null}
+
+      {view === 'results' ? (
+        <section className="nv-care-view">
+          <header className="nv-care-view-head">
+            <h1 className="section-title">My health</h1>
+            <p className="muted">Review diagnoses and consultation notes shared by your care team.</p>
+          </header>
+          {!isAuthenticated ? (
+            <div className="card nv-care-signin">
+              <h3>Sign in to view your health information</h3>
+              <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign In</button>
+            </div>
+          ) : resultsError ? (
+            <div className="card nv-empty"><p className="nv-error" role="alert">{resultsError}</p></div>
+          ) : resultsLoading ? (
+            <div className="card nv-empty"><p className="muted">Loading your health information…</p></div>
+          ) : diagnoses.length === 0 ? (
+            <div className="card nv-empty"><p className="muted">No diagnoses have been shared with you yet.</p></div>
+          ) : (
+            <ul className="nv-results-list">
+              {diagnoses.map((diagnosis) => (
+                <li className="card nv-result" key={diagnosis.id}>
+                  <div>
+                    <h3>{diagnosis.diagnosis}</h3>
+                    <p className="muted small">{new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium' }).format(new Date(diagnosis.diagnosedOn))}{diagnosis.clinicianName ? ` · ${diagnosis.clinicianName}` : ''}</p>
+                  </div>
+                  {diagnosis.notes ? <p>{diagnosis.notes}</p> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       ) : null}
 
       {view === 'dashboard' ? (

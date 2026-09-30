@@ -1721,7 +1721,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         return;
       }
       const diagnosesResult = await getPool().query<{ id: string; diagnosis: string; diagnosed_on: string; clinician_name: string | null; notes: string | null }>(
-        `SELECT id, diagnosis, diagnosed_on, clinician_name, notes FROM clinical_diagnoses WHERE patient_profile_id = $1 ORDER BY diagnosed_on DESC`,
+        `SELECT id, diagnosis, diagnosed_on, clinician_name, notes FROM clinical_diagnoses WHERE patient_profile_id = $1 ORDER BY diagnosed_on DESC, created_at DESC, id DESC`,
         [profile.id],
       );
       res.json({ data: { profile: { phone: profile.phone, dateOfBirth: profile.date_of_birth, homeAddress: profile.home_address, emergencyContactName: profile.emergency_contact_name, emergencyContactPhone: profile.emergency_contact_phone, chronicConditions: profile.chronic_conditions, allergies: profile.allergies, medications: profile.medications, bloodType: profile.blood_type, accessNeeds: profile.access_needs, healthNotes: profile.health_notes, healthDataConsent: profile.health_data_consent }, diagnoses: diagnosesResult.rows.map((item) => ({ id: item.id, diagnosis: item.diagnosis, diagnosedOn: item.diagnosed_on, clinicianName: item.clinician_name, notes: item.notes })) } });
@@ -1789,18 +1789,19 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.delete('/api/v1/queue/:id', requireAuth, async (req, res, next) => {
     try {
-      const result = await getPool().query<{ id: string }>(
+      const result = await getPool().query<{ id: string; user_id: string; hospital_id: string }>(
         `UPDATE queue_entries q SET status = 'cancelled', updated_at = now()
          FROM users u
          WHERE q.id = $1 AND q.user_id = u.id AND u.auth0_subject = $2
            AND q.queue_date = CURRENT_DATE AND q.status IN ('waiting', 'awaiting_triage')
-         RETURNING q.id`,
+          RETURNING q.id, q.user_id, q.hospital_id`,
         [req.params.id, req.auth!.subject],
       );
       if (!result.rowCount) {
         res.status(404).json({ error: { code: 'QUEUE_ENTRY_NOT_FOUND', message: 'That active queue entry was not found.' } });
         return;
       }
+      await recordAudit({ actorUserId: result.rows[0]!.user_id, hospitalId: result.rows[0]!.hospital_id, entityType: 'queue_entry', entityId: result.rows[0]!.id, action: 'QUEUE_ENTRY_CANCELLED' });
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -1809,7 +1810,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.get('/api/v1/staff/triage', requireAuth, async (req, res, next) => {
     try {
-      const membership = await staffMembership(req.auth!.subject, ['nurse', 'administrator']);
+      const membership = await staffMembership(req.auth!.subject, ['nurse']);
       if (!membership) {
         res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Nurse access is required to review triage.' } });
         return;
@@ -1828,9 +1829,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
          JOIN departments hs ON hs.id = q.hospital_service_id
          LEFT JOIN appointments a ON a.id = q.appointment_id
          WHERE q.hospital_id = $1 AND q.queue_date = CURRENT_DATE AND q.status = 'awaiting_triage'
-         ORDER BY CASE WHEN q.triage_urgency = 'emergency' OR cardinality(q.triage_red_flags) > 0 THEN 0 ELSE 1 END,
-                  CASE q.triage_urgency WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 WHEN 'priority' THEN 2 ELSE 3 END,
-                  q.joined_at`,
+          ORDER BY q.joined_at`,
         [membership.hospitalId],
       );
       res.json({
@@ -1857,7 +1856,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.post('/api/v1/staff/triage/:id/confirm', requireAuth, async (req, res, next) => {
     try {
-      const membership = await staffMembership(req.auth!.subject, ['nurse', 'administrator']);
+      const membership = await staffMembership(req.auth!.subject, ['nurse']);
       if (!membership) {
         res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Nurse access is required to confirm triage.' } });
         return;
@@ -1871,8 +1870,8 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         res.status(400).json({ error: { code: 'INVALID_TRIAGE', message: 'Choose a valid department.' } });
         return;
       }
-      const entry = await getPool().query<{ id: string; hospital_service_id: string }>(
-        `SELECT id, hospital_service_id FROM queue_entries
+      const entry = await getPool().query<{ id: string; hospital_service_id: string; triage_urgency: QuestionnaireUrgency | null }>(
+        `SELECT id, hospital_service_id, triage_urgency FROM queue_entries
          WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status = 'awaiting_triage'`,
         [req.params.id, membership.hospitalId],
       );
@@ -1896,10 +1895,16 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
              status = 'waiting', triaged_at = now(), triaged_by = $5, updated_at = now(),
              acknowledged_at = CASE WHEN $2 = 'emergency' THEN now() ELSE acknowledged_at END,
              acknowledged_by = CASE WHEN $2 = 'emergency' THEN $5 ELSE acknowledged_by END
-         WHERE id = $1
-         RETURNING id`,
+          WHERE id = $1 AND status = 'awaiting_triage'
+          RETURNING id`,
         [req.params.id, category, targetServiceId, reasonText, membership.userId],
       );
+      if (!updated.rowCount) {
+        res.status(409).json({ error: { code: 'ENTRY_NOT_AWAITING_TRIAGE', message: 'That patient is no longer awaiting triage.' } });
+        return;
+      }
+      const changedFromSuggestion = category !== entry.rows[0]!.triage_urgency || targetServiceId !== entry.rows[0]!.hospital_service_id;
+      await recordAudit({ actorUserId: membership.userId, hospitalId: membership.hospitalId, entityType: 'queue_entry', entityId: updated.rows[0]!.id, action: 'TRIAGE_CONFIRMED', metadata: { category, serviceId: targetServiceId, changedFromSuggestion, reason: reasonText || undefined } });
       res.json({ data: { id: updated.rows[0]!.id, category, serviceId: targetServiceId } });
     } catch (error) {
       next(error);
@@ -1908,7 +1913,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.get('/api/v1/staff/queue', requireAuth, async (req, res, next) => {
     try {
-      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor']);
       if (!membership) {
         res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required to view the queue.' } });
         return;
@@ -1957,7 +1962,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.post('/api/v1/staff/queue/:id/call', requireAuth, async (req, res, next) => {
     try {
-      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor']);
       if (!membership) {
         res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
         return;
@@ -1972,6 +1977,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         res.status(409).json({ error: { code: 'ENTRY_NOT_WAITING', message: 'That patient is no longer waiting in the queue.' } });
         return;
       }
+      await recordAudit({ actorUserId: membership.userId, hospitalId: membership.hospitalId, entityType: 'queue_entry', entityId: result.rows[0]!.id, action: 'QUEUE_ENTRY_CALLED' });
       res.json({ data: { id: result.rows[0]!.id, status: 'called' } });
     } catch (error) {
       next(error);
@@ -1980,7 +1986,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.post('/api/v1/staff/queue/:id/start-consultation', requireAuth, async (req, res, next) => {
     try {
-      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor']);
       if (!membership) {
         res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
         return;
@@ -1995,6 +2001,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         res.status(409).json({ error: { code: 'ENTRY_NOT_CALLED', message: 'That patient has not been called yet.' } });
         return;
       }
+      await recordAudit({ actorUserId: membership.userId, hospitalId: membership.hospitalId, entityType: 'queue_entry', entityId: result.rows[0]!.id, action: 'CONSULTATION_STARTED' });
       res.json({ data: { id: result.rows[0]!.id, status: 'in_consultation' } });
     } catch (error) {
       next(error);
@@ -2003,22 +2010,58 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.post('/api/v1/staff/queue/:id/complete', requireAuth, async (req, res, next) => {
     try {
-      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      const membership = await staffMembership(req.auth!.subject, ['doctor']);
       if (!membership) {
         res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
         return;
       }
-      const result = await getPool().query<{ id: string }>(
-        `UPDATE queue_entries SET status = 'completed', completed_at = now(), updated_at = now()
-         WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status = 'in_consultation'
-         RETURNING id`,
-        [req.params.id, membership.hospitalId],
-      );
-      if (!result.rowCount) {
-        res.status(409).json({ error: { code: 'ENTRY_NOT_IN_CONSULTATION', message: 'That consultation has not started.' } });
+      const body = req.body as Record<string, unknown>;
+      const diagnosis = boundedText(body.diagnosis, '', 500);
+      const notes = boundedText(body.notes, '', 2000);
+      if (!diagnosis) {
+        res.status(400).json({ error: { code: 'DIAGNOSIS_REQUIRED', message: 'Enter a diagnosis before completing this consultation.' } });
         return;
       }
-      res.json({ data: { id: result.rows[0]!.id, status: 'completed' } });
+      const client = await getPool().connect();
+      try {
+        await client.query('BEGIN');
+        const entry = await client.query<{ id: string; user_id: string }>(
+          `SELECT id, user_id FROM queue_entries
+           WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status = 'in_consultation'
+           FOR UPDATE`,
+          [req.params.id, membership.hospitalId],
+        );
+        if (!entry.rowCount) {
+          await client.query('ROLLBACK');
+          res.status(409).json({ error: { code: 'ENTRY_NOT_IN_CONSULTATION', message: 'That consultation has not started.' } });
+          return;
+        }
+        const profile = await client.query<{ id: string }>(
+          `INSERT INTO patient_profiles (user_id) VALUES ($1)
+           ON CONFLICT (user_id) DO UPDATE SET updated_at = now()
+           RETURNING id`,
+          [entry.rows[0]!.user_id],
+        );
+        const created = await client.query<{ id: string }>(
+          `INSERT INTO clinical_diagnoses (patient_profile_id, diagnosis, diagnosed_on, clinician_name, notes, queue_entry_id, hospital_id, diagnosed_by)
+           VALUES ($1, $2, CURRENT_DATE, $3, NULLIF($4, ''), $5, $6, $7)
+           RETURNING id`,
+          [profile.rows[0]!.id, diagnosis, req.auth!.displayName ?? 'Doctor', notes, entry.rows[0]!.id, membership.hospitalId, membership.userId],
+        );
+        await client.query(`UPDATE queue_entries SET status = 'completed', completed_at = now(), updated_at = now() WHERE id = $1`, [entry.rows[0]!.id]);
+        await client.query(
+          `INSERT INTO audit_events (actor_user_id, hospital_id, entity_type, entity_id, action, metadata)
+           VALUES ($1, $2, 'clinical_diagnosis', $3, 'CONSULTATION_COMPLETED', $4)`,
+          [membership.userId, membership.hospitalId, created.rows[0]!.id, JSON.stringify({ queueEntryId: entry.rows[0]!.id })],
+        );
+        await client.query('COMMIT');
+        res.json({ data: { id: entry.rows[0]!.id, status: 'completed', diagnosisId: created.rows[0]!.id } });
+      } catch (transactionError) {
+        await client.query('ROLLBACK');
+        throw transactionError;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       next(error);
     }
@@ -2026,7 +2069,7 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
 
   app.post('/api/v1/staff/queue/:id/refer', requireAuth, async (req, res, next) => {
     try {
-      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor', 'administrator']);
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor']);
       if (!membership) {
         res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required.' } });
         return;
@@ -2038,35 +2081,54 @@ Never diagnose, prescribe, or give treatment advice. If the patient reports emer
         res.status(400).json({ error: { code: 'INVALID_REFERRAL', message: 'Choose a receiving department and describe the referral reason.' } });
         return;
       }
-      const entry = await getPool().query<{ id: string; user_id: string; hospital_service_id: string }>(
-        `SELECT id, user_id, hospital_service_id FROM queue_entries
-         WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status IN ('called', 'in_consultation')`,
-        [req.params.id, membership.hospitalId],
-      );
-      if (!entry.rowCount) {
-        res.status(409).json({ error: { code: 'ENTRY_NOT_ACTIVE', message: 'Only a called or consulting patient can be referred.' } });
-        return;
-      }
-      if (serviceId === entry.rows[0]!.hospital_service_id) {
-        res.status(400).json({ error: { code: 'INVALID_REFERRAL', message: 'Choose a different department than the current queue.' } });
-        return;
-      }
       const service = await getPool().query<{ name: string }>('SELECT name FROM departments WHERE id = $1 AND hospital_id = $2 AND active', [serviceId, membership.hospitalId]);
       if (!service.rowCount) {
         res.status(400).json({ error: { code: 'INVALID_SERVICE', message: 'That department is not available at your hospital.' } });
         return;
       }
       const clinicianName = user.display_name ?? 'Clinical staff';
-      const referral = await getPool().query<{ id: string }>(
-        `INSERT INTO queue_entries (user_id, hospital_id, hospital_service_id, status, triage_pathway, triage_department, triage_summary)
-         VALUES ($1, $2, $3, 'awaiting_triage', 'Clinical referral', $4, $5) RETURNING id`,
-        [entry.rows[0]!.user_id, membership.hospitalId, serviceId, service.rows[0]!.name, `Referred by ${clinicianName}: ${reasonText}`],
-      );
-      await getPool().query(
-        `UPDATE queue_entries SET status = 'referred', completed_at = now(), updated_at = now() WHERE id = $1`,
-        [req.params.id],
-      );
-      res.status(201).json({ data: { id: referral.rows[0]!.id, status: 'awaiting_triage' } });
+      const client = await getPool().connect();
+      try {
+        await client.query('BEGIN');
+        const entry = await client.query<{ id: string; user_id: string; hospital_service_id: string }>(
+          `SELECT id, user_id, hospital_service_id FROM queue_entries
+           WHERE id = $1 AND hospital_id = $2 AND queue_date = CURRENT_DATE AND status IN ('called', 'in_consultation')
+           FOR UPDATE`,
+          [req.params.id, membership.hospitalId],
+        );
+        if (!entry.rowCount) {
+          await client.query('ROLLBACK');
+          res.status(409).json({ error: { code: 'ENTRY_NOT_ACTIVE', message: 'Only a called or consulting patient can be referred.' } });
+          return;
+        }
+        if (serviceId === entry.rows[0]!.hospital_service_id) {
+          await client.query('ROLLBACK');
+          res.status(400).json({ error: { code: 'INVALID_REFERRAL', message: 'Choose a different department than the current queue.' } });
+          return;
+        }
+        const referral = await client.query<{ id: string }>(
+          `INSERT INTO queue_entries (user_id, hospital_id, hospital_service_id, status, triage_pathway, triage_department, triage_summary)
+           VALUES ($1, $2, $3, 'awaiting_triage', 'Clinical referral', $4, $5) RETURNING id`,
+          [entry.rows[0]!.user_id, membership.hospitalId, serviceId, service.rows[0]!.name, `Referred by ${clinicianName}: ${reasonText}`],
+        );
+        await client.query(
+          `UPDATE queue_entries SET status = 'referred', completed_at = now(), updated_at = now()
+           WHERE id = $1 AND status IN ('called', 'in_consultation')`,
+          [entry.rows[0]!.id],
+        );
+        await client.query(
+          `INSERT INTO audit_events (actor_user_id, hospital_id, entity_type, entity_id, action, metadata)
+           VALUES ($1, $2, 'queue_entry', $3, 'QUEUE_ENTRY_REFERRED', $4)`,
+          [membership.userId, membership.hospitalId, entry.rows[0]!.id, JSON.stringify({ referralQueueEntryId: referral.rows[0]!.id, serviceId })],
+        );
+        await client.query('COMMIT');
+        res.status(201).json({ data: { id: referral.rows[0]!.id, status: 'awaiting_triage' } });
+      } catch (transactionError) {
+        await client.query('ROLLBACK');
+        throw transactionError;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       next(error);
     }

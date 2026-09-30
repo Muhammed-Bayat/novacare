@@ -724,6 +724,7 @@ describe('App', () => {
     renderAt('/doctor');
     expect(await screen.findByRole('heading', { name: /Amina Dlamini/ })).toBeInTheDocument();
     expect(screen.getAllByText(/Helen Joseph Hospital/)).not.toHaveLength(0);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/v1/staff/triage'))).toBe(false);
   });
 
   it('redirects team members who open the wrong portal', async () => {
@@ -750,7 +751,7 @@ describe('App', () => {
       },
     ]);
     renderAt('/staff');
-    expect(await screen.findByRole('alert')).toHaveTextContent('1 emergency case needs immediate review.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 AI red-flag suggestion needs prompt review.');
     expect(screen.getByText('Thandi Mokoena')).toBeInTheDocument();
     expect(screen.getByText('Chest pain at rest')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm triage — send to Emergency Department' }));
@@ -770,6 +771,49 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Call' }));
     const callPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/staff/queue/q2/call') && (options as RequestInit | undefined)?.method === 'POST');
     expect(callPost).toBeDefined();
+  });
+
+  it('requires a doctor diagnosis before completing a consultation', async () => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole: 'doctor' }, [], [
+      { id: 'q3', patientName: 'Lebo Khumalo', serviceId: 's1', serviceName: 'General Medicine', status: 'in_consultation', category: 'routine', position: null, joinedAt: '2026-09-26T08:05:00.000Z', triagedAt: '2026-09-26T08:06:00.000Z', calledAt: '2026-09-26T08:10:00.000Z' },
+    ]);
+    renderAt('/doctor');
+    await userEvent.click(await screen.findByRole('button', { name: 'Record diagnosis' }));
+    const submit = screen.getByRole('button', { name: 'Save diagnosis and complete' });
+    expect(submit).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Diagnosis'), 'Acute bronchitis');
+    await userEvent.click(submit);
+    const completePost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/staff/queue/q3/complete') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(JSON.parse(String((completePost?.[1] as RequestInit).body))).toMatchObject({ diagnosis: 'Acute bronchitis' });
+  });
+
+  it('shows staff queue loading failures instead of an empty board', async () => {
+    auth.state.isAuthenticated = true;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/v1/staff/queue')) return { ok: false, status: 503, json: async () => ({ error: { message: 'Queue service is unavailable.' } }) };
+      if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: [] }) };
+      return { ok: true, json: async () => ({ data: { id: 'user-1', displayName: 'Amina Dlamini', userType: 'staff', staffRole: 'doctor', hospitalId: 'h1', hospitalName: 'Helen Joseph Hospital' } }) };
+    }));
+    renderAt('/doctor');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Queue service is unavailable.');
+  });
+
+  it('shows diagnoses in the patient health view', async () => {
+    auth.state.isAuthenticated = true;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/v1/profile')) {
+        return { ok: true, json: async () => ({ data: { profile: null, diagnoses: [{ id: 'd1', diagnosis: 'Acute bronchitis', diagnosedOn: '2026-09-26', clinicianName: 'Dr. Amina', notes: 'Rest and return if symptoms worsen.' }] } }) };
+      }
+      if (url.includes('/api/v1/hospitals') || url.includes('/api/v1/appointments') || url.includes('/api/v1/queue')) return { ok: true, json: async () => ({ data: [] }) };
+      return { ok: true, json: async () => ({ data: { userType: 'patient' } }) };
+    }));
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'My health' }));
+    expect(await screen.findByText('Acute bronchitis')).toBeInTheDocument();
+    expect(screen.getByText('Rest and return if symptoms worsen.')).toBeInTheDocument();
   });
 
   it('shows a dispatcher sign-in prompt when opening the dispatcher portal anonymously', () => {

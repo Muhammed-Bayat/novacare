@@ -1,5 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
   authenticatedRequest,
@@ -21,7 +21,7 @@ const roleCopy: Record<StaffRole, { portal: string; mockName: string; mockChip: 
     portal: 'Staff',
     mockName: 'Sarah Mitchell',
     mockChip: 'Sarah Mitchell · Staff',
-    tagline: 'Review AI intake, confirm triage, and keep every queue moving. Emergency flags always come first.',
+    tagline: 'Review AI intake, confirm triage, and keep every queue moving. Urgency takes effect after clinical confirmation.',
   },
   doctor: {
     portal: 'Doctor',
@@ -69,7 +69,7 @@ interface StaffData {
   refresh: () => Promise<void>;
 }
 
-function useStaffData(isAuthenticated: boolean, getToken: () => Promise<string>): StaffData {
+function useStaffData(role: StaffRole, isAuthenticated: boolean, getToken: () => Promise<string>): StaffData {
   const [access, setAccess] = useState<CurrentUser>();
   const [services, setServices] = useState<{ id: string; name: string }[]>([]);
   const [triage, setTriage] = useState<StaffTriageEntry[]>([]);
@@ -82,12 +82,14 @@ function useStaffData(isAuthenticated: boolean, getToken: () => Promise<string>)
     if (!silent) setLoading(true);
     try {
       const token = await getToken();
-      const [me, hospitals, triageResult, queueResult] = await Promise.all([
+      const [me, hospitals, queueResult] = await Promise.all([
         authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token),
         authenticatedRequest<{ data: Hospital[] }>('/api/v1/hospitals', token),
-        authenticatedRequest<{ data: StaffTriageEntry[] }>('/api/v1/staff/triage', token).catch(() => ({ data: [] as StaffTriageEntry[] })),
-        authenticatedRequest<{ data: StaffQueueEntry[] }>('/api/v1/staff/queue', token).catch(() => ({ data: [] as StaffQueueEntry[] })),
+        authenticatedRequest<{ data: StaffQueueEntry[] }>('/api/v1/staff/queue', token),
       ]);
+      const triageResult = role === 'nurse'
+        ? await authenticatedRequest<{ data: StaffTriageEntry[] }>('/api/v1/staff/triage', token)
+        : { data: [] as StaffTriageEntry[] };
       setAccess(me.data);
       const mine = (Array.isArray(hospitals.data) ? hospitals.data : []).find((hospital) => hospital.id === me.data.hospitalId);
       setServices(mine?.services ?? []);
@@ -99,7 +101,7 @@ function useStaffData(isAuthenticated: boolean, getToken: () => Promise<string>)
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, getToken]);
+  }, [role, isAuthenticated, getToken]);
 
   useEffect(() => {
     if (isAuthenticated) void load(false);
@@ -172,7 +174,7 @@ function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; s
               {entry.triageSummary.redFlags.map((flag) => <span key={flag} className="nv-tag nv-sw-redflag">{flag}</span>)}
             </div>
           ) : null}
-          <p className="muted small">AI-assisted routing suggestion — not a diagnosis. Confirm it or change it below.</p>
+            <p className="muted small">AI-assisted routing suggestion — not a diagnosis or confirmed urgency. Confirm it or change it below.</p>
         </div>
       ) : entry.intakeNote ? (
         <div className="nv-sw-summary">
@@ -218,8 +220,8 @@ function TriageBoard({ entries, services, loading, onChanged }: { entries: Staff
       </header>
       {criticalCount > 0 ? (
         <div className="nv-sw-alert" role="alert">
-          <strong>{criticalCount} emergency case{criticalCount === 1 ? ' needs' : 's need'} immediate review.</strong>
-          <span>Red-flag patients bypass the normal queue — confirm them first.</span>
+          <strong>{criticalCount} AI red-flag suggestion{criticalCount === 1 ? ' needs' : 's need'} prompt review.</strong>
+          <span>These are unverified intake warnings and do not change queue priority until a nurse confirms urgency.</span>
         </div>
       ) : null}
       {entries.length === 0 ? (
@@ -235,13 +237,16 @@ function TriageBoard({ entries, services, loading, onChanged }: { entries: Staff
   );
 }
 
-function QueueBoard({ entries, services, onChanged }: { entries: StaffQueueEntry[]; services: { id: string; name: string }[]; onChanged: () => Promise<void> }) {
+function QueueBoard({ entries, services, role, onChanged }: { entries: StaffQueueEntry[]; services: { id: string; name: string }[]; role: StaffRole; onChanged: () => Promise<void> }) {
   const { getAccessTokenSilently } = useAuth0();
   const [busyKey, setBusyKey] = useState<string>();
   const [error, setError] = useState<string>();
   const [referFor, setReferFor] = useState<string>();
   const [referService, setReferService] = useState('');
   const [referReason, setReferReason] = useState('');
+  const [diagnosisFor, setDiagnosisFor] = useState<string>();
+  const [diagnosis, setDiagnosis] = useState('');
+  const [diagnosisNotes, setDiagnosisNotes] = useState('');
 
   async function act(key: string, path: string, body?: unknown) {
     setBusyKey(key);
@@ -250,6 +255,7 @@ function QueueBoard({ entries, services, onChanged }: { entries: StaffQueueEntry
       const token = await getAccessTokenSilently();
       await authenticatedRequest(path, token, { method: 'POST', body });
       setReferFor(undefined);
+      setDiagnosisFor(undefined);
       await onChanged();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'That action failed. Please try again.');
@@ -263,6 +269,18 @@ function QueueBoard({ entries, services, onChanged }: { entries: StaffQueueEntry
     setReferService(services.find((service) => service.id !== entry.serviceId)?.id ?? '');
     setReferReason('');
     setError(undefined);
+  }
+
+  function openDiagnosis(entry: StaffQueueEntry) {
+    setDiagnosisFor(entry.id);
+    setDiagnosis('');
+    setDiagnosisNotes('');
+    setError(undefined);
+  }
+
+  function completeConsultation(event: FormEvent<HTMLFormElement>, entry: StaffQueueEntry) {
+    event.preventDefault();
+    void act(`complete:${entry.id}`, `/api/v1/staff/queue/${entry.id}/complete`, { diagnosis, notes: diagnosisNotes });
   }
 
   return (
@@ -297,8 +315,8 @@ function QueueBoard({ entries, services, onChanged }: { entries: StaffQueueEntry
                 {entry.status === 'called' ? (
                   <button type="button" className="primary-btn" disabled={busyKey !== undefined} onClick={() => void act(`start:${entry.id}`, `/api/v1/staff/queue/${entry.id}/start-consultation`)}>Start consultation</button>
                 ) : null}
-                {entry.status === 'in_consultation' ? (
-                  <button type="button" className="primary-btn" disabled={busyKey !== undefined} onClick={() => void act(`complete:${entry.id}`, `/api/v1/staff/queue/${entry.id}/complete`)}>Complete</button>
+                {entry.status === 'in_consultation' && role === 'doctor' ? (
+                  <button type="button" className="primary-btn" disabled={busyKey !== undefined} onClick={() => openDiagnosis(entry)}>Record diagnosis</button>
                 ) : null}
                 {entry.status !== 'waiting' ? (
                   <button type="button" className="secondary-btn" disabled={busyKey !== undefined} onClick={() => openRefer(entry)}>Refer</button>
@@ -320,6 +338,20 @@ function QueueBoard({ entries, services, onChanged }: { entries: StaffQueueEntry
                   </div>
                 </form>
               ) : null}
+              {diagnosisFor === entry.id ? (
+                <form className="nv-sw-refer" onSubmit={(event) => completeConsultation(event, entry)}>
+                  <label className="nv-field">Diagnosis
+                    <input value={diagnosis} onChange={(event) => setDiagnosis(event.target.value)} placeholder="e.g. Acute bronchitis" required maxLength={500} />
+                  </label>
+                  <label className="nv-field">Notes for patient (optional)
+                    <input value={diagnosisNotes} onChange={(event) => setDiagnosisNotes(event.target.value)} placeholder="Care instructions or follow-up" maxLength={2000} />
+                  </label>
+                  <div className="nv-book-actions">
+                    <button type="submit" className="primary-btn" disabled={busyKey !== undefined || !diagnosis.trim()}>Save diagnosis and complete</button>
+                    <button type="button" className="ghost-btn" onClick={() => setDiagnosisFor(undefined)}>Cancel</button>
+                  </div>
+                </form>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -330,7 +362,7 @@ function QueueBoard({ entries, services, onChanged }: { entries: StaffQueueEntry
 
 export function StaffPortalPage({ role }: { role: StaffRole }) {
   const { isAuthenticated, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0();
-  const data = useStaffData(isAuthenticated, getAccessTokenSilently);
+  const data = useStaffData(role, isAuthenticated, getAccessTokenSilently);
   const [view, setView] = useState<'triage' | 'queue'>(role === 'nurse' ? 'triage' : 'queue');
   const copy = roleCopy[role];
 
@@ -391,7 +423,7 @@ export function StaffPortalPage({ role }: { role: StaffRole }) {
           {role === 'nurse' && view === 'triage' ? (
             <TriageBoard entries={data.triage} services={data.services} loading={data.loading} onChanged={data.refresh} />
           ) : (
-            <QueueBoard entries={data.queue} services={data.services} onChanged={data.refresh} />
+            <QueueBoard entries={data.queue} services={data.services} role={role} onChanged={data.refresh} />
           )}
         </>
       )}
