@@ -360,6 +360,7 @@ function TriageBoard({ entries, services, loading, loadError, onChanged }: { ent
 
 function QueueBoard({ entries, services, role, loadError, onChanged }: { entries: StaffQueueEntry[]; services: { id: string; name: string }[]; role: StaffRole; loadError?: string; onChanged: () => Promise<void> }) {
   const { getAccessTokenSilently } = useAuth0();
+  const [selectedServiceId, setSelectedServiceId] = useState('');
   const [busyKey, setBusyKey] = useState<string>();
   const [error, setError] = useState<string>();
   const [referFor, setReferFor] = useState<string>();
@@ -368,6 +369,12 @@ function QueueBoard({ entries, services, role, loadError, onChanged }: { entries
   const [diagnosisFor, setDiagnosisFor] = useState<string>();
   const [diagnosis, setDiagnosis] = useState('');
   const [diagnosisNotes, setDiagnosisNotes] = useState('');
+  const selectedService = services.find((service) => service.id === selectedServiceId);
+  const departmentEntries = entries.filter((entry) => entry.serviceId === selectedServiceId);
+
+  useEffect(() => {
+    setSelectedServiceId((current) => services.some((service) => service.id === current) ? current : services[0]?.id ?? '');
+  }, [services]);
 
   async function act(key: string, path: string, body?: unknown) {
     setBusyKey(key);
@@ -408,15 +415,23 @@ function QueueBoard({ entries, services, role, loadError, onChanged }: { entries
     <section className="nv-care-view">
       <header className="nv-care-view-head">
         <h1 className="section-title">Live queue</h1>
-        <p className="muted">Ordered by confirmed urgency, then time waiting. Call patients in, run consultations, and refer between departments.</p>
+        <p className="muted">Select a department to manage its queue, ordered by confirmed urgency and then time waiting.</p>
       </header>
+      <div className="nv-sw-queue-filter">
+        <label className="nv-field" htmlFor="queue-department">Department
+          <select id="queue-department" value={selectedServiceId} onChange={(event) => setSelectedServiceId(event.target.value)} disabled={services.length === 0}>
+            {services.length === 0 ? <option value="">No departments available</option> : null}
+            {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+          </select>
+        </label>
+      </div>
       {loadError ? <p className="nv-error" role="alert">{loadError}</p> : null}
       {error ? <p className="nv-error" role="alert">{error}</p> : null}
-      {!loadError && entries.length === 0 ? (
-        <div className="card nv-empty"><p className="muted">The queue is empty. Triaged patients will appear here.</p></div>
+      {!loadError && departmentEntries.length === 0 ? (
+        <div className="card nv-empty"><p className="muted">{selectedService ? `${selectedService.name} has no patients in its queue.` : 'There are no active departments available.'}</p></div>
       ) : (
         <ul className="nv-sw-queue">
-          {entries.map((entry) => (
+          {departmentEntries.map((entry) => (
             <li className="card nv-sw-queue-row" key={entry.id}>
               <div className="nv-sw-queue-pos" aria-hidden="true">
                 <strong>{entry.position ?? '–'}</strong>

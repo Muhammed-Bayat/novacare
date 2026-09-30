@@ -27,6 +27,11 @@
   gap: 16px;
 }
 
+.nv-sw-queue-filter {
+  width: min(100%, 360px);
+  margin-bottom: 20px;
+}
+
 .nv-sw-schedule,
 .nv-sw-schedule-day {
   display: grid;

@@ -1051,6 +1051,42 @@ describe('App', () => {
     expect(callPost).toBeDefined();
   });
 
+  it.each([
+    ['nurse', '/staff'],
+    ['doctor', '/doctor'],
+  ] as const)('shows one department queue at a time for a %s', async (staffRole, path) => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole }, [], [
+      { id: 'q-general', patientName: 'General Patient', serviceId: 's1', serviceName: 'General Medicine', status: 'waiting', category: 'routine', position: 1, joinedAt: '2026-09-26T08:05:00.000Z', triagedAt: '2026-09-26T08:06:00.000Z', calledAt: null },
+      { id: 'q-emergency', patientName: 'Emergency Patient', serviceId: 's2', serviceName: 'Emergency Department', status: 'waiting', category: 'urgent', position: 1, joinedAt: '2026-09-26T08:02:00.000Z', triagedAt: '2026-09-26T08:03:00.000Z', calledAt: null },
+    ]);
+    renderAt(path);
+    if (staffRole === 'nurse') await userEvent.click(await screen.findByRole('button', { name: 'Queue' }));
+
+    const department = await screen.findByLabelText('Department');
+    expect(department).toHaveValue('s1');
+    expect(screen.getByText('General Patient')).toBeInTheDocument();
+    expect(screen.queryByText('Emergency Patient')).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(department, 's2');
+
+    expect(screen.queryByText('General Patient')).not.toBeInTheDocument();
+    expect(screen.getByText('Emergency Patient')).toBeInTheDocument();
+  });
+
+  it('shows an empty state for the selected department only', async () => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole: 'doctor' }, [], [
+      { id: 'q-general', patientName: 'General Patient', serviceId: 's1', serviceName: 'General Medicine', status: 'waiting', category: 'routine', position: 1, joinedAt: '2026-09-26T08:05:00.000Z', triagedAt: '2026-09-26T08:06:00.000Z', calledAt: null },
+    ]);
+    renderAt('/doctor');
+
+    await userEvent.selectOptions(await screen.findByLabelText('Department'), 's2');
+
+    expect(screen.getByText('Emergency Department has no patients in its queue.')).toBeInTheDocument();
+    expect(screen.queryByText('General Patient')).not.toBeInTheDocument();
+  });
+
   it('requires a doctor diagnosis before completing a consultation', async () => {
     auth.state.isAuthenticated = true;
     stubStaffData({ userType: 'staff', staffRole: 'doctor' }, [], [
@@ -1086,7 +1122,7 @@ describe('App', () => {
       if (url.includes('/api/v1/staff/queue')) return { ok: true, json: async () => ({ data: [
         { id: 'q1', patientName: 'Queue Patient', serviceId: 's1', serviceName: 'General Medicine', status: 'waiting', category: 'routine', position: 1, joinedAt: '2026-09-30T08:00:00.000Z', triagedAt: '2026-09-30T08:05:00.000Z', calledAt: null },
       ] }) };
-      if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: [] }) };
+      if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: [{ id: 'h1', services: [{ id: 's1', name: 'General Medicine' }] }] }) };
       return { ok: true, json: async () => ({ data: { id: 'user-1', displayName: 'Amina Dlamini', userType: 'staff', staffRole: 'doctor', hospitalId: 'h1', hospitalName: 'Helen Joseph Hospital' } }) };
     }));
 
