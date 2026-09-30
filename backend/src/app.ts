@@ -406,7 +406,7 @@ export function createApp(options: CreateAppOptions = {}) {
         res.status(400).json({ error: { code: 'INVALID_INTERPRETATION_MESSAGE', message: 'Enter a response between 1 and 500 characters.' } });
         return;
       }
-      res.json({ data: await interpretQuestionnaireMessage(question, message) });
+      res.json({ data: await interpretQuestionnaireMessage(pathway.id, question, message) });
     } catch (error) {
       next(error);
     }

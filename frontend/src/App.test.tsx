@@ -560,7 +560,7 @@ describe('App', () => {
         { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
       ],
     }, { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Completed the Injury & musculoskeletal questionnaire.', department: 'Orthopaedics', urgency: 'priority', redFlags: [] }, (body) => {
-      expect(body).toEqual({ pathwayId: 'injury', questionId: 'weight_bearing', message: 'I can walk but it hurts badly.' });
+      expect(body).toEqual({ pathwayId: 'injury', questionId: 'weight_bearing', message: 'I can walk but it hurts quite badly.' });
       return { ok: true, data: { type: 'answer', answerId: 'painful', confidence: 0.96, message: 'I understood that you can put weight on it, but it is painful.' } };
     });
 
@@ -568,11 +568,12 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
     await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Today' }));
-    await userEvent.type(screen.getByLabelText('Tell us in your own words'), 'I can walk but it hurts badly.');
+    await userEvent.type(screen.getByLabelText('Tell us in your own words'), 'I can walk but it hurts quite badly.');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByText('I understood that you can put weight on it, but it is painful.')).toBeInTheDocument();
     expect(screen.getByText('Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?')).toBeInTheDocument();
+    expect(screen.queryByText("I couldn't interpret that automatically. Please choose the option that best matches your answer.")).not.toBeInTheDocument();
     const interpretationPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/interpret') && (options as RequestInit | undefined)?.method === 'POST');
     expect(interpretationPosts).toHaveLength(1);
 
