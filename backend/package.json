@@ -12,6 +12,7 @@
     "gemini:check": "tsx src/gemini-diagnostic.ts",
     "seed": "tsx src/data/seed.ts",
     "seed:dispatch": "tsx src/data/seed-dispatch.ts",
+    "seed:showcase-resources": "tsx src/data/seed-showcase-resources.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
