@@ -115,6 +115,110 @@
 
 .nv-landing .services {
   margin-top: 28px;
+  scroll-margin-top: 18px;
+}
+
+.nv-landing .landing-section {
+  margin-top: 28px;
+  scroll-margin-top: 18px;
+}
+
+.nv-landing .hero {
+  scroll-margin-top: 18px;
+}
+
+.nv-landing .step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.nv-landing .step-grid .service-card {
+  min-height: 230px;
+}
+
+.nv-landing .info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.nv-landing .info-grid.contact-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.nv-landing .info-card {
+  position: relative;
+  padding: 26px 24px;
+  border: 1px solid var(--stroke);
+  border-radius: 28px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fcff 100%);
+}
+
+.nv-landing .info-dot {
+  display: block;
+  width: 46px;
+  height: 8px;
+  margin-bottom: 18px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.nv-landing .info-dot.green { background: var(--green); }
+.nv-landing .info-dot.teal { background: var(--teal); }
+
+.nv-landing .info-card h3 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 21px;
+  letter-spacing: -.04em;
+}
+
+.nv-landing .info-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.nv-landing .info-card .contact-value {
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.nv-landing .emergency-note {
+  margin: 20px 0 0;
+  padding: 14px 18px;
+  border: 1px dashed #f0c9a3;
+  border-radius: 18px;
+  background: #fff8f1;
+  color: #8a5a24;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.nv-landing .section-cta {
+  display: flex;
+  margin-top: 24px;
+}
+
+.nv-landing a.primary-btn {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.nv-landing .nav a {
+  cursor: pointer;
+}
+
+.nv-landing .nav a:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 4px;
+  border-radius: 8px;
 }
 
 .nv-landing .services-head {
@@ -231,6 +335,12 @@
   .nv-landing .service-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .nv-landing .step-grid,
+  .nv-landing .info-grid,
+  .nv-landing .info-grid.contact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -259,6 +369,12 @@
   }
 
   .nv-landing .service-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nv-landing .step-grid,
+  .nv-landing .info-grid,
+  .nv-landing .info-grid.contact-grid {
     grid-template-columns: 1fr;
   }
 }

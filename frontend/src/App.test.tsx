@@ -341,6 +341,40 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Simple, Trusted Healthcare for Everyone' })).toBeInTheDocument();
   });
 
+  it('links the landing nav tabs to sections on the page', () => {
+    renderAt('/');
+    const tabs = [
+      ['Home', '#top'],
+      ['Services', '#services'],
+      ['Appointments', '#appointments'],
+      ['Support', '#support'],
+      ['Contact', '#contact'],
+    ] as const;
+    tabs.forEach(([name, href]) => {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
+    });
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    ['services', 'appointments', 'support', 'contact'].forEach((id) => {
+      expect(document.getElementById(id)).not.toBeNull();
+    });
+  });
+
+  it('moves the active landing tab when a tab is clicked', async () => {
+    renderAt('/');
+    await userEvent.click(screen.getByRole('link', { name: 'Support' }));
+    expect(screen.getByRole('link', { name: 'Support' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('heading', { name: 'Help whenever you need it' })).toBeInTheDocument();
+  });
+
+  it('renders the appointments, support and contact landing sections', () => {
+    renderAt('/');
+    expect(screen.getByRole('heading', { name: 'Book care in three clear steps' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Help whenever you need it' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Talk to the Nova Care team' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Send us a message' })).toHaveAttribute('href', 'mailto:hello@novacare.example');
+  });
+
   it('renders the patient portal at /patient', () => {
     renderAt('/patient');
     expect(screen.getByRole('heading', { name: 'Welcome back, Thandi' })).toBeInTheDocument();
