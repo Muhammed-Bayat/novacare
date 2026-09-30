@@ -36,6 +36,18 @@ describe('clinical queue workflow', () => {
     expect(response.body.error.code).toBe('FORBIDDEN');
   });
 
+  it('reports transient database outages without a generic internal error', async () => {
+    database.query.mockRejectedValueOnce(Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }));
+
+    const response = await request(createApp()).get('/api/v1/staff/queue');
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toEqual({
+      code: 'DATABASE_UNAVAILABLE',
+      message: 'The database is temporarily unavailable. NovaCare will retry shortly.',
+    });
+  });
+
   it('requires a diagnosis before a doctor can complete a consultation', async () => {
     membership('doctor');
     const response = await request(createApp()).post('/api/v1/staff/queue/queue-1/complete').send({ notes: 'Follow up next week' });
@@ -140,6 +152,85 @@ describe('clinical queue workflow', () => {
     const sql = String(database.query.mock.calls[1]![0]);
     expect(sql).toContain('ORDER BY q.joined_at');
     expect(sql).not.toContain('CASE q.triage_urgency');
+  });
+
+  it('lists current and upcoming hospital bookings for clinical staff', async () => {
+    membership('doctor');
+    database.query.mockResolvedValueOnce({
+      rows: [{
+        id: 'appointment-1', appointment_date: new Date(2026, 9, 2), appointment_time: '09:30:00', status: 'booked', is_today: false,
+        service_id: 'service-1', service_name: 'General Medicine', patient_name: 'Patient One', patient_email: 'patient@example.com',
+        queue_status: null,
+      }],
+      rowCount: 1,
+    });
+
+    const response = await request(createApp()).get('/api/v1/staff/appointments');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual([{
+      id: 'appointment-1', patientName: 'Patient One', patientEmail: 'patient@example.com', serviceId: 'service-1',
+      serviceName: 'General Medicine', date: '2026-10-02', time: '09:30', status: 'booked', isToday: false, queueStatus: null,
+    }]);
+    const sql = String(database.query.mock.calls[1]![0]);
+    expect(sql).toContain('a.hospital_id = $1');
+    expect(sql).toContain("a.status = 'booked'");
+    expect(sql).not.toContain("a.status = 'cancelled'");
+  });
+
+  it('checks a routine booking directly into the live queue in one transaction', async () => {
+    membership('nurse');
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [{
+          id: 'appointment-1', user_id: 'patient-1', status: 'booked', is_today: true, hospital_id: 'hospital-1',
+          hospital_service_id: 'service-1', triage_urgency: 'routine', triage_pathway: 'General', triage_department: 'General Medicine',
+          triage_summary: 'Routine review', triage_red_flags: [],
+        }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({ rows: [{ id: 'queue-1' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({}),
+      release: vi.fn(),
+    };
+    database.connect.mockResolvedValueOnce(client);
+
+    const response = await request(createApp()).post('/api/v1/staff/appointments/appointment-1/check-in');
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toEqual({ id: 'queue-1', status: 'waiting' });
+    expect(client.query.mock.calls[3]![1]).toEqual([
+      'patient-1', 'hospital-1', 'service-1', 'appointment-1', 'waiting',
+      'routine', 'General', 'General Medicine', 'Routine review', [],
+    ]);
+    expect(client.query.mock.calls.map(([sql]) => String(sql)).at(-1)).toBe('COMMIT');
+    expect(client.release).toHaveBeenCalledOnce();
+  });
+
+  it('sends an emergency-flagged booking to nurse triage at check-in', async () => {
+    membership('nurse');
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [{
+          id: 'appointment-1', user_id: 'patient-1', status: 'booked', is_today: true, hospital_id: 'hospital-1',
+          hospital_service_id: 'service-1', triage_urgency: 'emergency', triage_pathway: 'Chest pain', triage_department: 'Emergency',
+          triage_summary: 'Chest pain at rest', triage_red_flags: ['Chest pain at rest'],
+        }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({ rows: [{ id: 'queue-1' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({}),
+      release: vi.fn(),
+    };
+    database.connect.mockResolvedValueOnce(client);
+
+    const response = await request(createApp()).post('/api/v1/staff/appointments/appointment-1/check-in');
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toEqual({ id: 'queue-1', status: 'awaiting_triage' });
+    expect(client.query.mock.calls[3]![1][4]).toBe('awaiting_triage');
   });
 
   it('locks and completes referral creation in one transaction', async () => {

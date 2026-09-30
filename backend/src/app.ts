@@ -42,8 +42,12 @@ function formatClock(totalMinutes: number): string {
   return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
 }
 
-function sqlDateOnly(value: string): string {
-  return value.slice(0, 10);
+function sqlDateOnly(value: string | Date): string {
+  if (typeof value === 'string') return value.slice(0, 10);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function textList(value: unknown): string[] | undefined {
@@ -210,6 +214,12 @@ function allowedOrigins(): string[] {
 
 type StaffRole = 'administrator' | 'nurse' | 'doctor' | 'dispatcher';
 type StaffMembership = { userId: string; hospitalId: string; role: StaffRole };
+type AppointmentCheckInResult =
+  | { outcome: 'checked_in'; queueEntryId: string; queueStatus: string }
+  | { outcome: 'not_found' }
+  | { outcome: 'already_checked_in' }
+  | { outcome: 'not_today' }
+  | { outcome: 'queue_conflict' };
 
 async function staffMembership(subject: string, roles: StaffRole[]): Promise<StaffMembership | undefined> {
   const result = await getPool().query<{ user_id: string; hospital_id: string; role: StaffRole }>(
@@ -220,6 +230,93 @@ async function staffMembership(subject: string, roles: StaffRole[]): Promise<Sta
   );
   const row = result.rows[0];
   return row ? { userId: row.user_id, hospitalId: row.hospital_id, role: row.role } : undefined;
+}
+
+async function checkInAppointment(
+  appointmentId: string,
+  scope: { userId?: string; hospitalId?: string },
+): Promise<AppointmentCheckInResult> {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query<{
+      id: string; user_id: string; status: string; is_today: boolean; hospital_id: string; hospital_service_id: string;
+      triage_urgency: QuestionnaireUrgency | null; triage_pathway: string | null; triage_department: string | null;
+      triage_summary: string | null; triage_red_flags: string[];
+    }>(
+      `SELECT id, user_id, status, appointment_date = CURRENT_DATE AS is_today, hospital_id, hospital_service_id,
+              triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags
+       FROM appointments
+       WHERE id = $1
+         AND ($2::uuid IS NULL OR user_id = $2)
+         AND ($3::uuid IS NULL OR hospital_id = $3)
+       FOR UPDATE`,
+      [appointmentId, scope.userId ?? null, scope.hospitalId ?? null],
+    );
+    const appointment = found.rows[0];
+    if (!appointment) {
+      await client.query('ROLLBACK');
+      return { outcome: 'not_found' };
+    }
+    if (appointment.status !== 'booked') {
+      await client.query('ROLLBACK');
+      return { outcome: 'already_checked_in' };
+    }
+    if (!appointment.is_today) {
+      await client.query('ROLLBACK');
+      return { outcome: 'not_today' };
+    }
+
+    const activeQueue = await client.query<{ id: string; status: string; appointment_id: string | null }>(
+      `SELECT id, status, appointment_id
+       FROM queue_entries
+       WHERE user_id = $1 AND hospital_service_id = $2 AND queue_date = CURRENT_DATE
+         AND status IN ('awaiting_triage', 'waiting', 'called', 'in_consultation')
+       FOR UPDATE`,
+      [appointment.user_id, appointment.hospital_service_id],
+    );
+    let queueEntryId: string;
+    let queueStatus: string;
+    const existing = activeQueue.rows[0];
+    if (existing) {
+      if (existing.appointment_id && existing.appointment_id !== appointment.id) {
+        await client.query('ROLLBACK');
+        return { outcome: 'queue_conflict' };
+      }
+      if (!existing.appointment_id) {
+        await client.query('UPDATE queue_entries SET appointment_id = $1, updated_at = now() WHERE id = $2', [appointment.id, existing.id]);
+      }
+      queueEntryId = existing.id;
+      queueStatus = existing.status;
+    } else {
+      const needsTriage = appointment.triage_urgency === 'emergency' || appointment.triage_red_flags.length > 0;
+      queueStatus = needsTriage ? 'awaiting_triage' : 'waiting';
+      const entry = await client.query<{ id: string }>(
+        `INSERT INTO queue_entries (
+           user_id, hospital_id, hospital_service_id, appointment_id, status, category, triaged_at,
+           triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags
+         ) VALUES (
+           $1, $2, $3, $4, $5, CASE WHEN $5 = 'waiting' THEN 'routine' END,
+           CASE WHEN $5 = 'waiting' THEN now() END, $6, $7, $8, $9, $10
+         ) RETURNING id`,
+        [
+          appointment.user_id, appointment.hospital_id, appointment.hospital_service_id, appointment.id, queueStatus,
+          appointment.triage_urgency, appointment.triage_pathway, appointment.triage_department,
+          appointment.triage_summary, appointment.triage_red_flags,
+        ],
+      );
+      queueEntryId = entry.rows[0]!.id;
+    }
+
+    await client.query(`UPDATE appointments SET status = 'checked_in' WHERE id = $1`, [appointment.id]);
+    await client.query('COMMIT');
+    return { outcome: 'checked_in', queueEntryId, queueStatus };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 const CATEGORY_RANK_SQL = `CASE category WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 WHEN 'priority' THEN 2 ELSE 3 END`;
@@ -1299,43 +1396,25 @@ export function createApp(options: CreateAppOptions = {}) {
   app.post('/api/v1/appointments/:id/check-in', requireAuth, async (req, res, next) => {
     try {
       const user = await synchronizeUser(req.auth!.subject, req.auth!.email, req.auth!.displayName);
-      const found = await getPool().query<{ id: string; status: string; is_today: boolean; hospital_id: string; hospital_service_id: string; triage_urgency: QuestionnaireUrgency | null; triage_pathway: string | null; triage_department: string | null; triage_summary: string | null; triage_red_flags: string[] }>(
-        `SELECT id, status, appointment_date = CURRENT_DATE AS is_today, hospital_id, hospital_service_id,
-                triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags
-         FROM appointments WHERE id = $1 AND user_id = $2`,
-        [req.params.id, user.id],
-      );
-      const appointment = found.rows[0];
-      if (!appointment) {
+      const appointmentId = typeof req.params.id === 'string' ? req.params.id : '';
+      const result = await checkInAppointment(appointmentId, { userId: user.id });
+      if (result.outcome === 'not_found') {
         res.status(404).json({ error: { code: 'APPOINTMENT_NOT_FOUND', message: 'That appointment was not found.' } });
         return;
       }
-      if (appointment.status !== 'booked') {
+      if (result.outcome === 'already_checked_in') {
         res.status(409).json({ error: { code: 'ALREADY_CHECKED_IN', message: 'This appointment was already checked in or is no longer active.' } });
         return;
       }
-      if (!appointment.is_today) {
+      if (result.outcome === 'not_today') {
         res.status(400).json({ error: { code: 'CHECK_IN_NOT_OPEN', message: 'Check-in opens on the day of your appointment.' } });
         return;
       }
-      await getPool().query(`UPDATE appointments SET status = 'checked_in' WHERE id = $1`, [appointment.id]);
-      const linked = await getPool().query<{ id: string }>(
-        `UPDATE queue_entries SET appointment_id = $1
-         WHERE user_id = $2 AND hospital_service_id = $3 AND queue_date = CURRENT_DATE
-           AND status = 'awaiting_triage' AND appointment_id IS NULL
-         RETURNING id`,
-        [appointment.id, user.id, appointment.hospital_service_id],
-      );
-      if (linked.rowCount) {
-        res.status(201).json({ data: { id: linked.rows[0]!.id } });
+      if (result.outcome === 'queue_conflict') {
+        res.status(409).json({ error: { code: 'ALREADY_IN_QUEUE', message: 'You already have another active booking in this department queue.' } });
         return;
       }
-      const entry = await getPool().query<{ id: string }>(
-        `INSERT INTO queue_entries (user_id, hospital_id, hospital_service_id, appointment_id, status, triage_urgency, triage_pathway, triage_department, triage_summary, triage_red_flags)
-         VALUES ($1, $2, $3, $4, 'awaiting_triage', $5, $6, $7, $8, $9) RETURNING id`,
-        [user.id, appointment.hospital_id, appointment.hospital_service_id, appointment.id, appointment.triage_urgency, appointment.triage_pathway, appointment.triage_department, appointment.triage_summary, appointment.triage_red_flags],
-      );
-      res.status(201).json({ data: { id: entry.rows[0]!.id } });
+      res.status(201).json({ data: { id: result.queueEntryId, status: result.queueStatus } });
     } catch (error) {
       next(error);
     }
@@ -1487,6 +1566,82 @@ export function createApp(options: CreateAppOptions = {}) {
       }
       await recordAudit({ actorUserId: result.rows[0]!.user_id, hospitalId: result.rows[0]!.hospital_id, entityType: 'queue_entry', entityId: result.rows[0]!.id, action: 'QUEUE_ENTRY_CANCELLED' });
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/staff/appointments', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse', 'doctor']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Hospital staff access is required to view bookings.' } });
+        return;
+      }
+      const result = await getPool().query<{
+        id: string; appointment_date: Date; appointment_time: string; status: 'booked' | 'checked_in'; is_today: boolean;
+        service_id: string; service_name: string; patient_name: string | null; patient_email: string | null;
+        queue_status: string | null;
+      }>(
+        `SELECT a.id, a.appointment_date, a.appointment_time, a.status,
+                a.appointment_date = CURRENT_DATE AS is_today,
+                a.hospital_service_id AS service_id, d.name AS service_name,
+                u.display_name AS patient_name, u.email AS patient_email, q.status AS queue_status
+         FROM appointments a
+         JOIN users u ON u.id = a.user_id
+         JOIN departments d ON d.id = a.hospital_service_id
+         LEFT JOIN queue_entries q ON q.appointment_id = a.id AND q.queue_date = CURRENT_DATE
+         WHERE a.hospital_id = $1
+           AND ((a.status = 'booked' AND a.appointment_date >= CURRENT_DATE)
+             OR (a.status = 'checked_in' AND a.appointment_date = CURRENT_DATE))
+         ORDER BY a.appointment_date, a.appointment_time, d.name, a.id`,
+        [membership.hospitalId],
+      );
+      res.json({
+        data: result.rows.map((row) => ({
+          id: row.id,
+          patientName: row.patient_name ?? 'Unknown patient',
+          patientEmail: row.patient_email,
+          serviceId: row.service_id,
+          serviceName: row.service_name,
+          date: sqlDateOnly(row.appointment_date),
+          time: row.appointment_time.slice(0, 5),
+          status: row.status,
+          isToday: row.is_today,
+          queueStatus: row.queue_status,
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/staff/appointments/:id/check-in', requireAuth, async (req, res, next) => {
+    try {
+      const membership = await staffMembership(req.auth!.subject, ['nurse']);
+      if (!membership) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Nurse access is required to mark a patient as arrived.' } });
+        return;
+      }
+      const appointmentId = typeof req.params.id === 'string' ? req.params.id : '';
+      const result = await checkInAppointment(appointmentId, { hospitalId: membership.hospitalId });
+      if (result.outcome === 'not_found') {
+        res.status(404).json({ error: { code: 'APPOINTMENT_NOT_FOUND', message: 'That hospital booking was not found.' } });
+        return;
+      }
+      if (result.outcome === 'already_checked_in') {
+        res.status(409).json({ error: { code: 'ALREADY_CHECKED_IN', message: 'This patient was already checked in or the booking is no longer active.' } });
+        return;
+      }
+      if (result.outcome === 'not_today') {
+        res.status(400).json({ error: { code: 'CHECK_IN_NOT_OPEN', message: 'Arrival can only be recorded on the appointment date.' } });
+        return;
+      }
+      if (result.outcome === 'queue_conflict') {
+        res.status(409).json({ error: { code: 'ALREADY_IN_QUEUE', message: 'This patient already has another active booking in the department queue.' } });
+        return;
+      }
+      res.status(201).json({ data: { id: result.queueEntryId, status: result.queueStatus } });
     } catch (error) {
       next(error);
     }
@@ -1929,6 +2084,10 @@ export function createApp(options: CreateAppOptions = {}) {
     }
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505' && 'constraint' in error && String(error.constraint).startsWith('appointment_slots_')) {
       res.status(409).json({ error: { code: 'SLOTS_EXIST', message: 'Slots already exist for that department, date, and time.' } });
+      return;
+    }
+    if (typeof error === 'object' && error !== null && 'code' in error && ['ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'ENETUNREACH', '08000', '08001', '08006', '57P01'].includes(String(error.code))) {
+      res.status(503).json({ error: { code: 'DATABASE_UNAVAILABLE', message: 'The database is temporarily unavailable. NovaCare will retry shortly.' } });
       return;
     }
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

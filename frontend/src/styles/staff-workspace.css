@@ -18,12 +18,101 @@
 }
 
 .nv-sw-triage-list,
-.nv-sw-queue {
+.nv-sw-queue,
+.nv-sw-bookings {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 16px;
+}
+
+.nv-sw-schedule,
+.nv-sw-schedule-day {
+  display: grid;
+  gap: 16px;
+}
+
+.nv-sw-schedule {
+  gap: 28px;
+}
+
+.nv-sw-schedule-date {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.nv-sw-schedule-date h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 19px;
+}
+
+.nv-sw-schedule-date span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.nv-sw-booking-row {
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.nv-sw-booking-time {
+  width: 72px;
+  min-height: 64px;
+  border-radius: 18px;
+  background: #f2f7ff;
+  border: 1px solid #dce9fa;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  flex: 0 0 72px;
+}
+
+.nv-sw-booking-time strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.nv-sw-booking-time span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.nv-sw-booking-main {
+  flex: 1;
+  min-width: 220px;
+}
+
+.nv-sw-booking-main h3,
+.nv-sw-booking-main p {
+  margin: 0;
+}
+
+.nv-sw-booking-main h3 {
+  color: var(--text);
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+
+.nv-sw-booking-state {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nv-sw-booking-state .primary-btn {
+  padding: 12px 18px;
+  border-radius: 14px;
 }
 
 .nv-sw-triage {
@@ -182,4 +271,12 @@
 
 .nv-result p + p {
   margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .nv-sw-booking-state {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 90px;
+  }
 }

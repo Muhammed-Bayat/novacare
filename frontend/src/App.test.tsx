@@ -150,9 +150,10 @@ function stubAdminData(
   }));
 }
 
-function stubStaffData(user: Parameters<typeof stubCurrentUser>[0] = {}, triage: unknown[] = [], queue: unknown[] = []) {
+function stubStaffData(user: Parameters<typeof stubCurrentUser>[0] = {}, triage: unknown[] = [], queue: unknown[] = [], appointments: unknown[] = []) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.includes('/api/v1/staff/appointments')) return { ok: true, json: async () => ({ data: appointments }) };
     if (url.includes('/api/v1/staff/triage')) return { ok: true, json: async () => ({ data: triage }) };
     if (url.includes('/api/v1/staff/queue')) return { ok: true, json: async () => ({ data: queue }) };
     if (url.includes('/api/v1/hospitals')) {
@@ -963,6 +964,36 @@ describe('App', () => {
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/v1/staff/triage'))).toBe(false);
   });
 
+  it('shows hospital bookings to doctors in a separate tab', async () => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole: 'doctor' }, [], [], [{
+      id: 'a1', patientName: 'Nomsa Dlamini', patientEmail: 'nomsa@example.com', serviceId: 's1', serviceName: 'General Medicine',
+      date: '2026-10-02', time: '09:30', status: 'booked', isToday: false, queueStatus: null,
+    }]);
+    renderAt('/doctor');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Bookings' }));
+
+    expect(await screen.findByText('Nomsa Dlamini')).toBeInTheDocument();
+    expect(screen.getByText(/General Medicine/)).toBeInTheDocument();
+    expect(screen.getByText('09:30')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark arrived' })).not.toBeInTheDocument();
+  });
+
+  it('lets a nurse mark today’s booking as arrived', async () => {
+    auth.state.isAuthenticated = true;
+    stubStaffData({ userType: 'staff', staffRole: 'nurse' }, [], [], [{
+      id: 'a1', patientName: 'Nomsa Dlamini', patientEmail: null, serviceId: 's1', serviceName: 'General Medicine',
+      date: '2026-09-30', time: '09:30', status: 'booked', isToday: true, queueStatus: null,
+    }]);
+    renderAt('/staff');
+    await userEvent.click(await screen.findByRole('button', { name: 'Bookings' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark arrived' }));
+
+    const checkInPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/staff/appointments/a1/check-in') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(checkInPost).toBeDefined();
+  });
+
   it('redirects team members who open the wrong portal', async () => {
     auth.state.isAuthenticated = true;
     stubAdminData({ userType: 'admin', staffRole: 'administrator' });
@@ -1034,6 +1065,25 @@ describe('App', () => {
     }));
     renderAt('/doctor');
     expect(await screen.findByRole('alert')).toHaveTextContent('Queue service is unavailable.');
+  });
+
+  it('keeps the live queue usable when only bookings fail to load', async () => {
+    auth.state.isAuthenticated = true;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/v1/staff/appointments')) return { ok: false, status: 503, json: async () => ({ error: { message: 'Bookings are temporarily unavailable.' } }) };
+      if (url.includes('/api/v1/staff/queue')) return { ok: true, json: async () => ({ data: [
+        { id: 'q1', patientName: 'Queue Patient', serviceId: 's1', serviceName: 'General Medicine', status: 'waiting', category: 'routine', position: 1, joinedAt: '2026-09-30T08:00:00.000Z', triagedAt: '2026-09-30T08:05:00.000Z', calledAt: null },
+      ] }) };
+      if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: [] }) };
+      return { ok: true, json: async () => ({ data: { id: 'user-1', displayName: 'Amina Dlamini', userType: 'staff', staffRole: 'doctor', hospitalId: 'h1', hospitalName: 'Helen Joseph Hospital' } }) };
+    }));
+
+    renderAt('/doctor');
+
+    expect(await screen.findByText('Queue Patient')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Bookings' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Bookings are temporarily unavailable.');
   });
 
   it('shows diagnoses in the patient health view', async () => {

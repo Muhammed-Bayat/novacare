@@ -67,6 +67,19 @@ export interface StaffTriageEntry {
   triageSummary: AppointmentTriageSummary | null;
 }
 
+export interface StaffAppointment {
+  id: string;
+  patientName: string;
+  patientEmail: string | null;
+  serviceId: string;
+  serviceName: string;
+  date: string;
+  time: string;
+  status: 'booked' | 'checked_in';
+  isToday: boolean;
+  queueStatus: 'awaiting_triage' | 'waiting' | 'called' | 'in_consultation' | 'referred' | 'completed' | 'cancelled' | null;
+}
+
 export interface StaffQueueEntry {
   id: string;
   patientName: string;

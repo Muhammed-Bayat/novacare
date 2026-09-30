@@ -1,11 +1,12 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
   authenticatedRequest,
   type CurrentUser,
   type Hospital,
   type QuestionnaireUrgency,
+  type StaffAppointment,
   type StaffQueueEntry,
   type StaffTriageEntry,
 } from '../api.ts';
@@ -59,46 +60,83 @@ function joinedTime(value: string): string {
     : new Intl.DateTimeFormat('en-ZA', { hour: '2-digit', minute: '2-digit' }).format(parsed);
 }
 
+function appointmentDate(value: string): string {
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.valueOf())
+    ? value
+    : new Intl.DateTimeFormat('en-ZA', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }).format(parsed);
+}
+
 interface StaffData {
   access: CurrentUser | undefined;
   services: { id: string; name: string }[];
+  appointments: StaffAppointment[];
   triage: StaffTriageEntry[];
   queue: StaffQueueEntry[];
   loading: boolean;
   error: string | undefined;
+  bookingsError: string | undefined;
+  triageError: string | undefined;
+  queueError: string | undefined;
   refresh: () => Promise<void>;
 }
 
 function useStaffData(role: StaffRole, isAuthenticated: boolean, getToken: () => Promise<string>): StaffData {
+  const loadingRef = useRef(false);
   const [access, setAccess] = useState<CurrentUser>();
   const [services, setServices] = useState<{ id: string; name: string }[]>([]);
+  const [appointments, setAppointments] = useState<StaffAppointment[]>([]);
   const [triage, setTriage] = useState<StaffTriageEntry[]>([]);
   const [queue, setQueue] = useState<StaffQueueEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [bookingsError, setBookingsError] = useState<string>();
+  const [triageError, setTriageError] = useState<string>();
+  const [queueError, setQueueError] = useState<string>();
 
   const load = useCallback(async (silent: boolean) => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || loadingRef.current) return;
+    loadingRef.current = true;
     if (!silent) setLoading(true);
     try {
       const token = await getToken();
-      const [me, hospitals, queueResult] = await Promise.all([
+      const [me, hospitals] = await Promise.all([
         authenticatedRequest<{ data: CurrentUser }>('/api/v1/me', token),
         authenticatedRequest<{ data: Hospital[] }>('/api/v1/hospitals', token),
-        authenticatedRequest<{ data: StaffQueueEntry[] }>('/api/v1/staff/queue', token),
       ]);
-      const triageResult = role === 'nurse'
-        ? await authenticatedRequest<{ data: StaffTriageEntry[] }>('/api/v1/staff/triage', token)
-        : { data: [] as StaffTriageEntry[] };
+      const [appointmentsResult, queueResult, triageResult] = await Promise.allSettled([
+        authenticatedRequest<{ data: StaffAppointment[] }>('/api/v1/staff/appointments', token),
+        authenticatedRequest<{ data: StaffQueueEntry[] }>('/api/v1/staff/queue', token),
+        role === 'nurse'
+          ? authenticatedRequest<{ data: StaffTriageEntry[] }>('/api/v1/staff/triage', token)
+          : Promise.resolve({ data: [] as StaffTriageEntry[] }),
+      ]);
       setAccess(me.data);
       const mine = (Array.isArray(hospitals.data) ? hospitals.data : []).find((hospital) => hospital.id === me.data.hospitalId);
       setServices(mine?.services ?? []);
-      setTriage(Array.isArray(triageResult.data) ? triageResult.data : []);
-      setQueue(Array.isArray(queueResult.data) ? queueResult.data : []);
+      if (appointmentsResult.status === 'fulfilled') {
+        setAppointments(Array.isArray(appointmentsResult.value.data) ? appointmentsResult.value.data : []);
+        setBookingsError(undefined);
+      } else {
+        setBookingsError(appointmentsResult.reason instanceof Error ? appointmentsResult.reason.message : 'Could not load hospital bookings.');
+      }
+      if (queueResult.status === 'fulfilled') {
+        setQueue(Array.isArray(queueResult.value.data) ? queueResult.value.data : []);
+        setQueueError(undefined);
+      } else {
+        setQueueError(queueResult.reason instanceof Error ? queueResult.reason.message : 'Could not load the live queue.');
+      }
+      if (triageResult.status === 'fulfilled') {
+        setTriage(Array.isArray(triageResult.value.data) ? triageResult.value.data : []);
+        setTriageError(undefined);
+      } else {
+        setTriageError(triageResult.reason instanceof Error ? triageResult.reason.message : 'Could not load the triage worklist.');
+      }
       setError(undefined);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load your hospital workspace.');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }, [role, isAuthenticated, getToken]);
@@ -117,7 +155,89 @@ function useStaffData(role: StaffRole, isAuthenticated: boolean, getToken: () =>
     await load(true);
   }, [load]);
 
-  return { access, services, triage, queue, loading, error, refresh };
+  return { access, services, appointments, triage, queue, loading, error, bookingsError, triageError, queueError, refresh };
+}
+
+const bookingQueueLabels: Record<NonNullable<StaffAppointment['queueStatus']>, string> = {
+  awaiting_triage: 'Awaiting nurse triage',
+  waiting: 'In live queue',
+  called: 'Patient called',
+  in_consultation: 'In consultation',
+  referred: 'Referred',
+  completed: 'Consultation completed',
+  cancelled: 'Queue entry cancelled',
+};
+
+function ScheduleBoard({ entries, role, loading, loadError, onChanged }: { entries: StaffAppointment[]; role: StaffRole; loading: boolean; loadError?: string; onChanged: () => Promise<void> }) {
+  const { getAccessTokenSilently } = useAuth0();
+  const [busyId, setBusyId] = useState<string>();
+  const [error, setError] = useState<string>();
+  const grouped = entries.reduce<Map<string, StaffAppointment[]>>((groups, entry) => {
+    const group = groups.get(entry.date) ?? [];
+    group.push(entry);
+    groups.set(entry.date, group);
+    return groups;
+  }, new Map());
+
+  async function markArrived(entry: StaffAppointment) {
+    setBusyId(entry.id);
+    setError(undefined);
+    try {
+      const token = await getAccessTokenSilently();
+      await authenticatedRequest(`/api/v1/staff/appointments/${entry.id}/check-in`, token, { method: 'POST' });
+      await onChanged();
+    } catch (checkInError) {
+      setError(checkInError instanceof Error ? checkInError.message : 'Could not mark this patient as arrived.');
+    } finally {
+      setBusyId(undefined);
+    }
+  }
+
+  return (
+    <section className="nv-care-view">
+      <header className="nv-care-view-head">
+        <h1 className="section-title">Bookings</h1>
+        <p className="muted">Today’s and upcoming appointments across the hospital. Checked-in routine bookings enter the live queue directly; emergency-flagged bookings go to nurse triage first.</p>
+      </header>
+      {loadError ? <p className="nv-error" role="alert">{loadError}</p> : null}
+      {error ? <p className="nv-error" role="alert">{error}</p> : null}
+      {!loadError && entries.length === 0 ? (
+        <div className="card nv-empty"><p className="muted">{loading ? 'Loading hospital bookings…' : 'There are no active upcoming bookings.'}</p></div>
+      ) : (
+        <div className="nv-sw-schedule">
+          {[...grouped.entries()].map(([date, appointments]) => (
+            <section className="nv-sw-schedule-day" key={date}>
+              <div className="nv-sw-schedule-date">
+                <h2>{appointments[0]?.isToday ? 'Today' : appointmentDate(date)}</h2>
+                {appointments[0]?.isToday ? <span>{appointmentDate(date)}</span> : null}
+              </div>
+              <ul className="nv-sw-bookings">
+                {appointments.map((entry) => (
+                  <li className="card nv-sw-booking-row" key={entry.id}>
+                    <div className="nv-sw-booking-time"><strong>{entry.time}</strong><span>{entry.isToday ? 'today' : 'booked'}</span></div>
+                    <div className="nv-sw-booking-main">
+                      <h3>{entry.patientName}</h3>
+                      <p className="muted small">{entry.serviceName}{entry.patientEmail ? ` · ${entry.patientEmail}` : ''}</p>
+                    </div>
+                    <div className="nv-sw-booking-state">
+                      <span className={`badge ${entry.status === 'checked_in' ? 'green' : 'blue'}`}>
+                        {entry.queueStatus ? bookingQueueLabels[entry.queueStatus] : entry.status === 'checked_in' ? 'Checked in' : 'Booked'}
+                      </span>
+                      {role === 'nurse' && entry.status === 'booked' && entry.isToday ? (
+                        <button type="button" className="primary-btn" disabled={busyId !== undefined} onClick={() => void markArrived(entry)}>
+                          {busyId === entry.id ? 'Checking in…' : 'Mark arrived'}
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; services: { id: string; name: string }[]; onChanged: () => Promise<void> }) {
@@ -210,21 +330,22 @@ function TriageCard({ entry, services, onChanged }: { entry: StaffTriageEntry; s
   );
 }
 
-function TriageBoard({ entries, services, loading, onChanged }: { entries: StaffTriageEntry[]; services: { id: string; name: string }[]; loading: boolean; onChanged: () => Promise<void> }) {
+function TriageBoard({ entries, services, loading, loadError, onChanged }: { entries: StaffTriageEntry[]; services: { id: string; name: string }[]; loading: boolean; loadError?: string; onChanged: () => Promise<void> }) {
   const criticalCount = entries.filter((entry) => entry.critical).length;
   return (
     <section className="nv-care-view">
       <header className="nv-care-view-head">
         <h1 className="section-title">Triage review</h1>
-        <p className="muted">Booked and walk-in patients land here first. Confirm or change the suggested department and urgency — the queue only updates after your confirmation.</p>
+        <p className="muted">Walk-ins and emergency-flagged bookings land here first. Confirm or change the suggested department and urgency — the queue only updates after your confirmation.</p>
       </header>
+      {loadError ? <p className="nv-error" role="alert">{loadError}</p> : null}
       {criticalCount > 0 ? (
         <div className="nv-sw-alert" role="alert">
           <strong>{criticalCount} intake red-flag suggestion{criticalCount === 1 ? ' needs' : 's need'} prompt review.</strong>
           <span>These are unverified intake warnings and do not change queue priority until a nurse confirms urgency.</span>
         </div>
       ) : null}
-      {entries.length === 0 ? (
+      {!loadError && entries.length === 0 ? (
         <div className="card nv-empty">
           <p className="muted">{loading ? 'Loading the triage worklist…' : 'No patients are waiting for triage right now.'}</p>
         </div>
@@ -237,7 +358,7 @@ function TriageBoard({ entries, services, loading, onChanged }: { entries: Staff
   );
 }
 
-function QueueBoard({ entries, services, role, onChanged }: { entries: StaffQueueEntry[]; services: { id: string; name: string }[]; role: StaffRole; onChanged: () => Promise<void> }) {
+function QueueBoard({ entries, services, role, loadError, onChanged }: { entries: StaffQueueEntry[]; services: { id: string; name: string }[]; role: StaffRole; loadError?: string; onChanged: () => Promise<void> }) {
   const { getAccessTokenSilently } = useAuth0();
   const [busyKey, setBusyKey] = useState<string>();
   const [error, setError] = useState<string>();
@@ -289,8 +410,9 @@ function QueueBoard({ entries, services, role, onChanged }: { entries: StaffQueu
         <h1 className="section-title">Live queue</h1>
         <p className="muted">Ordered by confirmed urgency, then time waiting. Call patients in, run consultations, and refer between departments.</p>
       </header>
+      {loadError ? <p className="nv-error" role="alert">{loadError}</p> : null}
       {error ? <p className="nv-error" role="alert">{error}</p> : null}
-      {entries.length === 0 ? (
+      {!loadError && entries.length === 0 ? (
         <div className="card nv-empty"><p className="muted">The queue is empty. Triaged patients will appear here.</p></div>
       ) : (
         <ul className="nv-sw-queue">
@@ -363,7 +485,7 @@ function QueueBoard({ entries, services, role, onChanged }: { entries: StaffQueu
 export function StaffPortalPage({ role }: { role: StaffRole }) {
   const { isAuthenticated, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0();
   const data = useStaffData(role, isAuthenticated, getAccessTokenSilently);
-  const [view, setView] = useState<'triage' | 'queue'>(role === 'nurse' ? 'triage' : 'queue');
+  const [view, setView] = useState<'bookings' | 'triage' | 'queue'>(role === 'nurse' ? 'triage' : 'queue');
   const copy = roleCopy[role];
 
   if (isAuthenticated && data.access && data.access.staffRole !== role) return <Navigate to="/" replace />;
@@ -375,10 +497,14 @@ export function StaffPortalPage({ role }: { role: StaffRole }) {
 
   const navItems = role === 'nurse'
     ? [
+        { label: 'Bookings', active: view === 'bookings', onClick: () => setView('bookings') },
         { label: 'Triage', active: view === 'triage', onClick: () => setView('triage') },
         { label: 'Queue', active: view === 'queue', onClick: () => setView('queue') },
       ]
-    : [{ label: 'Queue', active: view === 'queue', onClick: () => setView('queue') }];
+    : [
+        { label: 'Bookings', active: view === 'bookings', onClick: () => setView('bookings') },
+        { label: 'Queue', active: view === 'queue', onClick: () => setView('queue') },
+      ];
 
   return (
     <div className="app nv-patient">
@@ -420,10 +546,12 @@ export function StaffPortalPage({ role }: { role: StaffRole }) {
       ) : (
         <>
           {data.error ? <p className="nv-error" role="alert" style={{ margin: '0 24px' }}>{data.error}</p> : null}
-          {role === 'nurse' && view === 'triage' ? (
-            <TriageBoard entries={data.triage} services={data.services} loading={data.loading} onChanged={data.refresh} />
+          {view === 'bookings' ? (
+            <ScheduleBoard entries={data.appointments} role={role} loading={data.loading} loadError={data.bookingsError} onChanged={data.refresh} />
+          ) : role === 'nurse' && view === 'triage' ? (
+            <TriageBoard entries={data.triage} services={data.services} loading={data.loading} loadError={data.triageError} onChanged={data.refresh} />
           ) : (
-            <QueueBoard entries={data.queue} services={data.services} role={role} onChanged={data.refresh} />
+            <QueueBoard entries={data.queue} services={data.services} role={role} loadError={data.queueError} onChanged={data.refresh} />
           )}
         </>
       )}
