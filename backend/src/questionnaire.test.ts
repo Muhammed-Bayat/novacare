@@ -6,6 +6,7 @@ vi.mock('./auth.js', () => ({
 }));
 
 import { createApp } from './app.js';
+import { findQuestionnairePathway } from './intake/questionnaire.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -87,7 +88,7 @@ describe('questionnaire intake', () => {
     const response = await request(createApp()).post('/api/v1/questionnaire/interpret').send({
       pathwayId: 'injury',
       questionId: 'weight_bearing',
-      message: 'I can walk on it but it hurts quite badly.',
+      message: 'I can walk but it hurts quite badly.',
     });
 
     expect(response.status).toBe(200);
@@ -102,8 +103,43 @@ describe('questionnaire intake', () => {
     expect(prompt).toContain('ID: weight_bearing');
     expect(prompt).toContain('Can you use or put weight on the injured area?');
     expect(prompt).toContain('"painful"');
+    expect(prompt).toContain('Map semantically equivalent language to the closest allowed answer.');
+    expect(prompt).toContain('"I can walk but it hurts"');
     expect(prompt).not.toContain('Orthopaedics');
     expect(prompt).not.toContain('queue position');
+  });
+
+  it.each([
+    ['I can walk but it hurts.', 'painful'],
+    ['I can walk but it hurts quite badly.', 'painful'],
+    ['I can stand on it, but it is very sore.', 'painful'],
+    ['I can use it but there is pain.', 'painful'],
+    ['I can walk normally.', 'normal'],
+    ["It doesn't hurt when I stand on it.", 'normal'],
+    ["I can't put any weight on it.", 'no'],
+    ['I cannot walk on it at all.', 'no'],
+  ])('accepts the trusted weight-bearing answer for %s', async (message, answerId) => {
+    vi.stubEnv('GEMINI_API_KEY', 'test-key');
+    const fetchMock = vi.fn(async () => geminiResponse({ type: 'answer', answerId, confidence: 0.4, message: 'Recorded.' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await request(createApp()).post('/api/v1/questionnaire/interpret').send({ pathwayId: 'injury', questionId: 'weight_bearing', message });
+    const question = findQuestionnairePathway('injury')!.questions.find((item) => item.id === 'weight_bearing')!;
+
+    expect(question.options?.some((option) => option.id === answerId)).toBe(true);
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ type: 'answer', answerId, confidence: 0.4 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('canonicalizes a trusted answer ID with harmless casing and whitespace', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'test-key');
+    const fetchMock = vi.fn(async () => geminiResponse({ type: 'answer', answerId: ' PAINFUL ', confidence: null, message: 'Recorded.' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await request(createApp()).post('/api/v1/questionnaire/interpret').send({ pathwayId: 'injury', questionId: 'weight_bearing', message: 'I can walk but it hurts.' });
+
+    expect(response.body.data).toMatchObject({ type: 'answer', answerId: 'painful', confidence: null });
   });
 
   it('returns explanation and clarification responses without recording an answer', async () => {
@@ -121,6 +157,17 @@ describe('questionnaire intake', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['Sort of.', "I'm not sure."])('keeps genuinely ambiguous weight-bearing language as clarification-needed: %s', async (message) => {
+    vi.stubEnv('GEMINI_API_KEY', 'test-key');
+    const fetchMock = vi.fn(async () => geminiResponse({ type: 'clarification-needed', answerId: null, confidence: null, message: 'Please choose the option that best matches.' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await request(createApp()).post('/api/v1/questionnaire/interpret').send({ pathwayId: 'injury', questionId: 'weight_bearing', message });
+
+    expect(response.body.data).toMatchObject({ type: 'clarification-needed', answerId: null });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects invented answer IDs and retains a safe clarification response', async () => {
     vi.stubEnv('GEMINI_API_KEY', 'test-key');
     const fetchMock = vi.fn(async () => geminiResponse({ type: 'answer', answerId: 'maybe', confidence: 0.99, message: 'Maybe.' }));
@@ -136,6 +183,40 @@ describe('questionnaire intake', () => {
       message: "I couldn't interpret that automatically. Please choose the option that best matches your answer.",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an option label in place of a trusted answer ID', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'test-key');
+    const fetchMock = vi.fn(async () => geminiResponse({ type: 'answer', answerId: 'Yes, but it is painful', confidence: 0.99, message: 'Recorded.' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await request(createApp()).post('/api/v1/questionnaire/interpret').send({ pathwayId: 'injury', questionId: 'weight_bearing', message: 'I can walk but it hurts.' });
+
+    expect(response.body.data).toMatchObject({ type: 'clarification-needed', answerId: null });
+  });
+
+  it('writes safe development diagnostics without patient text', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'test-key');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn(async () => geminiResponse({ type: 'answer', answerId: 'not-an-option', confidence: 0.4, message: 'Recorded.' })));
+
+    await request(createApp()).post('/api/v1/questionnaire/interpret').send({ pathwayId: 'injury', questionId: 'weight_bearing', message: 'I can walk but it hurts quite badly.' });
+
+    const diagnostic = JSON.parse(String(info.mock.calls[0]?.[1])) as Record<string, unknown>;
+    expect(diagnostic).toMatchObject({
+      pathwayId: 'injury',
+      questionId: 'weight_bearing',
+      trustedOptionIds: ['normal', 'painful', 'no'],
+      trustedOptionLabels: ['Yes, normally', 'Yes, but it is painful', 'No'],
+      providerStatus: 200,
+      parsedType: 'answer',
+      parsedAnswerId: 'not-an-option',
+      parsedConfidence: 0.4,
+      schemaValidation: 'passed',
+      answerIdValidation: 'failed',
+      rejectionReason: 'invalid-answer-id',
+    });
+    expect(JSON.stringify(diagnostic)).not.toContain('I can walk but it hurts quite badly.');
   });
 
   it('rejects interpretation responses with keys outside the exact schema', async () => {

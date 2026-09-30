@@ -25,6 +25,20 @@ interface GeminiProviderError {
   message: string;
 }
 
+interface QuestionnaireInterpretationDiagnostic {
+  pathwayId: string;
+  questionId: string;
+  trustedOptionIds: string[];
+  trustedOptionLabels: string[];
+  providerStatus?: number;
+  parsedType?: string | null;
+  parsedAnswerId?: string | null;
+  parsedConfidence?: number | null;
+  schemaValidation: 'passed' | 'failed' | 'not-run';
+  answerIdValidation: 'passed' | 'failed' | 'not-applicable' | 'not-run';
+  rejectionReason?: string;
+}
+
 class GeminiIntakeError extends Error {
   constructor(
     readonly reason: Exclude<FallbackReason, 'invalid-pathway'>,
@@ -163,6 +177,20 @@ function logDevelopmentGeminiFailure(endpoint: string, reason: FallbackReason, e
   }));
 }
 
+function logDevelopmentQuestionnaireInterpretation(diagnostic: QuestionnaireInterpretationDiagnostic, error?: GeminiIntakeError): void {
+  if (process.env.NODE_ENV === 'production') return;
+  console.info('[ai-intake]', JSON.stringify({
+    endpoint: '/api/v1/questionnaire/interpret',
+    provider: 'gemini',
+    model: configuredModel(),
+    configured: Boolean(process.env.GEMINI_API_KEY?.trim()),
+    ...diagnostic,
+    ...(error?.status === undefined ? {} : { providerStatus: error.status }),
+    ...(error?.providerCode ? { providerCode: error.providerCode } : {}),
+    ...(error ? { fallbackReason: error.reason } : {}),
+  }));
+}
+
 export async function selectIntakeQuestionnaire(complaint: string): Promise<QuestionnaireIntake> {
   try {
     const selection = await classifyPathwayWithGemini(complaint);
@@ -183,6 +211,14 @@ export async function selectIntakeQuestionnaire(complaint: string): Promise<Ques
 
 function interpretationPrompt(question: QuestionnaireQuestion): string {
   const options = question.options!.map((option) => ({ id: option.id, label: option.label }));
+  const weightBearingExamples = question.id === 'weight_bearing'
+    ? `
+For this question, use semantic matching such as:
+- "I can walk normally" -> Yes, normally
+- "I can walk but it hurts", "I can stand on it but it is sore", or "I can use it but it hurts" -> Yes, but it is painful
+- "I cannot put any weight on it" or "I cannot walk on it at all" -> No
+`
+    : '';
   return `You are the conversational interface for a structured healthcare intake questionnaire. The application controls all clinical logic. You are helping the patient with exactly one predefined questionnaire question.
 
 You may interpret the patient's natural-language answer and map it to one supplied allowed answer, explain the current question, ask for clarification, or give a brief neutral conversational response related to the current interaction.
@@ -193,8 +229,10 @@ Current question:
 ID: ${question.id}
 ${question.text}
 
-Allowed answers (use only these IDs):
+Allowed answers (return only one of these exact IDs when answering):
 ${JSON.stringify(options)}
+
+Patients may answer conversationally and may not repeat option labels exactly. Map semantically equivalent language to the closest allowed answer. Only return clarification-needed when the patient's meaning genuinely cannot be determined.${weightBearingExamples}
 
 Return only a JSON object with exactly these keys: type, answerId, confidence, message. type must be answer, explanation, clarification-needed, or conversation. answerId must be an allowed answer ID or null. confidence must be a number from 0 to 1 or null. message must be a brief plain-language response.
 
@@ -203,11 +241,24 @@ Only return type "answer" with an answerId when the message clearly matches one 
 Patient message:`;
 }
 
-function parseQuestionnaireInterpretation(text: string, question: QuestionnaireQuestion): QuestionnaireInterpretation {
+function canonicalAnswerId(question: QuestionnaireQuestion, answerId: string): string | undefined {
+  const normalized = answerId.trim().toLowerCase();
+  if (!normalized) return undefined;
+  return question.options?.find((option) => option.id.toLowerCase() === normalized)?.id;
+}
+
+function parseQuestionnaireInterpretation(
+  text: string,
+  question: QuestionnaireQuestion,
+  diagnostic: QuestionnaireInterpretationDiagnostic,
+): QuestionnaireInterpretation {
   let value: unknown;
   try {
     value = parseGeminiJson(text);
   } catch {
+    diagnostic.schemaValidation = 'failed';
+    diagnostic.answerIdValidation = 'not-applicable';
+    diagnostic.rejectionReason = 'invalid-json';
     throw new GeminiIntakeError('invalid-json', 'Gemini questionnaire interpretation output was not valid JSON');
   }
   const object = asObject(value);
@@ -216,6 +267,9 @@ function parseQuestionnaireInterpretation(text: string, question: QuestionnaireQ
   const answerId = object?.answerId;
   const confidence = object?.confidence;
   const message = typeof object?.message === 'string' ? object.message.trim().slice(0, 500) : '';
+  diagnostic.parsedType = typeof type === 'string' ? type : null;
+  diagnostic.parsedAnswerId = typeof answerId === 'string' ? answerId : null;
+  diagnostic.parsedConfidence = typeof confidence === 'number' && Number.isFinite(confidence) ? confidence : null;
   if (!object
     || Object.keys(object).length !== expectedKeys.length
     || !expectedKeys.every((key) => Object.hasOwn(object, key))
@@ -224,24 +278,44 @@ function parseQuestionnaireInterpretation(text: string, question: QuestionnaireQ
     || (typeof confidence !== 'number' && confidence !== null)
     || (typeof confidence === 'number' && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1))
     || !message) {
+    diagnostic.schemaValidation = 'failed';
+    diagnostic.answerIdValidation = 'not-applicable';
+    diagnostic.rejectionReason = 'schema-validation';
     throw new GeminiIntakeError('schema-validation', 'Gemini questionnaire interpretation output did not match the required schema');
   }
+  diagnostic.schemaValidation = 'passed';
   if (type === 'answer') {
-    if (typeof answerId !== 'string' || !question.options?.some((option) => option.id === answerId) || confidence === null || confidence < 0.75) {
-      throw new GeminiIntakeError('schema-validation', 'Gemini questionnaire interpretation did not return a confident allowed answer ID');
+    const trustedAnswerId = typeof answerId === 'string' ? canonicalAnswerId(question, answerId) : undefined;
+    diagnostic.answerIdValidation = trustedAnswerId ? 'passed' : 'failed';
+    if (!trustedAnswerId) {
+      diagnostic.rejectionReason = 'invalid-answer-id';
+      throw new GeminiIntakeError('schema-validation', 'Gemini questionnaire interpretation did not return an allowed answer ID');
     }
+    // A trusted option ID makes the answer safe; model confidence is informational only.
+    return { type, answerId: trustedAnswerId, confidence, message };
   } else if (answerId !== null) {
+    diagnostic.answerIdValidation = 'failed';
+    diagnostic.rejectionReason = 'non-answer-with-answer-id';
     throw new GeminiIntakeError('schema-validation', 'Gemini questionnaire interpretation returned an answer ID for a non-answer response');
   }
+  diagnostic.answerIdValidation = 'not-applicable';
   return { type, answerId, confidence, message };
 }
 
-export async function interpretQuestionnaireMessage(question: QuestionnaireQuestion, patientMessage: string): Promise<QuestionnaireInterpretation> {
+export async function interpretQuestionnaireMessage(pathwayId: string, question: QuestionnaireQuestion, patientMessage: string): Promise<QuestionnaireInterpretation> {
   const unavailable: QuestionnaireInterpretation = {
     type: 'clarification-needed',
     answerId: null,
     confidence: null,
     message: "I couldn't interpret that automatically. Please choose the option that best matches your answer.",
+  };
+  const diagnostic: QuestionnaireInterpretationDiagnostic = {
+    pathwayId,
+    questionId: question.id,
+    trustedOptionIds: question.options?.map((option) => option.id) ?? [],
+    trustedOptionLabels: question.options?.map((option) => option.label) ?? [],
+    schemaValidation: 'not-run',
+    answerIdValidation: 'not-run',
   };
   try {
     const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -266,18 +340,26 @@ export async function interpretQuestionnaireMessage(question: QuestionnaireQuest
       throw new GeminiIntakeError('network', error instanceof Error ? safeMessage(error.message) : 'Gemini questionnaire interpretation request failed');
     }
     const payload = await readJson(response);
+    diagnostic.providerStatus = response.status;
     if (!response.ok) {
       const error = providerError(payload);
       throw new GeminiIntakeError(fallbackReasonForProviderError(response.status, error), error.message, response.status, error.code);
     }
     const text = geminiText(payload);
-    if (!text) throw new GeminiIntakeError('schema-validation', 'Gemini questionnaire interpretation response did not contain candidate text');
-    return parseQuestionnaireInterpretation(text, question);
+    if (!text) {
+      diagnostic.schemaValidation = 'failed';
+      diagnostic.answerIdValidation = 'not-applicable';
+      diagnostic.rejectionReason = 'missing-candidate-text';
+      throw new GeminiIntakeError('schema-validation', 'Gemini questionnaire interpretation response did not contain candidate text');
+    }
+    const interpretation = parseQuestionnaireInterpretation(text, question, diagnostic);
+    return interpretation;
   } catch (error) {
     const intakeError = error instanceof GeminiIntakeError
       ? error
       : new GeminiIntakeError('network', error instanceof Error ? safeMessage(error.message) : 'Gemini questionnaire interpretation request failed');
-    logDevelopmentGeminiFailure('/api/v1/questionnaire/interpret', intakeError.reason, intakeError);
+    diagnostic.rejectionReason ??= intakeError.reason;
+    logDevelopmentQuestionnaireInterpretation(diagnostic, intakeError);
     return unavailable;
   }
 }
