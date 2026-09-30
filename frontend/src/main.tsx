@@ -20,6 +20,7 @@ createRoot(rootElement).render(
     <Auth0Provider
       domain={domain}
       clientId={clientId}
+      cacheLocation="localstorage"
       useCookiesForTransactions
       authorizationParams={{
         audience,

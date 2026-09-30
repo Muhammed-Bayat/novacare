@@ -62,6 +62,7 @@ Accounts needed:
 - [ ] **P0-2.2** Anonymous visit to `/patient`, `/admin`, `/dispatcher`, `/care` → shell + inline sign-in card, no crash, no auto-redirect.
 - [ ] **P0-2.3** Wrong-role access: `/staff` as patient, `/admin` as nurse, `/dispatcher` as patient → bounced to `/`.
 - [ ] **P0-2.4** Logout from patient portal → Auth0 logout → origin; re-visiting `/patient` shows sign-in card.
+- [ ] **P0-2.5** Sign in → hard refresh (F5) on `/patient`, `/staff`, `/admin`, `/dispatcher`, `/care`, `/` → **still signed in** (portal renders, no sign-in card / landing page); repeat in a private window.
 
 ## P0-3 — Patient books an appointment
 - [ ] **P0-3.1** `/patient` → Appointments → search hospital by name/area/service → results, "closest 3", map renders (`hospital-map`).
