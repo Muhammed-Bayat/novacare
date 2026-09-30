@@ -31,6 +31,29 @@ Run database migrations after `DATABASE_URL` is configured:
 npm --workspace @novacare/backend run migrate
 ```
 
+### Showcase patients
+
+The showcase patient seed creates only synthetic patient users, today's bookings, and today's clinical queues for one explicitly named hospital. Preview the exact plan first:
+
+```bash
+npm --workspace @novacare/backend run seed:showcase-patients -- --hospital-name="Helen Joseph Hospital" --dry-run
+```
+
+Apply requires both the hospital ID and plan fingerprint printed by that dry-run:
+
+```bash
+npm --workspace @novacare/backend run seed:showcase-patients -- --hospital-name="Helen Joseph Hospital" --apply --confirm-hospital=<hospital-id> --confirm-plan=<plan-fingerprint>
+```
+
+Repeated apply commands are no-ops while an active run exists. Preview or execute a complete cleanup with:
+
+```bash
+npm --workspace @novacare/backend run seed:showcase-patients -- --hospital-name="Helen Joseph Hospital" --rollback --dry-run --run-id=<run-id>
+npm --workspace @novacare/backend run seed:showcase-patients -- --hospital-name="Helen Joseph Hospital" --rollback --run-id=<run-id> --confirm-hospital=<hospital-id>
+```
+
+Use `seed:showcase-patients:prod` instead after compiling the backend. These commands are manual and are never part of application startup.
+
 Start the API and SPA in separate terminals:
 
 ```bash

@@ -12,6 +12,8 @@
     "gemini:check": "tsx src/gemini-diagnostic.ts",
     "seed": "tsx src/data/seed.ts",
     "seed:dispatch": "tsx src/data/seed-dispatch.ts",
+    "seed:showcase-patients": "tsx src/data/seed-showcase-patients.ts",
+    "seed:showcase-patients:prod": "node dist/data/seed-showcase-patients.js",
     "seed:showcase-resources": "tsx src/data/seed-showcase-resources.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",

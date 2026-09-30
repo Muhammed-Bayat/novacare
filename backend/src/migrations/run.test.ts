@@ -13,6 +13,7 @@ import { migration as responseUnitStatusesMigration } from './020_response_unit_
 import { migration as dispatchStatusTimestampsMigration } from './021_dispatch_status_timestamps.js';
 import { migration as locationConfirmationMigration } from './023_location_confirmation.js';
 import { migration as clinicalQueueCompletionMigration } from './024_clinical_queue_completion.js';
+import { migration as showcasePatientSeedTrackingMigration } from './025_showcase_patient_seed_tracking.js';
 
 describe('initial migration', () => {
   it('creates the local users table', () => {
@@ -128,5 +129,14 @@ describe('clinical queue completion migration', () => {
     expect(clinicalQueueCompletionMigration.sql).toContain('ADD COLUMN queue_entry_id');
     expect(clinicalQueueCompletionMigration.sql).toContain('ADD COLUMN diagnosed_by');
     expect(clinicalQueueCompletionMigration.sql).toContain('clinical_diagnoses_one_per_queue_entry');
+  });
+});
+
+describe('showcase patient seed tracking migration', () => {
+  it('tracks seed-owned records and permits a new run after rollback', () => {
+    expect(showcasePatientSeedTrackingMigration.name).toBe('025_showcase_patient_seed_tracking');
+    expect(showcasePatientSeedTrackingMigration.sql).toContain('CREATE TABLE showcase_patient_seed_runs');
+    expect(showcasePatientSeedTrackingMigration.sql).toContain('CREATE TABLE showcase_patient_seed_records');
+    expect(showcasePatientSeedTrackingMigration.sql).toContain('WHERE rolled_back_at IS NULL');
   });
 });
