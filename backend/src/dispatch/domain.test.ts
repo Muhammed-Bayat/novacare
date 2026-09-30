@@ -42,7 +42,6 @@ describe('controlled workflow transitions', () => {
       'SEARCHING',
       'NOTIFIED',
       'ACKNOWLEDGED',
-      'ACCEPTED',
       'ASSIGNED',
       'DISPATCHED',
       'EN_ROUTE',
@@ -91,6 +90,7 @@ describe('controlled workflow transitions', () => {
 
   it('exposes the allowed next statuses for the dispatcher UI', () => {
     expect(nextStatuses('NOTIFIED')).toEqual(['ACKNOWLEDGED', 'NO_PROVIDER_FOUND', 'CANCELLED']);
+    expect(nextStatuses('ACKNOWLEDGED')).toEqual(['ASSIGNED', 'NO_PROVIDER_FOUND', 'CANCELLED']);
     expect(nextStatuses('IN_PROGRESS')).toEqual(['COMPLETED']);
   });
 

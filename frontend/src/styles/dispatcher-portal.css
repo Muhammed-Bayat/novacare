@@ -1,7 +1,3 @@
-.nv-dispatch-sim-banner {
-  margin: 20px 24px 0;
-}
-
 .nv-visually-hidden {
   position: absolute;
   width: 1px;
@@ -269,6 +265,32 @@
   font: inherit;
 }
 
+.nv-dispatch-matching-review {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+.nv-dispatch-matching-review summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.nv-dispatch-matching-review p {
+  margin: 0;
+}
+
+.nv-dispatch-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
 .nv-dispatch-actions {
   display: flex;
   gap: 10px;
@@ -299,8 +321,7 @@
   }
 
   .nv-dispatch-layout,
-  .nv-dispatch-metrics,
-  .nv-dispatch-sim-banner {
+  .nv-dispatch-metrics {
     margin-left: 14px;
     margin-right: 14px;
   }

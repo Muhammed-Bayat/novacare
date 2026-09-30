@@ -24,12 +24,6 @@ import { LocationConfirmationError, type LocationResolutionService } from '../lo
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * Dispatch Core §16-17: patient routes are own-record only, dispatcher routes are
- * operational. All simulated — the UI labels everything as demo requests and
- * simulated facilities/responders; nothing here claims a real emergency response.
- */
-
 async function actorUserId(auth0Subject: string): Promise<string | null> {
   const result = await getPool().query<{ id: string }>('SELECT id FROM users WHERE auth0_subject = $1', [auth0Subject]);
   return result.rows[0]?.id ?? null;
@@ -215,11 +209,12 @@ export function createDispatchController(service: DispatchService, hub: Dispatch
         res.status(404).json({ error: { code: 'NOT_FOUND', message: 'That service request was not found.' } });
         return;
       }
-      const [history, notifications] = await Promise.all([
+      const [history, notifications, matchingDiagnostics] = await Promise.all([
         service.listHistory(row.id),
         service.listNotifications(row.id),
+        service.listMatchingDiagnostics(row.id),
       ]);
-      res.json({ data: { ...row, history, notifications } });
+      res.json({ data: { ...row, history, notifications, matchingDiagnostics } });
     } catch (error) {
       if (mapError(error, res)) return;
       next(error);
@@ -234,12 +229,12 @@ export function createDispatchController(service: DispatchService, hub: Dispatch
         res.status(400).json({ error: { code: 'VALIDATION', message: 'facilityId is required.' } });
         return;
       }
-      if (response !== 'ACKNOWLEDGED' && response !== 'AVAILABLE' && response !== 'UNAVAILABLE' && response !== 'ACCEPTED') {
-        res.status(400).json({ error: { code: 'VALIDATION', message: 'response must be ACKNOWLEDGED, AVAILABLE, UNAVAILABLE or ACCEPTED.' } });
+      if (response !== 'ACKNOWLEDGED' && response !== 'UNAVAILABLE') {
+        res.status(400).json({ error: { code: 'VALIDATION', message: 'response must be ACKNOWLEDGED or UNAVAILABLE.' } });
         return;
       }
       const userId = await requiredActorUserId(req.auth!.subject);
-      const row = await service.respondToNotification(requestId(req.params.id), entityId(facilityId, 'facilityId'), response as Exclude<NotificationResponseStatus, 'PENDING'>, userId);
+      const row = await service.respondToNotification(requestId(req.params.id), entityId(facilityId, 'facilityId'), response as Extract<NotificationResponseStatus, 'ACKNOWLEDGED' | 'UNAVAILABLE'>, userId);
       res.json({ data: row });
     } catch (error) {
       if (mapError(error, res)) return;

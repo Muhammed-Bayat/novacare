@@ -8,6 +8,7 @@ import {
   type CurrentUser,
   type DispatchNotificationEntry,
   type DispatcherQueue,
+  type FacilityMatchingDiagnostic,
   type NotificationResponseStatus,
   type ServiceChannel,
   type ServiceRequestDetail,
@@ -15,7 +16,7 @@ import {
   type ServiceStatus,
   type ServiceUrgency,
 } from '../api.ts';
-import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
+import { Brand, TopBar } from '../components/TopBar.tsx';
 import '../styles/patient-portal.css';
 import '../styles/patient-care.css';
 import '../styles/staff-workspace.css';
@@ -63,6 +64,16 @@ const responseLabels: Record<NotificationResponseStatus, string> = {
   AVAILABLE: 'Available',
   UNAVAILABLE: 'Unavailable',
   ACCEPTED: 'Accepted',
+};
+
+const matchingReasonLabels: Record<string, string> = {
+  FACILITY_INACTIVE: 'Facility inactive',
+  INVALID_COORDINATES: 'Invalid coordinates',
+  NO_AMBULANCE_CAPABILITY: 'Ambulance capability unavailable',
+  NO_HOME_VISIT_CAPABILITY: 'Home-visit capability unavailable',
+  NO_AVAILABLE_AMBULANCE_UNIT: 'No available ambulance unit',
+  NO_AVAILABLE_HOME_VISIT_RESPONDER: 'No available home-visit responder',
+  OUTSIDE_SEARCH_RADIUS: 'Outside selected search radius',
 };
 
 const ambulanceReasonLabels: Record<string, string> = {
@@ -353,20 +364,116 @@ function RequestCard({ request, selected, onSelect }: { request: ServiceRequestR
 }
 
 function notificationActions(notification: DispatchNotificationEntry, status: ServiceStatus) {
-  if (status === 'NOTIFIED' && notification.response_status === 'PENDING') {
+  if (!['NOTIFIED', 'ACKNOWLEDGED'].includes(status)) return [];
+  if (notification.response_status === 'PENDING') {
     return [
       { key: 'acknowledge', label: 'Acknowledge', response: 'ACKNOWLEDGED' as const, className: 'secondary-btn' },
       { key: 'unavailable', label: 'Unavailable', response: 'UNAVAILABLE' as const, className: 'ghost-btn' },
     ];
   }
-  if (status === 'ACKNOWLEDGED' && (notification.response_status === 'PENDING' || notification.response_status === 'ACKNOWLEDGED')) {
+  if (notification.response_status === 'ACKNOWLEDGED') {
     return [
-      { key: 'accept', label: 'Accept', response: 'ACCEPTED' as const, className: 'primary-btn' },
-      { key: 'available', label: 'Available', response: 'AVAILABLE' as const, className: 'secondary-btn' },
       { key: 'unavailable', label: 'Unavailable', response: 'UNAVAILABLE' as const, className: 'ghost-btn' },
     ];
   }
   return [];
+}
+
+function NotificationTable({
+  notifications,
+  status,
+  assignedFacilityId,
+  canOperate,
+  busyKey,
+  onRespond,
+}: {
+  notifications: DispatchNotificationEntry[];
+  status: ServiceStatus;
+  assignedFacilityId: string | null;
+  canOperate: boolean;
+  busyKey: string | undefined;
+  onRespond: (key: string, notification: DispatchNotificationEntry, response: 'ACKNOWLEDGED' | 'UNAVAILABLE') => void;
+}) {
+  if (notifications.length === 0) return <p className="muted small">None.</p>;
+  return (
+    <div className="table-wrap">
+      <table className="nv-dispatch-table">
+        <thead>
+          <tr>
+            <th>Facility</th>
+            <th>Distance</th>
+            <th>Notified</th>
+            <th>Response</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {notifications.map((notification) => {
+            const actions = canOperate ? notificationActions(notification, status) : [];
+            const selected = assignedFacilityId === notification.facility_id;
+            const notSelected = assignedFacilityId !== null && !selected && ['ACKNOWLEDGED', 'AVAILABLE', 'ACCEPTED'].includes(notification.response_status);
+            const label = selected ? 'Selected' : notSelected ? 'Not selected' : responseLabels[notification.response_status];
+            const badge = selected ? 'blue' : notSelected || notification.response_status === 'UNAVAILABLE' ? 'gray' : notification.response_status === 'PENDING' ? 'yellow' : 'green';
+            return (
+              <tr key={notification.id}>
+                <td>{notification.facility_name}<span className="nv-dispatch-sub">Facility</span></td>
+                <td>{notification.distance_km != null ? `${notification.distance_km.toFixed(1)} km` : '—'}</td>
+                <td>{formatTime(notification.notified_at)}</td>
+                <td><span className={`badge ${badge}`}>{label}</span></td>
+                <td>
+                  {actions.length > 0 ? (
+                    <span className="nv-dispatch-row-actions">
+                      {actions.map((action) => (
+                        <button
+                          key={action.key}
+                          type="button"
+                          className={action.className}
+                          disabled={busyKey !== undefined}
+                          onClick={() => onRespond(`${action.key}:${notification.id}`, notification, action.response)}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </span>
+                  ) : <span className="muted small">—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MatchingDiagnostics({ diagnostics }: { diagnostics: FacilityMatchingDiagnostic[] }) {
+  if (diagnostics.length === 0) return null;
+  const eligible = diagnostics.filter((facility) => facility.eligible).length;
+  return (
+    <details className="nv-dispatch-matching-review">
+      <summary>Matching review: {eligible} eligible of {diagnostics.length} facilities considered</summary>
+      <p className="muted small">Dispatcher-only eligibility review. It excludes requester details.</p>
+      <div className="table-wrap">
+        <table className="nv-dispatch-table">
+          <thead><tr><th>Facility</th><th>Coordinates</th><th>Distance</th><th>Result</th></tr></thead>
+          <tbody>
+            {diagnostics.map((facility) => (
+              <tr key={facility.facilityId}>
+                <td>{facility.facilityName}</td>
+                <td>{facility.latitude != null && facility.longitude != null ? `${facility.latitude.toFixed(5)}, ${facility.longitude.toFixed(5)}` : 'Unavailable'}</td>
+                <td>{facility.distanceKm != null ? `${facility.distanceKm.toFixed(1)} km` : '—'}</td>
+                <td>
+                  {facility.eligible
+                    ? <span className="badge green">Eligible</span>
+                    : <span className="nv-dispatch-reasons">{facility.exclusionReasons.map((reason) => <span key={reason} className="badge gray">{matchingReasonLabels[reason] ?? reason}</span>)}</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
 }
 
 function RequestDetail({ detail, loading, responders, canOperate, onChanged }: { detail: ServiceRequestDetail | undefined; loading: boolean; responders: AvailableResponders; canOperate: boolean; onChanged: () => Promise<void> }) {
@@ -432,9 +539,11 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
     );
   }
 
-  const assignableFacilities = detail.notifications.filter((notification) =>
-    ['ACCEPTED', 'AVAILABLE'].includes(notification.response_status),
+  const acknowledgedFacilities = detail.notifications.filter((notification) =>
+    ['ACKNOWLEDGED', 'AVAILABLE', 'ACCEPTED'].includes(notification.response_status),
   );
+  const awaitingAcknowledgement = detail.notifications.filter((notification) => notification.response_status === 'PENDING');
+  const unavailableFacilities = detail.notifications.filter((notification) => notification.response_status === 'UNAVAILABLE');
   const assignedFacilityId = detail.assigned_facility_id;
   const preferredResponder = detail.triage?.preferredResponder;
   const assignmentOptions = detail.type === 'AMBULANCE'
@@ -452,6 +561,12 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
   const triage = detail.triage ?? {};
   const canResolveLocation = detail.status === 'CREATED' && detail.location_state === 'DISPATCHER_LOCATION_REVIEW' && canOperate;
   const displayStatus = statusPresentation(detail);
+  const matchingDiagnostics = detail.matchingDiagnostics ?? [];
+  const detailId = detail.id;
+
+  function respond(key: string, notification: DispatchNotificationEntry, response: 'ACKNOWLEDGED' | 'UNAVAILABLE') {
+    void act(key, `/api/v1/dispatcher/service-requests/${detailId}/respond`, { facilityId: notification.facility_id, response });
+  }
 
   return (
     <div className="card nv-dispatch-detail">
@@ -488,10 +603,16 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
         </div>
       ) : null}
 
-      {detail.reason || triage.ambulanceReason || triage.homeVisitReason ? (
+      {detail.reason ? (
         <div className="nv-dispatch-block">
-          <strong className="small">Reported details</strong>
-          {detail.reason ? <p className="muted small">{detail.reason}</p> : null}
+          <strong className="small">Request summary</strong>
+          <p className="muted small">{detail.reason}</p>
+        </div>
+      ) : null}
+
+      {triage.ambulanceReason || triage.homeVisitReason || triage.conscious || triage.preferredResponder ? (
+        <div className="nv-dispatch-block">
+          <strong className="small">Triage</strong>
           <div className="nv-dispatch-badges">
             {triage.ambulanceReason ? <span className="badge yellow">{ambulanceReasonLabels[triage.ambulanceReason] ?? triage.ambulanceReason}</span> : null}
             {triage.conscious ? <span className="badge blue">{consciousLabels[triage.conscious] ?? triage.conscious}</span> : null}
@@ -574,71 +695,44 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
       </div>
 
       <div className="nv-dispatch-block">
-        <strong className="small">Notified facilities</strong>
-        {detail.notifications.length === 0 ? (
-          <p className="muted small">No facilities have been notified yet.</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="nv-dispatch-table">
-              <thead>
-                <tr>
-                  <th>Facility</th>
-                  <th>Distance</th>
-                  <th>Notified</th>
-                  <th>Response</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.notifications.map((notification) => {
-                  const actions = canOperate ? notificationActions(notification, detail.status) : [];
-                  return (
-                    <tr key={notification.id}>
-                      <td>
-                        {notification.facility_name}
-                        <span className="nv-dispatch-sub">Facility</span>
-                      </td>
-                      <td>{notification.distance_km != null ? `${notification.distance_km.toFixed(1)} km` : '—'}</td>
-                      <td>{formatTime(notification.notified_at)}</td>
-                      <td><span className={`badge ${notification.response_status === 'UNAVAILABLE' ? 'gray' : notification.response_status === 'PENDING' ? 'yellow' : 'green'}`}>{responseLabels[notification.response_status]}</span></td>
-                      <td>
-                        {actions.length > 0 ? (
-                          <span className="nv-dispatch-row-actions">
-                            {actions.map((action) => (
-                              <button
-                                key={action.key}
-                                type="button"
-                                className={action.className}
-                                disabled={busyKey !== undefined}
-                                onClick={() => void act(`${action.key}:${notification.id}`, `/api/v1/dispatcher/service-requests/${detail.id}/respond`, { facilityId: notification.facility_id, response: action.response })}
-                              >
-                                {action.label}
-                              </button>
-                            ))}
-                          </span>
-                        ) : (
-                          <span className="muted small">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <strong className="small">Acknowledged facilities</strong>
+        <p className="muted small">Acknowledgement records readiness only. Select one facility below to assign the request.</p>
+        <NotificationTable notifications={acknowledgedFacilities} status={detail.status} assignedFacilityId={detail.assigned_facility_id} canOperate={canOperate} busyKey={busyKey} onRespond={respond} />
       </div>
 
-      {canOperate && detail.status === 'ACCEPTED' ? (
+      <div className="nv-dispatch-block">
+        <strong className="small">Awaiting acknowledgement</strong>
+        <NotificationTable notifications={awaitingAcknowledgement} status={detail.status} assignedFacilityId={detail.assigned_facility_id} canOperate={canOperate} busyKey={busyKey} onRespond={respond} />
+      </div>
+
+      {unavailableFacilities.length > 0 ? (
+        <div className="nv-dispatch-block">
+          <strong className="small">Unavailable facilities</strong>
+          <NotificationTable notifications={unavailableFacilities} status={detail.status} assignedFacilityId={detail.assigned_facility_id} canOperate={canOperate} busyKey={busyKey} onRespond={respond} />
+        </div>
+      ) : null}
+
+      <div className="nv-dispatch-block">
+        <strong className="small">Source &amp; routing</strong>
+        <p className="muted small">
+          {channelLabels[detail.channel]} intake
+          {detail.search_radius_km != null ? ` · ${detail.search_radius_km} km search radius` : ''}
+          {detail.facilities_notified != null ? ` · ${detail.facilities_notified} facilities notified` : ''}
+        </p>
+      </div>
+
+      <MatchingDiagnostics diagnostics={matchingDiagnostics} />
+
+      {canOperate && (detail.status === 'ACKNOWLEDGED' || detail.status === 'ACCEPTED') ? (
         <form className="nv-dispatch-assign" onSubmit={(event) => {
           event.preventDefault();
           if (facilityId) void act('assign-facility', `/api/v1/dispatcher/service-requests/${detail.id}/assign-facility`, { facilityId });
         }}>
-          <strong className="small">Assign facility</strong>
+          <strong className="small">Select facility for assignment</strong>
           <div className="nv-dispatch-assign-row">
             <select value={facilityId} onChange={(event) => setFacilityId(event.target.value)} aria-label="Choose facility">
-              <option value="">Choose a responding facility…</option>
-              {assignableFacilities.map((notification) => (
+              <option value="">Choose an acknowledged facility…</option>
+              {acknowledgedFacilities.map((notification) => (
                 <option key={notification.facility_id} value={notification.facility_id}>
                   {notification.facility_name}{notification.distance_km != null ? ` (${notification.distance_km.toFixed(1)} km)` : ''}
                 </option>
@@ -646,6 +740,7 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
             </select>
             <button type="submit" className="primary-btn" disabled={busyKey !== undefined || !facilityId}>Assign facility</button>
           </div>
+          {acknowledgedFacilities.length === 0 ? <p className="muted small">Wait for a facility acknowledgement before assigning this request.</p> : null}
         </form>
       ) : null}
 
@@ -709,7 +804,6 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
 export function DispatcherPortalPage() {
   const { isAuthenticated, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0();
   const data = useDispatcherData(isAuthenticated, getAccessTokenSilently);
-  const [view, setView] = useState<'queue' | 'unresolved'>('queue');
 
   if (isAuthenticated && data.access && data.access.staffRole !== 'dispatcher' && data.access.staffRole !== 'administrator') return <Navigate to="/" replace />;
 
@@ -719,20 +813,12 @@ export function DispatcherPortalPage() {
   const canOperate = data.access?.staffRole === 'dispatcher';
 
   const live = data.queue?.live ?? [];
-  const unresolved = data.queue?.unresolved ?? [];
   const metrics = data.queue?.metrics;
-  const visible = view === 'queue' ? live : unresolved;
-
-  const navItems = [
-    { label: 'Queue', active: view === 'queue', onClick: () => setView('queue') },
-    { label: `Unresolved (${unresolved.length})`, active: view === 'unresolved', onClick: () => setView('unresolved') },
-  ];
 
   return (
     <div className="app nv-patient">
       <TopBar>
         <Brand />
-        <TopNav items={navItems} />
         <div className="actions">
           <button type="button" className="user-chip">
             <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>{data.access ? `Hi, ${displayName}` : 'Dispatch console'}</span>
@@ -767,10 +853,6 @@ export function DispatcherPortalPage() {
         </section>
       ) : (
         <>
-          <div className="nv-sw-alert nv-dispatch-sim-banner" role="alert">
-            <strong>For testing only. No real emergency services are contacted.</strong>
-          </div>
-
           {data.error ? <p className="nv-error" role="alert" style={{ margin: '0 24px' }}>{data.error}</p> : null}
 
           <p className="nv-visually-hidden" role="status" aria-live="polite">{data.streamState === 'live' ? 'Dispatcher queue live updates connected.' : 'Dispatcher queue updates are reconnecting or polling.'}</p>
@@ -788,24 +870,22 @@ export function DispatcherPortalPage() {
           <section className="nv-dispatch-layout">
             <div className="nv-dispatch-list">
               <div className="nv-dispatch-list-head">
-                <h2 className="section-title">{view === 'queue' ? 'Live queue' : 'Unresolved requests'}</h2>
+                <h2 className="section-title">Live queue</h2>
                 <span className={`nv-dispatch-stream ${data.streamState}`}>
                   {data.streamState === 'live' ? 'Live updates' : data.streamState === 'reconnecting' ? 'Reconnecting…' : 'Polling every 15 s'}
                 </span>
               </div>
-              {visible.length === 0 ? (
+              {live.length === 0 ? (
                 <div className="card nv-empty">
                   <p className="muted">
                     {data.loading
                       ? 'Loading requests…'
-                      : view === 'queue'
-                        ? 'No active requests right now. New requests appear here in real time.'
-                        : 'No unresolved requests. Requests with no provider appear here.'}
+                      : 'No active requests right now. New requests appear here in real time.'}
                   </p>
                 </div>
               ) : (
                 <ul className="nv-dispatch-cards">
-                  {visible.map((request) => (
+                  {live.map((request) => (
                     <RequestCard key={request.id} request={request} selected={data.selectedId === request.id} onSelect={() => data.select(request.id)} />
                   ))}
                 </ul>

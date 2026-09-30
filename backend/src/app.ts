@@ -2052,7 +2052,6 @@ export function createApp(options: CreateAppOptions = {}) {
     }));
   }
 
-  // Dispatch Core: shared service-request domain (all simulated — demo prototype).
   const dispatch = createDispatchController(dispatchService, dispatchHub, locationResolution);
 
   app.post('/api/v1/service-requests', requireAuth, dispatch.createRequest);

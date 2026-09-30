@@ -405,7 +405,6 @@ export interface DispatchMetrics {
 
 export interface DispatcherQueue {
   live: ServiceRequestRow[];
-  unresolved: ServiceRequestRow[];
   metrics: DispatchMetrics;
 }
 
@@ -432,9 +431,29 @@ export interface DispatchNotificationEntry {
   facility_name: string;
 }
 
+export type FacilityExclusionReason =
+  | 'FACILITY_INACTIVE'
+  | 'INVALID_COORDINATES'
+  | 'NO_AMBULANCE_CAPABILITY'
+  | 'NO_HOME_VISIT_CAPABILITY'
+  | 'NO_AVAILABLE_AMBULANCE_UNIT'
+  | 'NO_AVAILABLE_HOME_VISIT_RESPONDER'
+  | 'OUTSIDE_SEARCH_RADIUS';
+
+export interface FacilityMatchingDiagnostic {
+  facilityId: string;
+  facilityName: string;
+  latitude: number | null;
+  longitude: number | null;
+  distanceKm: number | null;
+  eligible: boolean;
+  exclusionReasons: FacilityExclusionReason[];
+}
+
 export interface ServiceRequestDetail extends ServiceRequestRow {
   history: ServiceRequestHistoryEntry[];
   notifications: DispatchNotificationEntry[];
+  matchingDiagnostics: FacilityMatchingDiagnostic[];
 }
 
 export interface AvailableResponder {

@@ -47,24 +47,31 @@ type HistoryRow = {
 type FacilityDbRow = {
   id: string;
   name: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
+  active: boolean;
   ambulance_available: boolean;
   home_visit_available: boolean;
+  available_ambulance_unit: boolean;
+  available_home_visit_responder: boolean;
 };
 
 function ok<T>(rows: T[]): QueryResult<T> {
   return { rows, rowCount: rows.length };
 }
 
-function dbFacility(candidate: FacilityCandidate): FacilityDbRow {
+function dbFacility(candidate: FacilityCandidate, options: Partial<FacilityDbRow> = {}): FacilityDbRow {
   return {
     id: candidate.id,
     name: candidate.name,
     latitude: candidate.latitude,
     longitude: candidate.longitude,
+    active: true,
     ambulance_available: candidate.ambulanceAvailable,
     home_visit_available: candidate.homeVisitAvailable,
+    available_ambulance_unit: true,
+    available_home_visit_responder: true,
+    ...options,
   };
 }
 
@@ -77,6 +84,7 @@ class FakeDb {
   memberships = new Map<string, MembershipRow>();
   units = new Map<string, UnitRow>();
   facilities: FacilityCandidate[] = [];
+  facilityRows = new Map<string, Partial<FacilityDbRow>>();
   /** Test hook: pretend another transaction won the race. */
   conflictOnNextTransitionUpdate = false;
   private seq = 0;
@@ -96,7 +104,7 @@ class FakeDb {
     }
     if (text.includes('SELECT 1 FROM dispatch_notifications')) {
       const note = this.notifications.find((n) =>
-        n.request_id === params[0] && n.facility_id === params[1] && ['AVAILABLE', 'ACCEPTED'].includes(n.response_status),
+        n.request_id === params[0] && n.facility_id === params[1] && ['ACKNOWLEDGED', 'AVAILABLE', 'ACCEPTED'].includes(n.response_status),
       );
       return ok(note ? [{}] : []) as QueryResult<T>;
     }
@@ -135,12 +143,12 @@ class FakeDb {
     if (text.includes('UPDATE dispatch_notifications')) {
       const target = this.notifications.find(
         (n) => {
-          const response = params[2] as ResponseStatus;
-          const allowed = response === 'ACKNOWLEDGED'
-            ? n.response_status === 'PENDING'
-            : response === 'UNAVAILABLE'
-              ? n.response_status !== 'UNAVAILABLE'
-              : n.response_status === 'PENDING' || n.response_status === 'ACKNOWLEDGED';
+            const response = params[2] as ResponseStatus;
+            const allowed = response === 'ACKNOWLEDGED'
+              ? n.response_status === 'PENDING'
+              : response === 'UNAVAILABLE'
+                ? n.response_status === 'PENDING' || n.response_status === 'ACKNOWLEDGED'
+              : false;
           return n.request_id === params[0] && n.facility_id === params[1] && allowed;
         },
       );
@@ -246,7 +254,7 @@ class FakeDb {
       return ok([{}]) as QueryResult<T>;
     }
     if (text.includes('FROM hospitals')) {
-      return ok(this.facilities.map(dbFacility)) as QueryResult<T>;
+      return ok(this.facilities.map((candidate) => dbFacility(candidate, this.facilityRows.get(candidate.id)))) as QueryResult<T>;
     }
     if (text.includes('COUNT(*) FILTER')) {
       const live = [...this.requests.values()].filter((r) => !['COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND'].includes(r.status));
@@ -288,7 +296,7 @@ class FakeDb {
     }
     if (text.includes('SELECT * FROM service_requests')) {
       const live = [...this.requests.values()].filter((r) =>
-        !['COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND'].includes(r.status) && r.location_state !== 'DISPATCHER_LOCATION_REVIEW',
+        !['COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND'].includes(r.status),
       );
       return ok(live) as QueryResult<T>;
     }
@@ -515,6 +523,52 @@ describe('dispatch service', () => {
       expect(db.notifications.filter((n) => n.request_id === homeVisit.id).map((n) => n.facility_id)).not.toContain('amb-only');
     });
 
+    it('notifies eligible facilities nearest-first regardless of directory order', async () => {
+      db.facilities = [FAR, MID, NEAR];
+      const request = await service.createServiceRequest(createInput());
+      expect(db.notifications.filter((notification) => notification.request_id === request.id).map((notification) => notification.facility_id))
+        .toEqual(['near', 'mid', 'far']);
+    });
+
+    it('excludes unavailable units and exposes the reason to dispatcher diagnostics', async () => {
+      db.facilities = [NEAR, MID, FAR];
+      db.facilityRows.set('near', { available_ambulance_unit: false });
+      const request = await service.createServiceRequest(createInput());
+
+      expect(db.notifications.filter((notification) => notification.request_id === request.id).map((notification) => notification.facility_id)).not.toContain('near');
+      const diagnostic = (await service.listMatchingDiagnostics(request.id)).find((facility) => facility.facilityId === 'near');
+      expect(diagnostic).toMatchObject({ eligible: false, exclusionReasons: ['NO_AVAILABLE_AMBULANCE_UNIT'] });
+      expect(audits.find((audit) => audit.action === 'FACILITY_MATCHED')?.metadata).toMatchObject({
+        exclusionCounts: { NO_AVAILABLE_AMBULANCE_UNIT: 1 },
+      });
+    });
+
+    it('applies home-visit responder availability independently of ambulance units', async () => {
+      db.facilities = [NEAR, MID, FAR];
+      db.facilityRows.set('near', { available_home_visit_responder: false });
+      const request = await service.createServiceRequest(createInput({
+        type: 'HOME_VISIT',
+        urgency: 'STANDARD',
+        triage: { preferredResponder: 'NURSE' },
+      }));
+
+      expect(db.notifications.filter((notification) => notification.request_id === request.id).map((notification) => notification.facility_id)).not.toContain('near');
+      expect((await service.listMatchingDiagnostics(request.id)).find((facility) => facility.facilityId === 'near')?.exclusionReasons)
+        .toContain('NO_AVAILABLE_HOME_VISIT_RESPONDER');
+    });
+
+    it('explains unconfigured capability and invalid facility coordinates without matching either facility', async () => {
+      db.facilities = [NEAR, MID, FAR, facility('no-capability', -26.1, 28.06, { ambulanceAvailable: false })];
+      db.facilityRows.set('far', { latitude: null, longitude: null });
+      const request = await service.createServiceRequest(createInput());
+      const diagnostics = await service.listMatchingDiagnostics(request.id);
+
+      expect(diagnostics.find((facility) => facility.facilityId === 'no-capability')?.exclusionReasons).toContain('NO_AMBULANCE_CAPABILITY');
+      expect(diagnostics.find((facility) => facility.facilityId === 'far')?.exclusionReasons).toContain('INVALID_COORDINATES');
+      expect(db.notifications.filter((notification) => notification.request_id === request.id).map((notification) => notification.facility_id))
+        .not.toContain('far');
+    });
+
     it('uses dispatcher location state without starting matching when no confirmed coordinates are provided', async () => {
       db.facilities = [NEAR, MID, FAR];
       const request = await service.createServiceRequest(createInput({ latitude: null, longitude: null, address: 'Corner of Demo & Test, Sandton' }));
@@ -610,21 +664,17 @@ describe('dispatch service', () => {
       const next = await service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER);
       expect(next.status).toBe('ACKNOWLEDGED');
       expect(next.acknowledged_at).toBe(NOW_ISO);
+      expect(next.assigned_facility_id).toBeNull();
       expect(audits.some((a) => a.action === 'REQUEST_ACKNOWLEDGED' && a.actorUserId === DISPATCHER)).toBe(true);
     });
 
-    it('moves ACKNOWLEDGED → ACCEPTED on AVAILABLE or ACCEPTED responses', async () => {
+    it('keeps the request ACKNOWLEDGED when additional facilities acknowledge', async () => {
       const request = await notifiedRequest();
       await service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER);
-      const next = await service.respondToNotification(request.id, 'near', 'AVAILABLE', DISPATCHER);
-      expect(next.status).toBe('ACCEPTED');
-    });
-
-    it('accepts a facility directly from its first AVAILABLE response', async () => {
-      const request = await notifiedRequest();
-      const next = await service.respondToNotification(request.id, 'near', 'AVAILABLE', DISPATCHER);
-      expect(next.status).toBe('ACCEPTED');
-      expect(db.history.filter((entry) => entry.request_id === request.id).map((entry) => entry.to_status)).toContain('ACKNOWLEDGED');
+      const next = await service.respondToNotification(request.id, 'mid', 'ACKNOWLEDGED', DISPATCHER);
+      expect(next.status).toBe('ACKNOWLEDGED');
+      expect(db.notifications.filter((notification) => notification.request_id === request.id && notification.response_status === 'ACKNOWLEDGED')).toHaveLength(2);
+      expect(db.history.filter((entry) => entry.request_id === request.id).map((entry) => entry.to_status)).toEqual(['CREATED', 'SEARCHING', 'NOTIFIED', 'ACKNOWLEDGED']);
     });
 
     it('records UNAVAILABLE without moving the request', async () => {
@@ -645,14 +695,14 @@ describe('dispatch service', () => {
     it('rejects a response once the facility has no pending notification', async () => {
       const request = await notifiedRequest();
       await service.respondToNotification(request.id, 'near', 'UNAVAILABLE', DISPATCHER);
-      await expect(service.respondToNotification(request.id, 'near', 'AVAILABLE', DISPATCHER)).rejects.toBeInstanceOf(
+      await expect(service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER)).rejects.toBeInstanceOf(
         ServiceRequestConflictError,
       );
     });
 
-    it('does not allow a facility response to regress from accepted to acknowledged', async () => {
+    it('does not allow a facility to acknowledge twice', async () => {
       const request = await notifiedRequest();
-      await service.respondToNotification(request.id, 'near', 'ACCEPTED', DISPATCHER);
+      await service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER);
       await expect(service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER)).rejects.toBeInstanceOf(
         ServiceRequestConflictError,
       );
@@ -660,7 +710,7 @@ describe('dispatch service', () => {
   });
 
   describe('dispatcher assignment', () => {
-    async function acceptedRequest(type: ServiceRequestType = 'AMBULANCE') {
+    async function acknowledgedRequest(type: ServiceRequestType = 'AMBULANCE') {
       db.facilities = [NEAR, MID, FAR];
       const request = await service.createServiceRequest(createInput(type === 'HOME_VISIT' ? {
         type: 'HOME_VISIT',
@@ -668,11 +718,10 @@ describe('dispatch service', () => {
         triage: { homeVisitReason: 'check-up', preferredResponder: 'EITHER' },
       } : {}));
       await service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER);
-      await service.respondToNotification(request.id, 'near', 'ACCEPTED', DISPATCHER);
       return service.getRequest(request.id);
     }
 
-    it('assignFacility requires an ACCEPTED request', async () => {
+    it('assignFacility requires an acknowledgement and records explicit selection', async () => {
       db.facilities = [NEAR, MID, FAR];
       const fresh = await service.createServiceRequest(createInput());
       await expect(service.assignFacility(fresh.id, 'near', DISPATCHER)).rejects.toMatchObject({
@@ -680,7 +729,7 @@ describe('dispatch service', () => {
         from: 'NOTIFIED',
         to: 'ASSIGNED',
       });
-      const request = await acceptedRequest();
+      const request = await acknowledgedRequest();
       const assigned = await service.assignFacility(request!.id, 'near', DISPATCHER);
       expect(assigned.status).toBe('ASSIGNED');
       expect(assigned.assigned_facility_id).toBe('near');
@@ -689,13 +738,31 @@ describe('dispatch service', () => {
       expect(events.some((e) => e.type === 'service-request:assigned')).toBe(true);
     });
 
-    it('assignFacility only permits a facility that accepted this request', async () => {
-      const request = await acceptedRequest();
+    it('assignFacility only permits a facility that acknowledged this request', async () => {
+      const request = await acknowledgedRequest();
       await expect(service.assignFacility(request!.id, 'mid', DISPATCHER)).rejects.toBeInstanceOf(ServiceRequestConflictError);
     });
 
+    it('atomically selects only one of multiple acknowledged facilities', async () => {
+      db.facilities = [NEAR, MID, FAR];
+      const request = await service.createServiceRequest(createInput());
+      await service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER);
+      await service.respondToNotification(request.id, 'mid', 'ACKNOWLEDGED', DISPATCHER);
+
+      const outcomes = await Promise.allSettled([
+        service.assignFacility(request.id, 'near', DISPATCHER),
+        service.assignFacility(request.id, 'mid', DISPATCHER),
+      ]);
+      expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+      expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1);
+      const selected = await service.getRequest(request.id);
+      expect(selected?.status).toBe('ASSIGNED');
+      expect(['near', 'mid']).toContain(selected?.assigned_facility_id);
+      expect(db.notifications.filter((notification) => notification.request_id === request.id && notification.response_status === 'ACKNOWLEDGED')).toHaveLength(2);
+    });
+
     it('assignResponder requires exactly one of responderId or unitId', async () => {
-      const request = await acceptedRequest();
+      const request = await acknowledgedRequest();
       await service.assignFacility(request!.id, 'near', DISPATCHER);
       await expect(service.assignResponder(request!.id, {}, DISPATCHER)).rejects.toBeInstanceOf(DispatchValidationError);
       await expect(service.assignResponder(request!.id, { responderId: 'm1', unitId: 'u1' }, DISPATCHER)).rejects.toBeInstanceOf(
@@ -704,16 +771,16 @@ describe('dispatch service', () => {
     });
 
     it('assignResponder requires an ASSIGNED request', async () => {
-      const request = await acceptedRequest();
+      const request = await acknowledgedRequest();
       await expect(service.assignResponder(request!.id, { responderId: 'm1' }, DISPATCHER)).rejects.toMatchObject({
         name: 'InvalidTransitionError',
-        from: 'ACCEPTED',
+        from: 'ACKNOWLEDGED',
         to: 'DISPATCHED',
       });
     });
 
     it('claims an available on-duty responder and marks them BUSY', async () => {
-      const request = await acceptedRequest('HOME_VISIT');
+      const request = await acknowledgedRequest('HOME_VISIT');
       await service.assignFacility(request!.id, 'near', DISPATCHER);
       db.memberships.set('m1', { id: 'm1', on_duty: true, availability: 'AVAILABLE', hospital_id: 'near', home_visit_eligible: true, role: 'nurse' });
       const dispatched = await service.assignResponder(request!.id, { responderId: 'm1' }, DISPATCHER);
@@ -724,7 +791,7 @@ describe('dispatch service', () => {
     });
 
     it('refuses a responder who is off duty or already busy', async () => {
-      const request = await acceptedRequest('HOME_VISIT');
+      const request = await acknowledgedRequest('HOME_VISIT');
       await service.assignFacility(request!.id, 'near', DISPATCHER);
       db.memberships.set('m-off', { id: 'm-off', on_duty: false, availability: 'AVAILABLE', hospital_id: 'near', home_visit_eligible: true, role: 'nurse' });
       db.memberships.set('m-busy', { id: 'm-busy', on_duty: true, availability: 'BUSY', hospital_id: 'near', home_visit_eligible: true, role: 'nurse' });
@@ -737,14 +804,14 @@ describe('dispatch service', () => {
     });
 
     it('refuses a responder from another simulated facility', async () => {
-      const request = await acceptedRequest('HOME_VISIT');
+      const request = await acknowledgedRequest('HOME_VISIT');
       await service.assignFacility(request!.id, 'near', DISPATCHER);
       db.memberships.set('m-other', { id: 'm-other', on_duty: true, availability: 'AVAILABLE', hospital_id: 'mid', home_visit_eligible: true, role: 'nurse' });
       await expect(service.assignResponder(request!.id, { responderId: 'm-other' }, DISPATCHER)).rejects.toBeInstanceOf(ServiceRequestConflictError);
     });
 
     it('claims an available response unit and marks it DISPATCHED', async () => {
-      const request = await acceptedRequest();
+      const request = await acknowledgedRequest();
       await service.assignFacility(request!.id, 'near', DISPATCHER);
       db.units.set('u1', { id: 'u1', active: true, status: 'AVAILABLE' });
       const dispatched = await service.assignResponder(request!.id, { unitId: 'u1' }, DISPATCHER);
@@ -754,7 +821,7 @@ describe('dispatch service', () => {
     });
 
     it('refuses a unit that is not available', async () => {
-      const request = await acceptedRequest();
+      const request = await acknowledgedRequest();
       await service.assignFacility(request!.id, 'near', DISPATCHER);
       db.units.set('u-off', { id: 'u-off', active: true, status: 'OUT_OF_SERVICE' });
       await expect(service.assignResponder(request!.id, { unitId: 'u-off' }, DISPATCHER)).rejects.toBeInstanceOf(
@@ -768,7 +835,6 @@ describe('dispatch service', () => {
       db.facilities = [NEAR, MID, FAR];
       const request = await service.createServiceRequest(createInput());
       await service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER);
-      await service.respondToNotification(request.id, 'near', 'ACCEPTED', DISPATCHER);
       await service.assignFacility(request.id, 'near', DISPATCHER);
       db.units.set('u1', { id: 'u1', active: true, status: 'AVAILABLE' });
       await service.assignResponder(request.id, { unitId: 'u1' }, DISPATCHER);
@@ -784,7 +850,7 @@ describe('dispatch service', () => {
       expect(audits.some((a) => a.action === 'REQUEST_COMPLETED')).toBe(true);
 
       const history = db.history.filter((h) => h.request_id === request.id).map((h) => h.to_status);
-      expect(history).toEqual(['CREATED', 'SEARCHING', 'NOTIFIED', 'ACKNOWLEDGED', 'ACCEPTED', 'ASSIGNED', 'DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED']);
+      expect(history).toEqual(['CREATED', 'SEARCHING', 'NOTIFIED', 'ACKNOWLEDGED', 'ASSIGNED', 'DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED']);
     });
 
     it('rejects skipping ahead in the workflow', async () => {
@@ -819,7 +885,7 @@ describe('dispatch service', () => {
       const first = await service.createServiceRequest(createInput());
       const second = await service.createServiceRequest(createInput());
       for (const request of [first, second]) {
-        await service.respondToNotification(request.id, 'near', 'ACCEPTED', DISPATCHER);
+        await service.respondToNotification(request.id, 'near', 'ACKNOWLEDGED', DISPATCHER);
         await service.assignFacility(request.id, 'near', DISPATCHER);
       }
       db.units.set('u1', { id: 'u1', active: true, status: 'AVAILABLE', hospital_id: 'near' });
@@ -841,14 +907,13 @@ describe('dispatch service', () => {
   });
 
   describe('queue, metrics and requester views', () => {
-    it('splits the queue into live and unresolved sections', async () => {
+    it('keeps dispatcher location-review requests in the live queue', async () => {
       db.facilities = [NEAR, MID, FAR];
       const matched = await service.createServiceRequest(createInput());
       const unmatched = await service.createServiceRequest(createInput({ latitude: null, longitude: null, address: '1 Demo Street' }));
       const queue = await service.listQueue();
       expect(queue.live.map((r) => r.id)).toContain(matched.id);
-      expect(queue.live.map((r) => r.id)).not.toContain(unmatched.id);
-      expect(queue.unresolved.map((r) => r.id)).toEqual([unmatched.id]);
+      expect(queue.live.map((r) => r.id)).toContain(unmatched.id);
     });
 
     it('reports dispatcher metrics', async () => {
@@ -874,7 +939,7 @@ describe('dispatch service', () => {
       const request = await service.createServiceRequest(createInput());
       const notifications = (await service.listNotifications(request.id)) as Array<{ facility_id: string; facility_name: string }>;
       expect(notifications).toHaveLength(3);
-      expect(notifications[0]?.facility_name).toContain('Simulated Facility');
+      expect(notifications[0]?.facility_name).toBe('near');
       const distances = notifications.map((n) => Number((n as unknown as { distance_km: number }).distance_km));
       for (let i = 1; i < distances.length; i += 1) {
         expect(distances[i]).toBeGreaterThanOrEqual(distances[i - 1]!);
@@ -908,8 +973,8 @@ describe('dispatch service listAvailableResponders', () => {
 
     const data = await service.listAvailableResponders();
     expect(data.responders).toHaveLength(1);
-    expect(data.responders[0]).toMatchObject({ id: 'm1', home_visit_eligible: true, hospital_name: 'Simulated Facility Near' });
+    expect(data.responders[0]).toMatchObject({ id: 'm1', home_visit_eligible: true, hospital_name: 'Near' });
     expect(data.units).toHaveLength(1);
-    expect(data.units[0]).toMatchObject({ id: 'u1', callsign: 'A01', unit_type: 'AMBULANCE' });
+    expect(data.units[0]).toMatchObject({ id: 'u1', callsign: 'A01', unit_type: 'AMBULANCE', hospital_name: 'Near' });
   });
 });

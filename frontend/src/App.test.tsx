@@ -179,7 +179,6 @@ function stubStaffData(user: Parameters<typeof stubCurrentUser>[0] = {}, triage:
 
 interface DispatcherStubOptions {
   live?: unknown[];
-  unresolved?: unknown[];
   metrics?: unknown;
   responders?: unknown[];
   units?: unknown[];
@@ -189,7 +188,6 @@ interface DispatcherStubOptions {
 function stubDispatcherData(user: Parameters<typeof stubCurrentUser>[0] = {}, options: DispatcherStubOptions = {}) {
   const {
     live = [],
-    unresolved = [],
     metrics = { active: 0, ambulance: 0, homeVisit: 0, awaitingAssignment: 0, dispatched: 0 },
     responders = [],
     units = [],
@@ -201,7 +199,7 @@ function stubDispatcherData(user: Parameters<typeof stubCurrentUser>[0] = {}, op
       return { ok: true, json: async () => ({ data: detail ?? null }) };
     }
     if (url.includes('/api/v1/dispatcher/service-requests')) {
-      return { ok: true, json: async () => ({ data: { live, unresolved, metrics } }) };
+      return { ok: true, json: async () => ({ data: { live, metrics } }) };
     }
     if (url.includes('/api/v1/dispatcher/available-responders')) {
       return { ok: true, json: async () => ({ data: { responders, units } }) };
@@ -1140,7 +1138,7 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: 'Cancel request' })).not.toBeInTheDocument();
   });
 
-  it('renders the dispatcher console with the testing-only safety notice', async () => {
+  it('renders the dispatcher console without prototype safety copy', async () => {
     auth.state.isAuthenticated = true;
     stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
       live: [dispatcherRequestRow],
@@ -1153,8 +1151,7 @@ describe('App', () => {
     expect(screen.getByText('Home visits')).toBeInTheDocument();
     expect(screen.getByText('Awaiting assignment')).toBeInTheDocument();
     expect(screen.getByText('Dispatched')).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('For testing only. No real emergency services are contacted.');
-    expect(document.body.textContent).not.toMatch(/demo|simulated|simulation/i);
+    expect(document.body.textContent).not.toMatch(/demo|simulated|simulation|testing/i);
   });
 
   it('lets the dispatcher acknowledge a facility from the detail view', async () => {
@@ -1165,12 +1162,42 @@ describe('App', () => {
     });
     renderAt('/dispatcher');
     await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
-    expect(await screen.findByText('Notified facilities')).toBeInTheDocument();
+    expect(await screen.findByText('Awaiting acknowledgement')).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole('button', { name: 'Acknowledge' })[0]);
 
     const respondPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/dispatcher/service-requests/sr1/respond') && (options as RequestInit | undefined)?.method === 'POST');
     expect(respondPost).toBeDefined();
     expect(JSON.parse(String((respondPost?.[1] as RequestInit).body))).toMatchObject({ facilityId: 'h1', response: 'ACKNOWLEDGED' });
+  });
+
+  it('keeps acknowledged facilities separate from assignment selection', async () => {
+    auth.state.isAuthenticated = true;
+    const acknowledgedRow = { ...dispatcherRequestRow, status: 'ACKNOWLEDGED', acknowledged_at: '2026-09-27T10:02:00.000Z' };
+    const notifications = dispatcherNotifications.map((notification, index) => index === 0
+      ? { ...notification, response_status: 'ACKNOWLEDGED', acknowledged_at: '2026-09-27T10:02:00.000Z', responded_at: '2026-09-27T10:02:00.000Z' }
+      : notification);
+    stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }, {
+      live: [acknowledgedRow],
+      detail: {
+        ...acknowledgedRow,
+        history: [...dispatcherHistory, { id: 'hh4', from_status: 'NOTIFIED', to_status: 'ACKNOWLEDGED', actor_user_id: 'user-1', note: 'Facility acknowledged the request.', created_at: '2026-09-27T10:02:00.000Z' }],
+        notifications,
+        matchingDiagnostics: [{ facilityId: 'h1', facilityName: 'Sample Facility Near', latitude: -26.176, longitude: 28.045, distanceKm: 1.2, eligible: true, exclusionReasons: [] }],
+      },
+    });
+    renderAt('/dispatcher');
+    await userEvent.click(await screen.findByRole('button', { name: /NC-2026-000201/ }));
+
+    expect(await screen.findByText('Acknowledged facilities')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting acknowledgement')).toBeInTheDocument();
+    expect(screen.getByText('Acknowledgement records readiness only. Select one facility below to assign the request.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument();
+    expect(screen.getByText('Matching review: 1 eligible of 1 facilities considered')).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('Choose facility'), 'h1');
+    await userEvent.click(screen.getByRole('button', { name: 'Assign facility' }));
+    const assignPost = vi.mocked(fetch).mock.calls.find(([url, options]) => String(url).includes('/api/v1/dispatcher/service-requests/sr1/assign-facility') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(JSON.parse(String((assignPost?.[1] as RequestInit).body))).toMatchObject({ facilityId: 'h1' });
   });
 
   it('lets the dispatcher assign a response unit to an assigned ambulance request', async () => {

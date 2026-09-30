@@ -18,6 +18,8 @@ import {
   type ServiceRequestType,
   type ServiceStatus,
   type ServiceUrgency,
+  type FacilityExclusionReason,
+  type FacilityMatchingDiagnostic,
   SERVICE_STATUSES,
   TERMINAL_STATUSES,
 } from './domain.js';
@@ -94,6 +96,23 @@ export interface DispatcherLocationResolutionInput {
 const AWAITING_ASSIGNMENT: readonly ServiceStatus[] = ['NOTIFIED', 'ACKNOWLEDGED', 'ACCEPTED'];
 const DISPATCHED_STATUSES: readonly ServiceStatus[] = ['DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
 
+type DispatchFacilityRow = {
+  id: string;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  active: boolean;
+  ambulance_available: boolean;
+  home_visit_available: boolean;
+  available_ambulance_unit: boolean;
+  available_home_visit_responder: boolean;
+};
+
+type MatchingReview = {
+  candidate: FacilityCandidate | null;
+  diagnostic: FacilityMatchingDiagnostic;
+};
+
 function validateCoordinates(latitude: number | null | undefined, longitude: number | null | undefined): void {
   if (latitude == null && longitude == null) return;
   if (latitude == null || longitude == null) {
@@ -116,6 +135,14 @@ function hasConfirmedCoordinates(row: ServiceRequestRow): boolean {
     && row.latitude <= 90
     && row.longitude >= -180
     && row.longitude <= 180;
+}
+
+function operationalFacilityName(name: string): string {
+  const cleaned = name
+    .replace(/^simulated facility(?:\s*[—-]\s*)?\s*/i, '')
+    .replace(/^novacare demo hospital$/i, 'NovaCare')
+    .trim();
+  return cleaned || name;
 }
 
 export function publicEventPayload(row: ServiceRequestRow): ServiceRequestEventPayload {
@@ -333,29 +360,119 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     return fresh;
   }
 
-  async function loadCandidateFacilities(type: ServiceRequestType): Promise<FacilityCandidate[]> {
-    const result = await query<{
-      id: string;
-      name: string;
-      latitude: number;
-      longitude: number;
-      ambulance_available: boolean;
-      home_visit_available: boolean;
-    }>(
-      `SELECT id, name, latitude, longitude, ambulance_available, home_visit_available
-       FROM hospitals
-       WHERE active AND latitude IS NOT NULL AND longitude IS NOT NULL
-         AND (${type === 'AMBULANCE'}::boolean AND ambulance_available
-              OR ${type === 'HOME_VISIT'}::boolean AND home_visit_available)`,
+  async function loadDispatchFacilities(): Promise<DispatchFacilityRow[]> {
+    const result = await query<DispatchFacilityRow>(
+      `SELECT h.id, h.name, h.latitude, h.longitude, h.active,
+              h.ambulance_available, h.home_visit_available,
+              EXISTS (
+                SELECT 1 FROM response_units ru
+                WHERE ru.hospital_id = h.id AND ru.active AND ru.unit_type = 'AMBULANCE'
+                  AND ru.status = 'AVAILABLE'
+              ) AS available_ambulance_unit,
+              EXISTS (
+                SELECT 1 FROM hospital_memberships m
+                WHERE m.hospital_id = h.id AND m.active AND m.on_duty
+                  AND m.availability = 'AVAILABLE' AND m.home_visit_eligible
+                  AND m.role IN ('nurse', 'doctor')
+              ) AS available_home_visit_responder
+       FROM hospitals h
+       ORDER BY h.name, h.id`,
     );
-    return result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      latitude: row.latitude,
-      longitude: row.longitude,
-      ambulanceAvailable: row.ambulance_available,
-      homeVisitAvailable: row.home_visit_available,
-    }));
+    return result.rows;
+  }
+
+  function validFacilityCoordinates(row: DispatchFacilityRow): row is DispatchFacilityRow & GeoPoint {
+    return row.latitude != null
+      && row.longitude != null
+      && Number.isFinite(row.latitude)
+      && Number.isFinite(row.longitude)
+      && row.latitude >= -90
+      && row.latitude <= 90
+      && row.longitude >= -180
+      && row.longitude <= 180;
+  }
+
+  function reviewFacilities(
+    facilities: DispatchFacilityRow[],
+    origin: GeoPoint,
+    type: ServiceRequestType,
+  ): MatchingReview[] {
+    return facilities.map((facility) => {
+      const exclusionReasons: FacilityExclusionReason[] = [];
+      if (!facility.active) exclusionReasons.push('FACILITY_INACTIVE');
+      if (!validFacilityCoordinates(facility)) exclusionReasons.push('INVALID_COORDINATES');
+      if (type === 'AMBULANCE') {
+        if (!facility.ambulance_available) exclusionReasons.push('NO_AMBULANCE_CAPABILITY');
+        if (!facility.available_ambulance_unit) exclusionReasons.push('NO_AVAILABLE_AMBULANCE_UNIT');
+      } else {
+        if (!facility.home_visit_available) exclusionReasons.push('NO_HOME_VISIT_CAPABILITY');
+        if (!facility.available_home_visit_responder) exclusionReasons.push('NO_AVAILABLE_HOME_VISIT_RESPONDER');
+      }
+      const hasCoordinates = validFacilityCoordinates(facility);
+      const distanceKm = hasCoordinates ? location.distanceKm(origin, facility) : null;
+      const candidate: FacilityCandidate | null = exclusionReasons.length === 0 && hasCoordinates
+        ? {
+            id: facility.id,
+            name: facility.name,
+            latitude: facility.latitude,
+            longitude: facility.longitude,
+            ambulanceAvailable: facility.ambulance_available,
+            homeVisitAvailable: facility.home_visit_available,
+          }
+        : null;
+      return {
+        candidate,
+        diagnostic: {
+          facilityId: facility.id,
+          facilityName: operationalFacilityName(facility.name),
+          latitude: facility.latitude,
+          longitude: facility.longitude,
+          distanceKm,
+          eligible: false,
+          exclusionReasons,
+        },
+      };
+    });
+  }
+
+  function summarizeExclusions(diagnostics: FacilityMatchingDiagnostic[]): Record<string, number> {
+    return diagnostics.reduce<Record<string, number>>((summary, diagnostic) => {
+      for (const reason of diagnostic.exclusionReasons) summary[reason] = (summary[reason] ?? 0) + 1;
+      return summary;
+    }, {});
+  }
+
+  async function reviewMatching(request: ServiceRequestRow): Promise<{
+    diagnostics: FacilityMatchingDiagnostic[];
+    selected: ReturnType<typeof expandRadiusUntilCovered>['selected'];
+    radiusKm: number;
+    exhausted: boolean;
+  }> {
+    if (!hasConfirmedCoordinates(request)) {
+      return { diagnostics: [], selected: [], radiusKm: 0, exhausted: false };
+    }
+    const origin: GeoPoint = { latitude: request.latitude!, longitude: request.longitude! };
+    const reviews = reviewFacilities(await loadDispatchFacilities(), origin, request.type);
+    const { selected, radiusKm, exhausted } = expandRadiusUntilCovered(
+      reviews.flatMap((review) => review.candidate ? [review.candidate] : []),
+      origin,
+      request.type,
+      config,
+      location,
+    );
+    const selectedIds = new Set(selected.map((facility) => facility.id));
+    const diagnostics = reviews.map(({ diagnostic }) => {
+      const exclusionReasons = [...diagnostic.exclusionReasons];
+      if (exclusionReasons.length === 0 && !selectedIds.has(diagnostic.facilityId)) {
+        exclusionReasons.push('OUTSIDE_SEARCH_RADIUS');
+      }
+      return { ...diagnostic, eligible: exclusionReasons.length === 0, exclusionReasons };
+    }).sort((a, b) =>
+      (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY)
+      || a.facilityName.localeCompare(b.facilityName)
+      || a.facilityId.localeCompare(b.facilityId),
+    );
+    return { diagnostics, selected, radiusKm, exhausted };
   }
 
   async function startMatching(created: ServiceRequestRow, actorUserId: string | null, alreadySearching = false): Promise<ServiceRequestRow> {
@@ -375,9 +492,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
       metadata: { referenceCode: created.reference_code },
     });
 
-    const origin: GeoPoint = { latitude: created.latitude!, longitude: created.longitude! };
-    const candidates = await loadCandidateFacilities(created.type);
-    const { selected, radiusKm, exhausted } = expandRadiusUntilCovered(candidates, origin, created.type, config, location);
+    const { diagnostics, selected, radiusKm, exhausted } = await reviewMatching(created);
     await query(
       `UPDATE service_requests
        SET search_radius_km = $2, facilities_notified = $3, escalation_flag = $4, updated_at = $5
@@ -389,7 +504,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         entityType: 'service_request',
         entityId: created.id,
         action: 'FACILITY_MATCHED',
-        metadata: { matched: 0, radiusKm, escalation: exhausted },
+        metadata: { matched: 0, radiusKm, escalation: exhausted, exclusionCounts: summarizeExclusions(diagnostics) },
       });
       return transition(created.id, 'NO_PROVIDER_FOUND', null, {
         note: `No provider within ${radiusKm} km. Request logged for review.`,
@@ -414,7 +529,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
       entityType: 'service_request',
       entityId: created.id,
       action: 'FACILITY_MATCHED',
-      metadata: { matched: selected.length, radiusKm, escalation: exhausted },
+      metadata: { matched: selected.length, radiusKm, escalation: exhausted, exclusionCounts: summarizeExclusions(diagnostics) },
     });
 
     return transition(created.id, 'NOTIFIED', null, {
@@ -551,22 +666,13 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     return updateStatus(request.id, 'CANCELLED', null, { note: reason, cancelReason: reason });
   }
 
-  async function listQueue(): Promise<{ live: ServiceRequestRow[]; unresolved: ServiceRequestRow[] }> {
+  async function listQueue(): Promise<{ live: ServiceRequestRow[] }> {
     const live = await query<ServiceRequestRow>(
       `SELECT * FROM service_requests
-       WHERE status NOT IN ('COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND')
-         AND location_state <> 'DISPATCHER_LOCATION_REVIEW'
-       ORDER BY created_at DESC`,
+        WHERE status NOT IN ('COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND')
+        ORDER BY created_at DESC`,
     );
-    const unresolved = await query<ServiceRequestRow>(
-      `SELECT * FROM service_requests
-       WHERE status = 'NO_PROVIDER_FOUND'
-          OR (status NOT IN ('COMPLETED', 'CANCELLED', 'NO_PROVIDER_FOUND')
-              AND location_state = 'DISPATCHER_LOCATION_REVIEW')
-       ORDER BY created_at DESC
-       LIMIT 20`,
-    );
-    return { live: live.rows, unresolved: unresolved.rows };
+    return { live: live.rows };
   }
 
   async function listMetrics(): Promise<DispatchMetrics> {
@@ -616,15 +722,18 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
   }
 
   async function listNotifications(requestId: string): Promise<unknown[]> {
-    const result = await query(
+    const result = await query<{ facility_name: string }>(
       `SELECT dn.*, h.name AS facility_name
        FROM dispatch_notifications dn
        JOIN hospitals h ON h.id = dn.facility_id
        WHERE dn.request_id = $1
-       ORDER BY dn.distance_km`,
+        ORDER BY dn.distance_km NULLS LAST, h.name, h.id`,
       [requestId],
     );
-    return result.rows;
+    return result.rows.map((notification) => ({
+      ...notification,
+      facility_name: operationalFacilityName(notification.facility_name),
+    }));
   }
 
   async function listAvailableResponders(): Promise<AvailableResponders> {
@@ -644,13 +753,16 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
        WHERE ru.active AND ru.status = 'AVAILABLE'
        ORDER BY ru.callsign`,
     );
-    return { responders: responders.rows, units: units.rows };
+    return {
+      responders: responders.rows.map((responder) => ({ ...responder, hospital_name: operationalFacilityName(responder.hospital_name) })),
+      units: units.rows.map((unit) => ({ ...unit, hospital_name: operationalFacilityName(unit.hospital_name) })),
+    };
   }
 
   async function respondToNotification(
     requestId: string,
     facilityId: string,
-    response: Exclude<NotificationResponseStatus, 'PENDING'>,
+    response: Extract<NotificationResponseStatus, 'ACKNOWLEDGED' | 'UNAVAILABLE'>,
     actorUserId: string | null = null,
   ): Promise<ServiceRequestRow> {
     let acknowledged = false;
@@ -658,19 +770,18 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
       const locked = await q<ServiceRequestRow>('SELECT * FROM service_requests WHERE id = $1 FOR UPDATE', [requestId]);
       let current = locked.rows[0];
       if (!current) throw new ServiceRequestNotFoundError(requestId);
-      if (!['NOTIFIED', 'ACKNOWLEDGED', 'ACCEPTED'].includes(current.status)) {
+      if (!['NOTIFIED', 'ACKNOWLEDGED'].includes(current.status)) {
         throw new InvalidTransitionError(current.status, 'ACKNOWLEDGED');
       }
       const updated = await q(
         `UPDATE dispatch_notifications
          SET response_status = $3,
-             acknowledged_at = CASE WHEN $3 IN ('ACKNOWLEDGED', 'AVAILABLE', 'ACCEPTED') THEN COALESCE(acknowledged_at, $4) ELSE acknowledged_at END,
+              acknowledged_at = CASE WHEN $3 = 'ACKNOWLEDGED' THEN COALESCE(acknowledged_at, $4) ELSE acknowledged_at END,
              responded_at = $4
          WHERE request_id = $1 AND facility_id = $2
            AND (
              ($3 = 'ACKNOWLEDGED' AND response_status = 'PENDING')
-             OR ($3 IN ('AVAILABLE', 'ACCEPTED') AND response_status IN ('PENDING', 'ACKNOWLEDGED'))
-             OR ($3 = 'UNAVAILABLE' AND response_status IN ('PENDING', 'ACKNOWLEDGED', 'AVAILABLE', 'ACCEPTED'))
+              OR ($3 = 'UNAVAILABLE' AND response_status IN ('PENDING', 'ACKNOWLEDGED'))
            )`,
         [requestId, facilityId, response, nowIso()],
       );
@@ -695,11 +806,6 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
         acknowledged = true;
         current = { ...current, status: 'ACKNOWLEDGED' };
       }
-      if ((response === 'AVAILABLE' || response === 'ACCEPTED') && current.status === 'ACKNOWLEDGED') {
-        await transitionLocked(q, current, 'ACCEPTED', actorUserId, {
-          note: `Facility marked ${response.toLowerCase()}.`,
-        });
-      }
     });
 
     const next = await getRequest(requestId);
@@ -722,15 +828,17 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
       const locked = await q<ServiceRequestRow>('SELECT * FROM service_requests WHERE id = $1 FOR UPDATE', [requestId]);
       const current = locked.rows[0];
       if (!current) throw new ServiceRequestNotFoundError(requestId);
-      if (current.status !== 'ACCEPTED') throw new InvalidTransitionError(current.status, 'ASSIGNED');
+      if (current.status !== 'ACKNOWLEDGED' && current.status !== 'ACCEPTED') {
+        throw new InvalidTransitionError(current.status, 'ASSIGNED');
+      }
       const eligible = await q(
         `SELECT 1 FROM dispatch_notifications
-         WHERE request_id = $1 AND facility_id = $2 AND response_status IN ('AVAILABLE', 'ACCEPTED')
+         WHERE request_id = $1 AND facility_id = $2 AND response_status IN ('ACKNOWLEDGED', 'AVAILABLE', 'ACCEPTED')
          FOR UPDATE`,
         [requestId, facilityId],
       );
       if (eligible.rowCount === 0) {
-        throw new ServiceRequestConflictError('Only an available or accepted facility can be assigned.');
+        throw new ServiceRequestConflictError('Only an acknowledged facility can be assigned.');
       }
       await transitionLocked(q, current, 'ASSIGNED', actorUserId, {
         note: 'Facility assigned by dispatcher.',
@@ -847,6 +955,12 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     return next;
   }
 
+  async function listMatchingDiagnostics(requestId: string): Promise<FacilityMatchingDiagnostic[]> {
+    const request = await getRequest(requestId);
+    if (!request) throw new ServiceRequestNotFoundError(requestId);
+    return (await reviewMatching(request)).diagnostics;
+  }
+
   return {
     createServiceRequest,
     resolveLocationForDispatcher,
@@ -858,6 +972,7 @@ export function createDispatchService(deps: DispatchServiceDeps = {}) {
     listForRequester,
     listHistory,
     listNotifications,
+    listMatchingDiagnostics,
     listAvailableResponders,
     respondToNotification,
     assignFacility,

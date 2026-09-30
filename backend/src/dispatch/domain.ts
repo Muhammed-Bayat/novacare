@@ -40,7 +40,7 @@ export const STATUS_TRANSITIONS: Readonly<Record<ServiceStatus, readonly Service
   CREATED: ['SEARCHING', 'CANCELLED'],
   SEARCHING: ['NOTIFIED', 'NO_PROVIDER_FOUND', 'CANCELLED'],
   NOTIFIED: ['ACKNOWLEDGED', 'NO_PROVIDER_FOUND', 'CANCELLED'],
-  ACKNOWLEDGED: ['ACCEPTED', 'NO_PROVIDER_FOUND', 'CANCELLED'],
+  ACKNOWLEDGED: ['ASSIGNED', 'NO_PROVIDER_FOUND', 'CANCELLED'],
   ACCEPTED: ['ASSIGNED', 'NO_PROVIDER_FOUND', 'CANCELLED'],
   ASSIGNED: ['DISPATCHED', 'CANCELLED'],
   DISPATCHED: ['EN_ROUTE', 'CANCELLED'],
@@ -96,6 +96,26 @@ export const NOTIFICATION_RESPONSE_STATUSES: readonly NotificationResponseStatus
   'UNAVAILABLE',
   'ACCEPTED',
 ];
+
+export type FacilityExclusionReason =
+  | 'FACILITY_INACTIVE'
+  | 'INVALID_COORDINATES'
+  | 'NO_AMBULANCE_CAPABILITY'
+  | 'NO_HOME_VISIT_CAPABILITY'
+  | 'NO_AVAILABLE_AMBULANCE_UNIT'
+  | 'NO_AVAILABLE_HOME_VISIT_RESPONDER'
+  | 'OUTSIDE_SEARCH_RADIUS';
+
+/** Dispatcher-only explanation of the current matching decision. */
+export interface FacilityMatchingDiagnostic {
+  facilityId: string;
+  facilityName: string;
+  latitude: number | null;
+  longitude: number | null;
+  distanceKm: number | null;
+  eligible: boolean;
+  exclusionReasons: FacilityExclusionReason[];
+}
 
 export interface ServiceRequestTriage {
   ambulanceReason?: string;
@@ -161,7 +181,6 @@ export function formatReferenceCode(year: number, seq: number): string {
   return `NC-${year}-${String(seq).padStart(6, '0')}`;
 }
 
-/** Simulated responders/units the dispatcher can assign. All clearly demo data. */
 export interface AvailableResponderRow {
   id: string;
   role: string;
