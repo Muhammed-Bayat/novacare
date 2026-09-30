@@ -826,8 +826,8 @@ describe('App', () => {
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
     expect(await screen.findByRole('heading', { name: 'Emergency & home-visit requests' })).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('For testing only. No real emergency services are contacted.');
-    expect(screen.getByText('If this is a real emergency, call 10177 or 112 now.')).toBeInTheDocument();
+    expect(screen.queryByText('For testing only. No real emergency services are contacted.')).not.toBeInTheDocument();
+    expect(screen.queryByText('If this is a real emergency, call 10177 or 112 now.')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Request an Ambulance' }));
     await userEvent.selectOptions(screen.getByLabelText('What happened?'), 'chest-pain');

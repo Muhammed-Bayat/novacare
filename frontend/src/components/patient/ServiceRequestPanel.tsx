@@ -288,15 +288,6 @@ export function ServiceRequestPanel({ requests, loading, error, onCreate, onReso
         <p className="muted">Send an ambulance or home-visit request and follow its status here.</p>
       </header>
 
-      <div className="nv-sw-alert nv-sr-sim-banner" role="alert">
-        <strong>For testing only. No real emergency services are contacted.</strong>
-      </div>
-
-      <div className="nv-sr-safety" role="note">
-        <strong>If this is a real emergency, call 10177 or 112 now.</strong>
-        <span>Do not wait for this page. South Africa&apos;s emergency numbers connect you to real help.</span>
-      </div>
-
       <div className="nv-sr-actions">
         <button
           type="button"
