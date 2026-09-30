@@ -1,6 +1,8 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type ClinicalDiagnosis, type QuestionnaireAnswer, type QuestionnaireAssessment, type QuestionnaireIntake, type QuestionnaireInterpretation } from '../api.ts';
+import { DisplayNameMenu } from '../components/DisplayNameMenu.tsx';
+import { useStoredDisplayName } from '../components/useStoredDisplayName.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
 import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
@@ -19,17 +21,11 @@ import '../styles/patient-care.css';
 import '../styles/service-request.css';
 
 const languageStorageKey = 'novaCareLanguage';
-const displayNameStorageKey = 'novaCareDisplayName';
 
 function readStoredLanguage(): PatientLanguage {
   const stored = window.localStorage.getItem(languageStorageKey);
   const match = patientLanguages.find((option) => option.code === stored);
   return match ? match.code : 'en';
-}
-
-function readStoredDisplayName(): string | undefined {
-  const stored = window.localStorage.getItem(displayNameStorageKey)?.trim();
-  return stored || undefined;
 }
 
 function SouthAfricanFlag() {
@@ -56,9 +52,7 @@ export function PatientPortalPage() {
   const authDisplayName = user?.given_name ?? user?.nickname ?? user?.name ?? 'Thandi';
   const [view, setView] = useState<'dashboard' | 'appointments' | 'results' | 'help'>('dashboard');
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
-  const [displayName, setDisplayName] = useState(() => readStoredDisplayName() ?? authDisplayName);
-  const [draftDisplayName, setDraftDisplayName] = useState(displayName);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [displayName, saveDisplayName] = useStoredDisplayName(authDisplayName);
   const [bookingSuggestion, setBookingSuggestion] = useState<{ hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary } | null>(null);
   const [diagnoses, setDiagnoses] = useState<ClinicalDiagnosis[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
@@ -68,13 +62,6 @@ export function PatientPortalPage() {
     document.documentElement.lang = language;
     window.localStorage.setItem(languageStorageKey, language);
   }, [language]);
-
-  useEffect(() => {
-    if (!readStoredDisplayName()) {
-      setDisplayName(authDisplayName);
-      setDraftDisplayName(authDisplayName);
-    }
-  }, [authDisplayName]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -100,14 +87,6 @@ export function PatientPortalPage() {
     const timer = window.setInterval(() => void loadResults(true), 15000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [isAuthenticated, getAccessTokenSilently, view]);
-
-  function saveDisplayName(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextDisplayName = draftDisplayName.trim() || authDisplayName;
-    setDisplayName(nextDisplayName);
-    window.localStorage.setItem(displayNameStorageKey, nextDisplayName);
-    setProfileMenuOpen(false);
-  }
 
   async function startIntake(complaint: string): Promise<QuestionnaireIntake> {
     const token = await getAccessTokenSilently();
@@ -140,7 +119,6 @@ export function PatientPortalPage() {
 
   const nextAppointment = careData.appointments.find((appointment) => appointment.status === 'booked');
   const nextDate = nextAppointment ? dateParts(nextAppointment.date) : undefined;
-  const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'T';
   const welcomeText = `Welcome back, ${displayName}`;
   const showRealUpcoming = isAuthenticated && nextAppointment && nextDate;
 
@@ -165,34 +143,12 @@ export function PatientPortalPage() {
               ))}
             </select>
           </label>
-          <div className="nv-user-menu">
-            <button
-              type="button"
-              className="user-chip"
-              aria-expanded={profileMenuOpen}
-              aria-haspopup="dialog"
-              onClick={() => {
-                setDraftDisplayName(displayName);
-                setProfileMenuOpen((open) => !open);
-              }}
-            >
-              <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>Hi, {displayName}</span> <span style={{ fontSize: 12 }}>Menu</span>
-            </button>
-            {profileMenuOpen ? (
-              <form className="card nv-profile-menu" onSubmit={saveDisplayName} aria-label="Update display name">
-                <h3>Profile</h3>
-                <label className="nv-field">
-                  Display name
-                  <input value={draftDisplayName} onChange={(event) => setDraftDisplayName(event.target.value)} autoFocus />
-                </label>
-                <div className="nv-profile-actions">
-                  <button type="button" className="ghost-btn nv-danger" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Logout</button>
-                  <button type="button" className="secondary-btn" onClick={() => setProfileMenuOpen(false)}>Cancel</button>
-                  <button type="submit" className="primary-btn">Save</button>
-                </div>
-              </form>
-            ) : null}
-          </div>
+          <DisplayNameMenu
+            displayName={displayName}
+            fallbackDisplayName={authDisplayName}
+            onSave={saveDisplayName}
+            onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+          />
         </div>
       </TopBar>
 

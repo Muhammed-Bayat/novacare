@@ -338,6 +338,14 @@ function renderAt(path: string) {
   );
 }
 
+async function updateDisplayName(currentName: string, nextName: string) {
+  await userEvent.click(await screen.findByRole('button', { name: new RegExp(`Hi, ${currentName}`) }));
+  const input = screen.getByLabelText('Display name');
+  await userEvent.clear(input);
+  await userEvent.type(input, nextName);
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+}
+
 beforeEach(() => {
   auth.state = { isAuthenticated: false, isLoading: false, error: undefined };
   auth.loginWithRedirect.mockReset();
@@ -810,13 +818,28 @@ describe('App', () => {
 
   it('lets patients change their display name from the user menu', async () => {
     renderAt('/patient');
-    await userEvent.click(screen.getByRole('button', { name: /Hi, Thandi/ }));
-    const displayNameInput = screen.getByLabelText('Display name');
-    await userEvent.clear(displayNameInput);
-    await userEvent.type(displayNameInput, 'Naledi');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await updateDisplayName('Thandi', 'Naledi');
     expect(screen.getByRole('button', { name: /Hi, Naledi/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Welcome back, Naledi' })).toBeInTheDocument();
+  });
+
+  it('lets staff, doctor, dispatcher, and administrator portals update the display name', async () => {
+    auth.state.isAuthenticated = true;
+    const portals = [
+      { path: '/staff', setup: () => stubStaffData({ userType: 'staff', staffRole: 'nurse' }) },
+      { path: '/doctor', setup: () => stubStaffData({ userType: 'staff', staffRole: 'doctor' }) },
+      { path: '/dispatcher', setup: () => stubDispatcherData({ userType: 'staff', staffRole: 'dispatcher' }) },
+      { path: '/admin', setup: () => stubAdminData({ userType: 'admin', staffRole: 'administrator' }) },
+    ];
+
+    for (const portal of portals) {
+      window.localStorage.clear();
+      portal.setup();
+      const rendered = renderAt(portal.path);
+      await updateDisplayName('Amina Dlamini', 'Lerato');
+      expect(screen.getByRole('button', { name: /Hi, Lerato/ })).toBeInTheDocument();
+      rendered.unmount();
+    }
   });
 
   it('logs patients out from the user menu', async () => {

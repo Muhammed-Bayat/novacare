@@ -2,6 +2,8 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { authenticatedRequest, type Appointment, type ClinicalDiagnosis, type CurrentUser, type Hospital, type HospitalAccess, type PatientProfile, type QueueEntry } from './api.ts';
+import { DisplayNameMenu } from './components/DisplayNameMenu.tsx';
+import { useStoredDisplayName } from './components/useStoredDisplayName.ts';
 import { Brand, TopBar, TopNav } from './components/TopBar.tsx';
 import { AdminPortalPage } from './pages/AdminPortalPage.tsx';
 import { DispatcherPortalPage } from './pages/DispatcherPortalPage.tsx';
@@ -316,8 +318,8 @@ function OverseerPage() {
     setCopied(false);
   }
 
-  const displayName = user?.given_name ?? user?.name ?? 'Overseer';
-  const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'N';
+  const fallbackDisplayName = user?.given_name ?? user?.name ?? 'Overseer';
+  const [displayName, saveDisplayName] = useStoredDisplayName(fallbackDisplayName);
 
   return (
     <div className="app nv-patient">
@@ -325,10 +327,12 @@ function OverseerPage() {
         <Brand />
         <TopNav items={[{ label: 'Hospital access', active: true }]} />
         <div className="actions">
-          <button type="button" className="user-chip">
-            <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>Hi, {displayName}</span>
-          </button>
-          <button type="button" className="ghost-btn" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Logout</button>
+          <DisplayNameMenu
+            displayName={displayName}
+            fallbackDisplayName={fallbackDisplayName}
+            onSave={saveDisplayName}
+            onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+          />
         </div>
       </TopBar>
 
