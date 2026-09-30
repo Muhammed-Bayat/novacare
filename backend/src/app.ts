@@ -20,7 +20,7 @@ import { createSmsIncomingHandler } from './sms.controller.js';
 import { createDispatchController } from './dispatch/dispatch.controller.js';
 import { createDispatchService } from './dispatch/dispatch.service.js';
 import { createDispatchEventHub } from './dispatch/events.js';
-import { selectIntakeQuestionnaire } from './intake/gemini.js';
+import { interpretQuestionnaireMessage, selectIntakeQuestionnaire } from './intake/gemini.js';
 import { evaluateQuestionnaire, findQuestionnairePathway, type QuestionnaireUrgency, validateQuestionnaireAnswers } from './intake/questionnaire.js';
 import type { ChannelDispatchService } from './ussd.service.js';
 
@@ -381,6 +381,32 @@ export function createApp(options: CreateAppOptions = {}) {
         return;
       }
       res.json({ data: evaluateQuestionnaire(pathway, answers) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/questionnaire/interpret', requireAuth, async (req, res, next) => {
+    try {
+      const body = asObject(req.body);
+      const pathwayId = boundedText(body?.pathwayId, '', 80);
+      const questionId = boundedText(body?.questionId, '', 80);
+      const message = typeof body?.message === 'string' ? body.message.trim() : '';
+      const pathway = findQuestionnairePathway(pathwayId);
+      const question = pathway?.questions.find((item) => item.id === questionId);
+      if (!pathway || !question) {
+        res.status(400).json({ error: { code: 'QUESTION_NOT_FOUND', message: 'That questionnaire question is not available.' } });
+        return;
+      }
+      if (!question.options?.length) {
+        res.status(400).json({ error: { code: 'QUESTION_NOT_INTERPRETABLE', message: 'Please choose one of the available questionnaire answers.' } });
+        return;
+      }
+      if (!message || message.length > 500) {
+        res.status(400).json({ error: { code: 'INVALID_INTERPRETATION_MESSAGE', message: 'Enter a response between 1 and 500 characters.' } });
+        return;
+      }
+      res.json({ data: await interpretQuestionnaireMessage(question, message) });
     } catch (error) {
       next(error);
     }

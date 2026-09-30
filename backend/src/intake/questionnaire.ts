@@ -66,6 +66,15 @@ export interface QuestionnaireAssessment {
   redFlags: string[];
 }
 
+export type QuestionnaireInterpretationType = 'answer' | 'explanation' | 'clarification-needed' | 'conversation';
+
+export interface QuestionnaireInterpretation {
+  type: QuestionnaireInterpretationType;
+  answerId: string | null;
+  confidence: number | null;
+  message: string;
+}
+
 export const questionnairePathways: QuestionnairePathway[] = [
   {
     id: 'chest-breathing',

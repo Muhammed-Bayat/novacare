@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { AppointmentTriageSummary, Hospital, QuestionnaireAnswer, QuestionnaireAssessment, QuestionnaireIntake } from '../../api.ts';
+import type { AppointmentTriageSummary, Hospital, QuestionnaireAnswer, QuestionnaireAssessment, QuestionnaireIntake, QuestionnaireInterpretation } from '../../api.ts';
 import { IntakeRecommendation } from './IntakeRecommendation.tsx';
 
 type ChatStage = 'intro' | 'chat' | 'result';
@@ -15,6 +15,7 @@ export function IntakeChat({
   onSignIn,
   onStartIntake,
   onCompleteQuestionnaire,
+  onInterpretQuestionnaire,
   onBookAppointment,
 }: {
   isAuthenticated: boolean;
@@ -22,6 +23,7 @@ export function IntakeChat({
   onSignIn: () => void;
   onStartIntake: (complaint: string) => Promise<QuestionnaireIntake>;
   onCompleteQuestionnaire: (pathwayId: string, answers: QuestionnaireAnswer[]) => Promise<QuestionnaireAssessment>;
+  onInterpretQuestionnaire: (pathwayId: string, questionId: string, message: string) => Promise<QuestionnaireInterpretation>;
   onBookAppointment: (input: { hospitalId?: string; serviceId?: string; triageSummary: AppointmentTriageSummary }) => void;
 }) {
   const [stage, setStage] = useState<ChatStage>('intro');
@@ -29,10 +31,13 @@ export function IntakeChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [intake, setIntake] = useState<QuestionnaireIntake>();
   const [answers, setAnswers] = useState<QuestionnaireAnswer[]>([]);
+  const [freeTextAnswer, setFreeTextAnswer] = useState('');
   const [busy, setBusy] = useState(false);
+  const [interpreting, setInterpreting] = useState(false);
   const [error, setError] = useState<string>();
   const [conclusion, setConclusion] = useState<{ source: QuestionnaireIntake['source']; fallbackReason?: QuestionnaireIntake['fallbackReason']; assessment: QuestionnaireAssessment }>();
   const messagesRef = useRef<HTMLDivElement>(null);
+  const interpretationRequestRef = useRef(0);
   const currentQuestion = intake?.questions[answers.length];
 
   useEffect(() => {
@@ -52,6 +57,8 @@ export function IntakeChat({
     setMessages([]);
     setIntake(undefined);
     setAnswers([]);
+    setFreeTextAnswer('');
+    interpretationRequestRef.current += 1;
     setConclusion(undefined);
     try {
       const nextIntake = await onStartIntake(complaint.trim());
@@ -66,17 +73,21 @@ export function IntakeChat({
     }
   }
 
-  async function submitAnswer(display: string, value: QuestionnaireAnswer['value']) {
-    if (!intake || !currentQuestion || busy) return;
+  async function recordAnswer(display: string, value: QuestionnaireAnswer['value'], interpretationMessage?: string) {
+    if (!intake || !currentQuestion) return;
     const nextAnswers = [...answers, { questionId: currentQuestion.id, value }];
     setError(undefined);
+    const answeredMessages: ChatMessage[] = [
+      { role: 'patient', text: display },
+      ...(interpretationMessage ? [{ role: 'ai' as const, text: interpretationMessage }] : []),
+    ];
     if (nextAnswers.length < intake.questions.length) {
       const nextQuestion = intake.questions[nextAnswers.length]!;
-      setMessages((current) => [...current, { role: 'patient', text: display }, { role: 'ai', text: nextQuestion.text }]);
+      setMessages((current) => [...current, ...answeredMessages, { role: 'ai', text: nextQuestion.text }]);
       setAnswers(nextAnswers);
       return;
     }
-    setMessages((current) => [...current, { role: 'patient', text: display }]);
+    setMessages((current) => [...current, ...answeredMessages]);
     setBusy(true);
     try {
       const assessment = await onCompleteQuestionnaire(intake.pathwayId, nextAnswers);
@@ -84,10 +95,46 @@ export function IntakeChat({
       setConclusion({ source: intake.source, fallbackReason: intake.fallbackReason, assessment });
       setStage('result');
     } catch (answerError) {
-      setMessages((current) => current.slice(0, -1));
+      setMessages((current) => current.slice(0, -answeredMessages.length));
       setError(answerError instanceof Error ? answerError.message : 'Something went wrong. Please try again.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitAnswer(display: string, value: QuestionnaireAnswer['value']) {
+    if (busy) return;
+    interpretationRequestRef.current += 1;
+    setInterpreting(false);
+    setFreeTextAnswer('');
+    await recordAnswer(display, value);
+  }
+
+  async function submitFreeText(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!intake || !currentQuestion || !currentQuestion.options?.length || busy || interpreting || !freeTextAnswer.trim()) return;
+    const message = freeTextAnswer.trim();
+    const requestId = interpretationRequestRef.current + 1;
+    interpretationRequestRef.current = requestId;
+    setInterpreting(true);
+    setError(undefined);
+    try {
+      const interpretation = await onInterpretQuestionnaire(intake.pathwayId, currentQuestion.id, message);
+      if (requestId !== interpretationRequestRef.current) return;
+      setFreeTextAnswer('');
+      if (interpretation.type === 'answer' && interpretation.answerId) {
+        const option = currentQuestion.options.find((item) => item.id === interpretation.answerId);
+        if (option) {
+          await recordAnswer(message, option.value, interpretation.message);
+          return;
+        }
+      }
+      setMessages((current) => [...current, { role: 'patient', text: message }, { role: 'ai', text: interpretation.message }]);
+    } catch {
+      if (requestId !== interpretationRequestRef.current) return;
+      setMessages((current) => [...current, { role: 'patient', text: message }, { role: 'ai', text: "I couldn't interpret that automatically. Please choose the option that best matches your answer." }]);
+    } finally {
+      if (requestId === interpretationRequestRef.current) setInterpreting(false);
     }
   }
 
@@ -97,6 +144,9 @@ export function IntakeChat({
     setMessages([]);
     setIntake(undefined);
     setAnswers([]);
+    setFreeTextAnswer('');
+    interpretationRequestRef.current += 1;
+    setInterpreting(false);
     setError(undefined);
     setConclusion(undefined);
   }
@@ -107,7 +157,7 @@ export function IntakeChat({
         <form className="nv-questionnaire-intro" onSubmit={start}>
           <p className="eyebrow">AI-assisted intake</p>
           <h2>Tell us what you are feeling before you book</h2>
-          <p className="muted">Your initial message selects a standard intake questionnaire. The questions and assessment are not generated by AI. This is not a diagnosis.</p>
+          <p className="muted">Your initial message selects a standard intake questionnaire. You can also describe an answer in your own words or ask what a question means. The questions and assessment are not generated by AI. This is not a diagnosis.</p>
           <label className="nv-field">
             Main symptom
             <textarea
@@ -135,7 +185,7 @@ export function IntakeChat({
             {messages.map((message, index) => (
               <div key={index} className={`nv-chat-bubble ${message.role}`}>{message.text}</div>
             ))}
-              {busy ? <div className="nv-chat-bubble ai nv-chat-typing">Assessing…</div> : null}
+              {busy || interpreting ? <div className="nv-chat-bubble ai nv-chat-typing">{interpreting ? 'Interpreting…' : 'Assessing…'}</div> : null}
             </div>
             {currentQuestion && !busy ? (
               <div className="nv-chat-reply">
@@ -164,10 +214,26 @@ export function IntakeChat({
                   </div>
                 </div>
               ) : null}
+              {currentQuestion.options?.length ? (
+                <>
+                  <p className="muted small">Or tell us in your own words</p>
+                  <form className="nv-chat-text-row" onSubmit={(event) => void submitFreeText(event)}>
+                    <input
+                      id={`question-answer-${currentQuestion.id}`}
+                      aria-label="Tell us in your own words"
+                      value={freeTextAnswer}
+                      onChange={(event) => setFreeTextAnswer(event.target.value)}
+                      placeholder="Describe your answer…"
+                      maxLength={500}
+                    />
+                    <button className="secondary-btn" type="submit" disabled={interpreting || !freeTextAnswer.trim()}>Send</button>
+                  </form>
+                </>
+              ) : null}
             </div>
           ) : null}
           {error ? <p className="nv-error" role="alert">{error}</p> : null}
-          <p className="muted small">AI is used only to select this standard questionnaire. A nurse reviews everything before you are placed in a queue.</p>
+          <p className="muted small">AI can select the standard questionnaire and help interpret a typed response. A nurse reviews everything before you are placed in a queue.</p>
         </div>
       ) : null}
 
