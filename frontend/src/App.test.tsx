@@ -1237,6 +1237,35 @@ describe('App', () => {
     expect(screen.getAllByText(/All specialties/).length).toBeGreaterThan(0);
   });
 
+  it('groups the admin team tab into members and pending invitations', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {
+      members: [
+        { membershipId: 'm1', email: 'nurse@example.com', displayName: 'Amina Dlamini', role: 'nurse', active: true, since: '2026-09-26T12:00:00.000Z', departments: [] },
+      ],
+      pendingInvitations: [
+        { email: 'dr@example.com', role: 'doctor', departmentIds: [], expiresAt: '2030-09-29T12:00:00.000Z', sentAt: '2026-09-26T12:00:00.000Z' },
+      ],
+    });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Hospital team' }));
+    expect(await screen.findByRole('heading', { name: /Team members/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Pending invitations/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Team member email')).toBeInTheDocument();
+  });
+
+  it('shows an empty-team note with counts on the admin team tab', async () => {
+    auth.state.isAuthenticated = true;
+    stubAdminData({ userType: 'admin', staffRole: 'administrator' });
+    renderAt('/admin');
+    await userEvent.click(await screen.findByRole('button', { name: 'Hospital team' }));
+    expect(await screen.findByText('No team members yet — send the first invitation.')).toBeInTheDocument();
+    expect(screen.getByText('No invitations waiting.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Team members/ })).toBeInTheDocument();
+  });
+
   it('updates a team member from the manage form', async () => {
     auth.state.isAuthenticated = true;
     stubAdminData({ userType: 'admin', staffRole: 'administrator' }, {

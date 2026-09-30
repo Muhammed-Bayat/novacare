@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { authenticatedRequest, type AdminDepartment, type AdminOverview, type AuditEvent, type CurrentUser, type Department, type DisplaySettings, type HospitalDepartments, type HospitalTeam, type HospitalTeamMember, type AppointmentSlot, type SlotCreateResult, type TeamRole } from '../api.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
+import '../styles/admin-portal.css';
 
 const roleLabels: Record<TeamRole, string> = {
   administrator: 'Administrator',
@@ -62,6 +63,10 @@ function formatEventTime(value: string) {
 function formatMemberDate(value: string) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.valueOf()) ? '' : new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium' }).format(parsed);
+}
+
+function joinMeta(parts: (string | null | undefined)[]): string {
+  return parts.filter((part): part is string => Boolean(part)).join(' · ');
 }
 
 function tomorrowDate(): string {
@@ -600,8 +605,11 @@ export function AdminPortalPage() {
               <div className="nv-finder-controls">
                 {access ? (
                   managingMember ? (
-                    <form className="nv-book-form" style={{ borderTop: 'none', paddingTop: 0 }} onSubmit={(event) => void updateMember(event)}>
-                      <strong className="small">Manage {managingMember.displayName || managingMember.email}</strong>
+                    <form className="nv-team-form" onSubmit={(event) => void updateMember(event)}>
+                      <div className="nv-team-form-head">
+                        <strong>Manage {managingMember.displayName || managingMember.email}</strong>
+                        {managingMember.displayName && managingMember.email ? <span>{managingMember.email}</span> : null}
+                      </div>
                       <label className="nv-field">Role
                         <select aria-label="Member role" value={manageRole} onChange={(event) => setManageRole(event.target.value as TeamRole)}>
                           <option value="administrator">Administrator</option>
@@ -610,24 +618,30 @@ export function AdminPortalPage() {
                           <option value="dispatcher">Dispatcher</option>
                         </select>
                       </label>
-                      <label className="nv-field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label className="nv-check-row">
                         <input type="checkbox" aria-label="Active team member" checked={manageActive} onChange={(event) => setManageActive(event.target.checked)} />
                         Active team member
                       </label>
                       {manageRole !== 'administrator' && manageRole !== 'dispatcher' ? (
-                        <fieldset className="nv-field" style={{ border: 'none', padding: 0, margin: 0 }}>
-                          <legend className="small" style={{ fontWeight: 750, marginBottom: 6 }}>Departments — leave empty for all specialties</legend>
-                          {assignableDepartments.map((department) => (
-                            <label key={department.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                              <input
-                                type="checkbox"
-                                aria-label={`Assign ${department.name}`}
-                                checked={manageDepartmentIds.includes(department.id)}
-                                onChange={() => setManageDepartmentIds((previous) => toggleId(previous, department.id))}
-                              />
-                              {department.name}
-                            </label>
-                          ))}
+                        <fieldset className="nv-dept-picker">
+                          <legend>Departments — leave empty for all specialties</legend>
+                          {assignableDepartments.length === 0 ? (
+                            <p className="nv-dept-note">No departments yet — add one on the Departments tab.</p>
+                          ) : (
+                            <div className="nv-dept-options">
+                              {assignableDepartments.map((department) => (
+                                <label key={department.id} className="nv-dept-option">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Assign ${department.name}`}
+                                    checked={manageDepartmentIds.includes(department.id)}
+                                    onChange={() => setManageDepartmentIds((previous) => toggleId(previous, department.id))}
+                                  />
+                                  {department.name}
+                                </label>
+                              ))}
+                            </div>
+                          )}
                         </fieldset>
                       ) : null}
                       {manageError ? <p className="nv-error" role="alert">{manageError}</p> : null}
@@ -638,7 +652,11 @@ export function AdminPortalPage() {
                       </div>
                     </form>
                   ) : (
-                    <form className="nv-book-form" style={{ borderTop: 'none', paddingTop: 0 }} onSubmit={(event) => void invite(event)}>
+                    <form className="nv-team-form" onSubmit={(event) => void invite(event)}>
+                      <div className="nv-team-form-head">
+                        <strong>Invite a teammate</strong>
+                        <span>They claim the invitation from their own email address.</span>
+                      </div>
                       <label className="nv-field">Team member email
                         <input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@example.com" required />
                       </label>
@@ -651,19 +669,25 @@ export function AdminPortalPage() {
                         </select>
                       </label>
                       {inviteRole !== 'administrator' && inviteRole !== 'dispatcher' ? (
-                        <fieldset className="nv-field" style={{ border: 'none', padding: 0, margin: 0 }}>
-                          <legend className="small" style={{ fontWeight: 750, marginBottom: 6 }}>Departments — leave empty for all specialties</legend>
-                          {assignableDepartments.map((department) => (
-                            <label key={department.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                              <input
-                                type="checkbox"
-                                aria-label={`Invite to ${department.name}`}
-                                checked={inviteDepartmentIds.includes(department.id)}
-                                onChange={() => setInviteDepartmentIds((previous) => toggleId(previous, department.id))}
-                              />
-                              {department.name}
-                            </label>
-                          ))}
+                        <fieldset className="nv-dept-picker">
+                          <legend>Departments — leave empty for all specialties</legend>
+                          {assignableDepartments.length === 0 ? (
+                            <p className="nv-dept-note">No departments yet — add one on the Departments tab.</p>
+                          ) : (
+                            <div className="nv-dept-options">
+                              {assignableDepartments.map((department) => (
+                                <label key={department.id} className="nv-dept-option">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Invite to ${department.name}`}
+                                    checked={inviteDepartmentIds.includes(department.id)}
+                                    onChange={() => setInviteDepartmentIds((previous) => toggleId(previous, department.id))}
+                                  />
+                                  {department.name}
+                                </label>
+                              ))}
+                            </div>
+                          )}
                         </fieldset>
                       ) : null}
                       {adminDepartmentsError ? <p className="nv-error" role="alert">{adminDepartmentsError}</p> : null}
@@ -688,41 +712,65 @@ export function AdminPortalPage() {
               </div>
               <div className="nv-finder-detail">
                 <div className="nv-detail-card">
-                  <div className="nv-access-list" style={{ borderTop: 'none', paddingTop: 0 }}>
-                    <strong className="small">Team members</strong>
+                  <div className="nv-team-list">
                     {teamError ? <p className="nv-error" role="alert">{teamError}</p> : null}
                     {teamMessage ? <p className="nv-notice" role="status">{teamMessage}</p> : null}
                     {team === undefined && !teamError ? <p className="muted small">Loading the team…</p> : null}
-                    {team && team.members.length === 0 && team.pendingInvitations.length === 0 ? (
-                      <p className="muted small" style={{ margin: 0 }}>No team members yet — send the first invitation.</p>
+                    {team ? (
+                      <>
+                        <section className="nv-team-group" aria-label="Team members">
+                          <h3 className="nv-team-group-head">
+                            Team members
+                            <span className="badge blue">{team.members.length}</span>
+                          </h3>
+                          {team.members.length === 0 ? (
+                            <p className="nv-empty-note">No team members yet — send the first invitation.</p>
+                          ) : null}
+                          {team.members.map((member) => {
+                            const scope = member.role === 'administrator' ? 'Hospital administrator' : member.role === 'dispatcher' ? 'Dispatch operations' : member.departments.length > 0 ? member.departments.map((department) => department.name).join(', ') : 'All specialties';
+                            return (
+                              <div key={member.membershipId} className="nv-team-row">
+                                <div className="nv-team-row-main">
+                                  <strong className="nv-team-name">{member.displayName || member.email}</strong>
+                                  <span className="nv-team-meta">{joinMeta([member.displayName ? member.email : null, `since ${formatMemberDate(member.since)}`, scope])}</span>
+                                </div>
+                                <div className="nv-team-row-actions">
+                                  <span className="badge blue">{roleLabels[member.role]}</span>
+                                  <span className={`badge ${member.active ? 'green' : 'red'}`}>{member.active ? 'Active' : 'Inactive'}</span>
+                                  <button type="button" className="ghost-btn" onClick={() => startManaging(member)}>Manage</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </section>
+                        <section className="nv-team-group" aria-label="Pending invitations">
+                          <h3 className="nv-team-group-head">
+                            Pending invitations
+                            <span className="badge yellow">{team.pendingInvitations.length}</span>
+                          </h3>
+                          {team.pendingInvitations.length === 0 ? (
+                            <p className="nv-empty-note">No invitations waiting.</p>
+                          ) : null}
+                          {team.pendingInvitations.map((invitation) => {
+                            const expired = new Date(invitation.expiresAt) < new Date();
+                            const scope = invitation.role === 'dispatcher' ? 'Dispatch operations' : invitation.departmentIds.length > 0 ? `${invitation.departmentIds.length} department${invitation.departmentIds.length === 1 ? '' : 's'} assigned` : 'All specialties';
+                            return (
+                              <div key={`${invitation.email}-${invitation.role}`} className="nv-team-row">
+                                <div className="nv-team-row-main">
+                                  <strong className="nv-team-name">{invitation.email}</strong>
+                                  <span className="nv-team-meta">{joinMeta([`${roleLabels[invitation.role]} invitation`, invitation.sentAt ? `sent ${formatMemberDate(invitation.sentAt)}` : null, scope])}</span>
+                                </div>
+                                <div className="nv-team-row-actions">
+                                  <span className={`badge ${expired ? 'red' : 'yellow'}`}>
+                                    {expired ? 'Expired' : 'Invitation pending'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </section>
+                      </>
                     ) : null}
-                    {team?.members.map((member) => (
-                      <p key={member.membershipId} className="nv-access-row">
-                        <span>
-                          {member.displayName || member.email}
-                          <small className="muted"> · {member.email}</small>
-                          <small className="muted"> · since {formatMemberDate(member.since)}</small>
-                          <small className="muted"> · {member.role === 'administrator' ? 'Hospital administrator' : member.role === 'dispatcher' ? 'Dispatch operations' : member.departments.length > 0 ? member.departments.map((department) => department.name).join(', ') : 'All specialties'}</small>
-                        </span>
-                        <span>
-                          <span className="badge blue">{roleLabels[member.role]}</span>{' '}
-                          <span className={`badge ${member.active ? 'green' : 'red'}`}>{member.active ? 'Active' : 'Inactive'}</span>{' '}
-                          <button type="button" className="ghost-btn" onClick={() => startManaging(member)}>Manage</button>
-                        </span>
-                      </p>
-                    ))}
-                    {team?.pendingInvitations.map((invitation) => (
-                      <p key={`${invitation.email}-${invitation.role}`} className="nv-access-row">
-                        <span>
-                          {invitation.email}
-                          <small className="muted"> · {roleLabels[invitation.role]} invitation</small>
-                          <small className="muted"> · {invitation.role === 'dispatcher' ? 'Dispatch operations' : invitation.departmentIds.length > 0 ? `${invitation.departmentIds.length} department${invitation.departmentIds.length === 1 ? '' : 's'} assigned` : 'All specialties'}</small>
-                        </span>
-                        <span className={`badge ${new Date(invitation.expiresAt) < new Date() ? 'red' : 'yellow'}`}>
-                          {new Date(invitation.expiresAt) < new Date() ? 'Expired' : 'Invitation pending'}
-                        </span>
-                      </p>
-                    ))}
                   </div>
                 </div>
               </div>
