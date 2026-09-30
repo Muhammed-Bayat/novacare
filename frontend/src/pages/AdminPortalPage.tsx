@@ -2,6 +2,8 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { authenticatedRequest, type AdminDepartment, type AdminOverview, type AuditEvent, type CurrentUser, type Department, type DisplaySettings, type HospitalDepartments, type HospitalTeam, type HospitalTeamMember, type AppointmentSlot, type SlotCreateResult, type TeamRole } from '../api.ts';
+import { DisplayNameMenu } from '../components/DisplayNameMenu.tsx';
+import { useStoredDisplayName } from '../components/useStoredDisplayName.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import '../styles/admin-portal.css';
 
@@ -149,6 +151,8 @@ export function AdminPortalPage() {
 
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>();
   const [auditError, setAuditError] = useState<string>();
+  const fallbackDisplayName = access?.displayName ?? 'Admin';
+  const [adminName, saveDisplayName] = useStoredDisplayName(fallbackDisplayName);
 
   useEffect(() => {
     if (!isAuthenticated) { setAccess(undefined); setError(undefined); setTeam(undefined); return; }
@@ -477,9 +481,7 @@ export function AdminPortalPage() {
     }
   }
 
-  const adminName = access?.displayName ?? 'Admin';
   const hospitalName = team?.hospitalName ?? access?.hospitalName ?? 'your hospital';
-  const displayInitial = adminName.trim().slice(0, 1).toUpperCase() || 'N';
   const scheduleSlots = slots ?? [];
   const assignableDepartments = (adminDepartments ?? []).filter((department) => department.active);
   const managingMember = team?.members.find((member) => member.membershipId === managingMemberId);
@@ -507,13 +509,18 @@ export function AdminPortalPage() {
           { label: 'Activity', active: tab === 'activity', onClick: () => setTab('activity') },
         ]} />
         <div className="actions">
-          <button type="button" className="user-chip">
-            <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>Hi, {adminName}</span>
-          </button>
           {isAuthenticated ? (
-            <button type="button" className="ghost-btn" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Logout</button>
+            <DisplayNameMenu
+              displayName={adminName}
+              fallbackDisplayName={fallbackDisplayName}
+              onSave={saveDisplayName}
+              onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+            />
           ) : (
-            <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
+            <>
+              <button type="button" className="user-chip"><span style={{ fontWeight: 800 }}>{adminName.trim().slice(0, 1).toUpperCase() || 'N'}</span> <span>Hi, {adminName}</span></button>
+              <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
+            </>
           )}
         </div>
       </TopBar>

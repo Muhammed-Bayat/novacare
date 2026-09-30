@@ -16,6 +16,8 @@ import {
   type ServiceStatus,
   type ServiceUrgency,
 } from '../api.ts';
+import { DisplayNameMenu } from '../components/DisplayNameMenu.tsx';
+import { useStoredDisplayName } from '../components/useStoredDisplayName.ts';
 import { Brand, TopBar } from '../components/TopBar.tsx';
 import '../styles/patient-portal.css';
 import '../styles/patient-care.css';
@@ -804,11 +806,11 @@ function RequestDetail({ detail, loading, responders, canOperate, onChanged }: {
 export function DispatcherPortalPage() {
   const { isAuthenticated, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0();
   const data = useDispatcherData(isAuthenticated, getAccessTokenSilently);
+  const fallbackDisplayName = data.access?.displayName ?? user?.given_name ?? user?.name ?? 'Dispatcher';
+  const [displayName, saveDisplayName] = useStoredDisplayName(fallbackDisplayName);
 
   if (isAuthenticated && data.access && data.access.staffRole !== 'dispatcher' && data.access.staffRole !== 'administrator') return <Navigate to="/" replace />;
 
-  const displayName = data.access?.displayName ?? user?.given_name ?? user?.name ?? 'Dispatcher';
-  const displayInitial = displayName.trim().slice(0, 1).toUpperCase() || 'D';
   const greeting = `${greetingFor(new Date().getHours())}, ${displayName}`;
   const canOperate = data.access?.staffRole === 'dispatcher';
 
@@ -820,13 +822,19 @@ export function DispatcherPortalPage() {
       <TopBar>
         <Brand />
         <div className="actions">
-          <button type="button" className="user-chip">
-            <span style={{ fontWeight: 800 }}>{displayInitial}</span> <span>{data.access ? `Hi, ${displayName}` : 'Dispatch console'}</span>
-          </button>
           {isAuthenticated ? (
-            <button type="button" className="ghost-btn" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>Logout</button>
+            <DisplayNameMenu
+              displayName={displayName}
+              fallbackDisplayName={fallbackDisplayName}
+              label={data.access ? `Hi, ${displayName}` : 'Dispatch console'}
+              onSave={saveDisplayName}
+              onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+            />
           ) : (
-            <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
+            <>
+              <button type="button" className="user-chip"><span style={{ fontWeight: 800 }}>{displayName.trim().slice(0, 1).toUpperCase() || 'D'}</span> <span>Dispatch console</span></button>
+              <button type="button" className="primary-btn" onClick={() => void loginWithRedirect()}>Sign in</button>
+            </>
           )}
         </div>
       </TopBar>
