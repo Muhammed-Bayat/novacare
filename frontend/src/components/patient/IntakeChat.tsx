@@ -7,6 +7,8 @@ type ChatStage = 'intro' | 'chat' | 'result';
 interface ChatMessage {
   role: 'ai' | 'patient';
   text: string;
+  questionId?: string;
+  kind?: 'acknowledgement';
 }
 
 export function IntakeChat({
@@ -38,12 +40,29 @@ export function IntakeChat({
   const [conclusion, setConclusion] = useState<{ source: QuestionnaireIntake['source']; fallbackReason?: QuestionnaireIntake['fallbackReason']; assessment: QuestionnaireAssessment }>();
   const messagesRef = useRef<HTMLDivElement>(null);
   const interpretationRequestRef = useRef(0);
+  const autoScrolledQuestionRef = useRef<string>();
   const currentQuestion = intake?.questions[answers.length];
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [messages, busy]);
+    const questionId = currentQuestion?.id;
+    if (!node || !questionId || autoScrolledQuestionRef.current === questionId) return;
+    const activeQuestion = node.querySelector<HTMLElement>('[data-current-question="true"]');
+    if (!activeQuestion) return;
+    if (node.clientHeight === 0) {
+      autoScrolledQuestionRef.current = questionId;
+      return;
+    }
+    const inset = 12;
+    const top = activeQuestion.offsetTop;
+    const bottom = top + activeQuestion.offsetHeight;
+    const visibleTop = node.scrollTop + inset;
+    const visibleBottom = node.scrollTop + node.clientHeight - inset;
+    if (top < visibleTop || bottom > visibleBottom) {
+      node.scrollTo?.({ top: Math.max(0, top - inset), behavior: 'smooth' });
+    }
+    autoScrolledQuestionRef.current = questionId;
+  }, [currentQuestion?.id]);
 
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,12 +78,13 @@ export function IntakeChat({
     setAnswers([]);
     setFreeTextAnswer('');
     interpretationRequestRef.current += 1;
+    autoScrolledQuestionRef.current = undefined;
     setConclusion(undefined);
     try {
       const nextIntake = await onStartIntake(complaint.trim());
       if (nextIntake.questions.length === 0) throw new Error('The standard intake questionnaire is unavailable. Please try again.');
       setIntake(nextIntake);
-      setMessages([{ role: 'ai', text: nextIntake.questions[0].text }]);
+      setMessages([{ role: 'ai', text: nextIntake.questions[0].text, questionId: nextIntake.questions[0].id }]);
       setStage('chat');
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : 'Could not start the conversation.');
@@ -79,11 +99,11 @@ export function IntakeChat({
     setError(undefined);
     const answeredMessages: ChatMessage[] = [
       { role: 'patient', text: display },
-      ...(interpretationMessage ? [{ role: 'ai' as const, text: interpretationMessage }] : []),
+      ...(interpretationMessage ? [{ role: 'ai' as const, text: interpretationMessage, kind: 'acknowledgement' as const }] : []),
     ];
     if (nextAnswers.length < intake.questions.length) {
       const nextQuestion = intake.questions[nextAnswers.length]!;
-      setMessages((current) => [...current, ...answeredMessages, { role: 'ai', text: nextQuestion.text }]);
+      setMessages((current) => [...current, ...answeredMessages, { role: 'ai', text: nextQuestion.text, questionId: nextQuestion.id }]);
       setAnswers(nextAnswers);
       return;
     }
@@ -146,6 +166,7 @@ export function IntakeChat({
     setAnswers([]);
     setFreeTextAnswer('');
     interpretationRequestRef.current += 1;
+    autoScrolledQuestionRef.current = undefined;
     setInterpreting(false);
     setError(undefined);
     setConclusion(undefined);
@@ -183,7 +204,13 @@ export function IntakeChat({
         <div className="nv-chat">
           <div className="nv-chat-messages" ref={messagesRef} aria-live="polite">
             {messages.map((message, index) => (
-              <div key={index} className={`nv-chat-bubble ${message.role}`}>{message.text}</div>
+              <div
+                key={index}
+                className={`nv-chat-bubble ${message.role}${message.questionId ? ' question' : ''}${message.kind === 'acknowledgement' ? ' acknowledgement' : ''}`}
+                data-current-question={message.questionId === currentQuestion?.id ? 'true' : undefined}
+              >
+                {message.text}
+              </div>
             ))}
               {busy || interpreting ? <div className="nv-chat-bubble ai nv-chat-typing">{interpreting ? 'Interpreting…' : 'Assessing…'}</div> : null}
             </div>
