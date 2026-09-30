@@ -15,6 +15,7 @@
     "seed:showcase-patients": "tsx src/data/seed-showcase-patients.ts",
     "seed:showcase-patients:prod": "node dist/data/seed-showcase-patients.js",
     "seed:showcase-resources": "tsx src/data/seed-showcase-resources.ts",
+    "cleanup:legacy-facility-names": "tsx src/data/cleanup-legacy-facility-names.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
