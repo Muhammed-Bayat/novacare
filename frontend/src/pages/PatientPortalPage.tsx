@@ -1,6 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type ClinicalDiagnosis, type QuestionnaireAnswer, type QuestionnaireAssessment, type QuestionnaireIntake } from '../api.ts';
+import { authenticatedRequest, type Appointment, type AppointmentTriageSummary, type ClinicalDiagnosis, type QuestionnaireAnswer, type QuestionnaireAssessment, type QuestionnaireIntake, type QuestionnaireInterpretation } from '../api.ts';
 import { Brand, TopBar, TopNav } from '../components/TopBar.tsx';
 import { AppointmentsPanel } from '../components/patient/AppointmentsPanel.tsx';
 import { CareBookingCard } from '../components/patient/CareBookingCard.tsx';
@@ -118,6 +118,12 @@ export function PatientPortalPage() {
   async function completeQuestionnaire(pathwayId: string, answers: QuestionnaireAnswer[]): Promise<QuestionnaireAssessment> {
     const token = await getAccessTokenSilently();
     const response = await authenticatedRequest<{ data: QuestionnaireAssessment }>('/api/v1/questionnaire/complete', token, { method: 'POST', body: { pathwayId, answers } });
+    return response.data;
+  }
+
+  async function interpretQuestionnaire(pathwayId: string, questionId: string, message: string): Promise<QuestionnaireInterpretation> {
+    const token = await getAccessTokenSilently();
+    const response = await authenticatedRequest<{ data: QuestionnaireInterpretation }>('/api/v1/questionnaire/interpret', token, { method: 'POST', body: { pathwayId, questionId, message } });
     return response.data;
   }
 
@@ -320,6 +326,7 @@ export function PatientPortalPage() {
               onSignIn={() => void loginWithRedirect()}
               onStartIntake={startIntake}
               onCompleteQuestionnaire={completeQuestionnaire}
+              onInterpretQuestionnaire={interpretQuestionnaire}
               onBookAppointment={bookFromQuestionnaire}
             />
 

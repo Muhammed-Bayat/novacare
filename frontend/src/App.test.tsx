@@ -51,10 +51,22 @@ function stubPatientData(appointments: unknown[], queueEntries: unknown[] = [], 
   }));
 }
 
-function stubIntakeFlow(hospitals: unknown[], intake: unknown, assessment: unknown) {
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+function stubIntakeFlow(
+  hospitals: unknown[],
+  intake: unknown,
+  assessment: unknown,
+  interpret?: (body: { pathwayId: string; questionId: string; message: string }) => { ok: boolean; data?: unknown; error?: string } | Promise<{ ok: boolean; data?: unknown; error?: string }>,
+) {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/api/v1/questionnaire/intake')) return { ok: true, json: async () => ({ data: intake }) };
+    if (url.includes('/api/v1/questionnaire/interpret')) {
+      const body = JSON.parse(String(init?.body)) as { pathwayId: string; questionId: string; message: string };
+      const result = await (interpret?.(body) ?? { ok: true, data: { type: 'clarification-needed', answerId: null, confidence: null, message: 'Please choose one of the options.' } });
+      return result.ok
+        ? { ok: true, json: async () => ({ data: result.data }) }
+        : { ok: false, json: async () => ({ error: { message: result.error ?? 'Interpretation unavailable' } }) };
+    }
     if (url.includes('/api/v1/questionnaire/complete')) return { ok: true, json: async () => ({ data: assessment }) };
     if (url.includes('/api/v1/appointments')) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes('/api/v1/hospitals')) return { ok: true, json: async () => ({ data: hospitals }) };
@@ -521,9 +533,11 @@ describe('App', () => {
     expect(screen.getByText(/Helen Joseph Hospital/)).toBeInTheDocument();
 
     const classificationPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/intake') && (options as RequestInit | undefined)?.method === 'POST');
+    const interpretationPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/interpret') && (options as RequestInit | undefined)?.method === 'POST');
     const completionPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/complete') && (options as RequestInit | undefined)?.method === 'POST');
     const aiChatPosts = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/v1/intake/chat'));
     expect(classificationPosts).toHaveLength(1);
+    expect(interpretationPosts).toHaveLength(0);
     expect(completionPosts).toHaveLength(1);
     expect(aiChatPosts).toHaveLength(0);
     expect(JSON.parse(String((classificationPosts[0][1] as RequestInit).body))).toEqual({ complaint: 'I hurt my ankle today' });
@@ -531,6 +545,120 @@ describe('App', () => {
     expect(appointmentPost).toBeDefined();
     const body = JSON.parse(String((appointmentPost?.[1] as RequestInit).body));
     expect(body).toMatchObject({ hospitalId: 'h1', serviceId: 's2', triageSummary: { urgency: 'emergency', pathwayName: 'Injury & musculoskeletal' } });
+  });
+
+  it('maps a typed answer to an existing option and keeps later button answers Gemini-free', async () => {
+    auth.state.isAuthenticated = true;
+    stubIntakeFlow([], {
+      pathwayId: 'injury',
+      pathwayName: 'Injury & musculoskeletal',
+      source: 'ai',
+      questions: [
+        { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
+        { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
+        { id: 'deformity', text: 'Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+        { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
+      ],
+    }, { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Completed the Injury & musculoskeletal questionnaire.', department: 'Orthopaedics', urgency: 'priority', redFlags: [] }, (body) => {
+      expect(body).toEqual({ pathwayId: 'injury', questionId: 'weight_bearing', message: 'I can walk but it hurts badly.' });
+      return { ok: true, data: { type: 'answer', answerId: 'painful', confidence: 0.96, message: 'I understood that you can put weight on it, but it is painful.' } };
+    });
+
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Today' }));
+    await userEvent.type(screen.getByLabelText('Tell us in your own words'), 'I can walk but it hurts badly.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText('I understood that you can put weight on it, but it is painful.')).toBeInTheDocument();
+    expect(screen.getByText('Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?')).toBeInTheDocument();
+    const interpretationPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/interpret') && (options as RequestInit | undefined)?.method === 'POST');
+    expect(interpretationPosts).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'No' }));
+    expect(await screen.findByText('How severe is the pain?')).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/interpret') && (options as RequestInit | undefined)?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('shows an explanation without recording an answer or advancing the questionnaire', async () => {
+    auth.state.isAuthenticated = true;
+    stubIntakeFlow([], {
+      pathwayId: 'injury',
+      pathwayName: 'Injury & musculoskeletal',
+      source: 'ai',
+      questions: [
+        { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
+        { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
+      ],
+    }, { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Completed the Injury & musculoskeletal questionnaire.', department: 'Orthopaedics', urgency: 'priority', redFlags: [] }, () => ({
+      ok: true,
+      data: { type: 'explanation', answerId: null, confidence: null, message: 'It means whether you can stand or walk using the injured area.' },
+    }));
+
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Today' }));
+    await userEvent.type(screen.getByLabelText('Tell us in your own words'), 'What does putting weight on it mean?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText('It means whether you can stand or walk using the injured area.')).toBeInTheDocument();
+    expect(screen.getByText('Can you use or put weight on the injured area?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Yes, normally' })).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/complete') && (options as RequestInit | undefined)?.method === 'POST')).toHaveLength(0);
+  });
+
+  it('keeps the current question and manual options after interpretation fails', async () => {
+    auth.state.isAuthenticated = true;
+    stubIntakeFlow([], {
+      pathwayId: 'injury',
+      pathwayName: 'Injury & musculoskeletal',
+      source: 'ai',
+      questions: [
+        { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
+        { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
+      ],
+    }, { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Completed the Injury & musculoskeletal questionnaire.', department: 'Orthopaedics', urgency: 'priority', redFlags: [] }, () => ({ ok: false, error: 'Service unavailable' }));
+
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Today' }));
+    await userEvent.type(screen.getByLabelText('Tell us in your own words'), 'I can walk but it hurts.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText("I couldn't interpret that automatically. Please choose the option that best matches your answer.")).toBeInTheDocument();
+    expect(screen.getByText('Can you use or put weight on the injured area?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Yes, but it is painful' })).toBeInTheDocument();
+  });
+
+  it('keeps manual option buttons usable while a typed answer is being interpreted', async () => {
+    auth.state.isAuthenticated = true;
+    let resolveInterpretation: ((result: { ok: boolean; data?: unknown }) => void) | undefined;
+    stubIntakeFlow([], {
+      pathwayId: 'injury',
+      pathwayName: 'Injury & musculoskeletal',
+      source: 'ai',
+      questions: [
+        { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
+        { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
+        { id: 'deformity', text: 'Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+      ],
+    }, { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Completed the Injury & musculoskeletal questionnaire.', department: 'Orthopaedics', urgency: 'priority', redFlags: [] }, () => new Promise<{ ok: boolean; data?: unknown }>((resolve) => { resolveInterpretation = resolve; }));
+
+    renderAt('/patient');
+    await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Start assessment' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Today' }));
+    await userEvent.type(screen.getByLabelText('Tell us in your own words'), 'I can walk but it hurts.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText('Interpreting…')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'No' }));
+    expect(await screen.findByText('Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?')).toBeInTheDocument();
+    resolveInterpretation?.({ ok: true, data: { type: 'answer', answerId: 'painful', confidence: 0.96, message: 'Ignored after the manual answer.' } });
+    await waitFor(() => expect(screen.getByText('Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?')).toBeInTheDocument());
   });
 
   it('continues through the static questionnaire when classification uses a local fallback', async () => {
