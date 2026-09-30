@@ -572,7 +572,8 @@ describe('App', () => {
     await userEvent.type(screen.getByLabelText('Tell us in your own words'), 'I can walk but it hurts quite badly.');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-    expect(await screen.findByText('I understood that you can put weight on it, but it is painful.')).toBeInTheDocument();
+    const acknowledgement = await screen.findByText('I understood that you can put weight on it, but it is painful.');
+    expect(acknowledgement).toHaveClass('acknowledgement');
     expect(screen.getByText('Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?')).toBeInTheDocument();
     expect(screen.queryByText("I couldn't interpret that automatically. Please choose the option that best matches your answer.")).not.toBeInTheDocument();
     const interpretationPosts = vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/interpret') && (options as RequestInit | undefined)?.method === 'POST');
