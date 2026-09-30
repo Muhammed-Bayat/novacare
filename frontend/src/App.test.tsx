@@ -612,7 +612,7 @@ describe('App', () => {
     expect(vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes('/api/v1/questionnaire/complete') && (options as RequestInit | undefined)?.method === 'POST')).toHaveLength(0);
   });
 
-  it('keeps the current question and manual options after interpretation fails', async () => {
+  it('keeps initial AI source after an interpretation failure and manual completion', async () => {
     auth.state.isAuthenticated = true;
     stubIntakeFlow([], {
       pathwayId: 'injury',
@@ -621,8 +621,13 @@ describe('App', () => {
       questions: [
         { id: 'injury_timing', text: 'When did the injury happen?', type: 'single', options: [{ id: 'today', label: 'Today', value: 'today' }, { id: 'recent', label: '1-3 days ago', value: '1-3-days' }, { id: 'older', label: 'More than 3 days ago', value: 'older' }] },
         { id: 'weight_bearing', text: 'Can you use or put weight on the injured area?', type: 'single', options: [{ id: 'normal', label: 'Yes, normally', value: 'normal' }, { id: 'painful', label: 'Yes, but it is painful', value: 'painful' }, { id: 'no', label: 'No', value: 'no' }] },
+        { id: 'deformity', text: 'Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?', type: 'yes-no', options: [{ id: 'yes', label: 'Yes', value: true }, { id: 'no', label: 'No', value: false }] },
+        { id: 'pain_level', text: 'How severe is the pain?', type: 'scale', min: 0, max: 10 },
       ],
-    }, { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Completed the Injury & musculoskeletal questionnaire.', department: 'Orthopaedics', urgency: 'priority', redFlags: [] }, () => ({ ok: false, error: 'Service unavailable' }));
+    }, { pathwayId: 'injury', pathwayName: 'Injury & musculoskeletal', summary: 'Completed the Injury & musculoskeletal questionnaire.', department: 'Orthopaedics', urgency: 'priority', redFlags: [] }, () => ({
+      ok: true,
+      data: { type: 'clarification-needed', answerId: null, confidence: null, message: "I couldn't interpret that automatically. Please choose the option that best matches your answer.", interpretationStatus: 'failed' },
+    }));
 
     renderAt('/patient');
     await userEvent.click(screen.getByRole('button', { name: 'I hurt my ankle today' }));
@@ -634,6 +639,13 @@ describe('App', () => {
     expect(await screen.findByText("I couldn't interpret that automatically. Please choose the option that best matches your answer.")).toBeInTheDocument();
     expect(screen.getByText('Can you use or put weight on the injured area?')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Yes, but it is painful' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Yes, but it is painful' }));
+    expect(await screen.findByText('Is there an obvious deformity, severe swelling, numbness or uncontrolled bleeding?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'No' }));
+    await userEvent.click(await screen.findByRole('button', { name: '4' }));
+
+    expect(await screen.findByText('AI intake source: AI-assisted')).toBeInTheDocument();
+    expect(screen.queryByText(/AI assistant is briefly unavailable/)).not.toBeInTheDocument();
   });
 
   it('keeps manual option buttons usable while a typed answer is being interpreted', async () => {

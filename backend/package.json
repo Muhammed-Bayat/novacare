@@ -14,7 +14,8 @@
     "seed:dispatch": "tsx src/data/seed-dispatch.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gemini:interpret:check": "tsx src/gemini-interpret-diagnostic.ts"
   },
   "engines": {
     "node": ">=22"

@@ -3,6 +3,7 @@ import type { AppointmentTriageSummary, Hospital, QuestionnaireAnswer, Questionn
 import { IntakeRecommendation } from './IntakeRecommendation.tsx';
 
 type ChatStage = 'intro' | 'chat' | 'result';
+type QuestionInterpretationStatus = 'idle' | 'loading' | 'success' | 'failed';
 
 interface ChatMessage {
   role: 'ai' | 'patient';
@@ -35,7 +36,7 @@ export function IntakeChat({
   const [answers, setAnswers] = useState<QuestionnaireAnswer[]>([]);
   const [freeTextAnswer, setFreeTextAnswer] = useState('');
   const [busy, setBusy] = useState(false);
-  const [interpreting, setInterpreting] = useState(false);
+  const [questionInterpretationStatus, setQuestionInterpretationStatus] = useState<QuestionInterpretationStatus>('idle');
   const [error, setError] = useState<string>();
   const [conclusion, setConclusion] = useState<{ source: QuestionnaireIntake['source']; fallbackReason?: QuestionnaireIntake['fallbackReason']; assessment: QuestionnaireAssessment }>();
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -78,6 +79,7 @@ export function IntakeChat({
     setAnswers([]);
     setFreeTextAnswer('');
     interpretationRequestRef.current += 1;
+    setQuestionInterpretationStatus('idle');
     autoScrolledQuestionRef.current = undefined;
     setConclusion(undefined);
     try {
@@ -97,6 +99,7 @@ export function IntakeChat({
     if (!intake || !currentQuestion) return;
     const nextAnswers = [...answers, { questionId: currentQuestion.id, value }];
     setError(undefined);
+    setQuestionInterpretationStatus('idle');
     const answeredMessages: ChatMessage[] = [
       { role: 'patient', text: display },
       ...(interpretationMessage ? [{ role: 'ai' as const, text: interpretationMessage, kind: 'acknowledgement' as const }] : []),
@@ -125,23 +128,24 @@ export function IntakeChat({
   async function submitAnswer(display: string, value: QuestionnaireAnswer['value']) {
     if (busy) return;
     interpretationRequestRef.current += 1;
-    setInterpreting(false);
+    setQuestionInterpretationStatus('idle');
     setFreeTextAnswer('');
     await recordAnswer(display, value);
   }
 
   async function submitFreeText(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!intake || !currentQuestion || !currentQuestion.options?.length || busy || interpreting || !freeTextAnswer.trim()) return;
+    if (!intake || !currentQuestion || !currentQuestion.options?.length || busy || questionInterpretationStatus === 'loading' || !freeTextAnswer.trim()) return;
     const message = freeTextAnswer.trim();
     const requestId = interpretationRequestRef.current + 1;
     interpretationRequestRef.current = requestId;
-    setInterpreting(true);
+    setQuestionInterpretationStatus('loading');
     setError(undefined);
     try {
       const interpretation = await onInterpretQuestionnaire(intake.pathwayId, currentQuestion.id, message);
       if (requestId !== interpretationRequestRef.current) return;
       setFreeTextAnswer('');
+      setQuestionInterpretationStatus(interpretation.interpretationStatus === 'failed' ? 'failed' : 'success');
       if (interpretation.type === 'answer' && interpretation.answerId) {
         const option = currentQuestion.options.find((item) => item.id === interpretation.answerId);
         if (option) {
@@ -152,9 +156,8 @@ export function IntakeChat({
       setMessages((current) => [...current, { role: 'patient', text: message }, { role: 'ai', text: interpretation.message }]);
     } catch {
       if (requestId !== interpretationRequestRef.current) return;
+      setQuestionInterpretationStatus('failed');
       setMessages((current) => [...current, { role: 'patient', text: message }, { role: 'ai', text: "I couldn't interpret that automatically. Please choose the option that best matches your answer." }]);
-    } finally {
-      if (requestId === interpretationRequestRef.current) setInterpreting(false);
     }
   }
 
@@ -167,7 +170,7 @@ export function IntakeChat({
     setFreeTextAnswer('');
     interpretationRequestRef.current += 1;
     autoScrolledQuestionRef.current = undefined;
-    setInterpreting(false);
+    setQuestionInterpretationStatus('idle');
     setError(undefined);
     setConclusion(undefined);
   }
@@ -212,7 +215,7 @@ export function IntakeChat({
                 {message.text}
               </div>
             ))}
-              {busy || interpreting ? <div className="nv-chat-bubble ai nv-chat-typing">{interpreting ? 'Interpreting…' : 'Assessing…'}</div> : null}
+              {busy || questionInterpretationStatus === 'loading' ? <div className="nv-chat-bubble ai nv-chat-typing">{questionInterpretationStatus === 'loading' ? 'Interpreting…' : 'Assessing…'}</div> : null}
             </div>
             {currentQuestion && !busy ? (
               <div className="nv-chat-reply">
@@ -253,7 +256,7 @@ export function IntakeChat({
                       placeholder="Describe your answer…"
                       maxLength={500}
                     />
-                    <button className="secondary-btn" type="submit" disabled={interpreting || !freeTextAnswer.trim()}>Send</button>
+                    <button className="secondary-btn" type="submit" disabled={questionInterpretationStatus === 'loading' || !freeTextAnswer.trim()}>Send</button>
                   </form>
                 </>
               ) : null}
