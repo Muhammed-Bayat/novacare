@@ -161,12 +161,14 @@ export interface QuestionnaireAssessment {
 }
 
 export type QuestionnaireInterpretationType = 'answer' | 'explanation' | 'clarification-needed' | 'conversation';
+export type QuestionnaireInterpretationStatus = 'success' | 'failed';
 
 export interface QuestionnaireInterpretation {
   type: QuestionnaireInterpretationType;
   answerId: string | null;
   confidence: number | null;
   message: string;
+  interpretationStatus: QuestionnaireInterpretationStatus;
 }
 
 export interface AppointmentTriageSummary {
